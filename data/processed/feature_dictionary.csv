@@ -1,0 +1,20 @@
+feature_name,category,task_head,source_columns,description
+job_role,raw,employment,['job_role'],"Direct source column, no transformation."
+industry,raw,employment,['industry'],"Direct source column, no transformation."
+Age,raw,skills,['Age'],"Direct source column, no transformation."
+JobRole,raw,skills,['JobRole'],"Direct source column, no transformation."
+Department,raw,skills,['Department'],"Direct source column, no transformation."
+TrainingTimesLastYear,raw,skills,['TrainingTimesLastYear'],"Direct source column, no transformation."
+YearsAtCompany,raw,skills,['YearsAtCompany'],"Direct source column, no transformation."
+MonthlyIncome,raw,skills,['MonthlyIncome'],"Direct source column, no transformation."
+JobSatisfaction,raw,skills,['JobSatisfaction'],"Direct source column, no transformation."
+PerformanceRating,raw,skills,['PerformanceRating'],"Direct source column, no transformation."
+Attrition,raw,skills,['Attrition'],"Direct source column, no transformation."
+industry,raw,productivity,['industry'],"Direct source column, no transformation."
+ai_adoption_level,raw,productivity,['ai_adoption_level'],"Direct source column, no transformation."
+skill_gap_index,raw,productivity,['skill_gap_index'],"Direct source column, no transformation."
+training_intensity_index,index,skills,"['TrainingTimesLastYear', 'YearsAtCompany']",Training events per year of tenure — proxy for ongoing skill investment.
+ai_adoption_index,index,productivity,['ai_adoption_level'],"Min-max normalized AI adoption level, 0-1 scale."
+training_x_satisfaction,interaction,skills,"['training_intensity_index', 'JobSatisfaction']",Training investment weighted by job satisfaction — proxy for skill-readiness likely to convert to retention.
+target_attrition,target,skills,['Attrition'],"1 if employee left (attrition), from one-hot encoded Attrition column."
+target_ai_adoption,target,productivity,['ai_adoption_index'],Regression target — normalized AI adoption level.
