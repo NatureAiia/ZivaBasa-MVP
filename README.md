@@ -5,14 +5,13 @@ A hands-on deep learning practice repository focused on implementing, training, 
 This project explores the progression from traditional feed-forward neural networks to modern sequence-based architectures, including:
 
 - Dense Neural Networks
-- LSTM Networks
+- GRU, RNN & LSTM Networks
 - Attention Mechanisms
 - Transformer Blocks
 - Hybrid Deep Learning Models
+- FeedForward Neural Network
 
 The goal is to understand how different architectures learn patterns from data and when each model is most suitable.
-
-<br>
 
 ### 📌 Project Overview
 
