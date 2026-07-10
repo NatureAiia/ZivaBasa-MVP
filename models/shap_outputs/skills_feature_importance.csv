@@ -1,0 +1,9 @@
+feature,mean_abs_shap
+Age,0.05113107444119439
+training_intensity_index,0.04856191482628636
+TrainingTimesLastYear,0.04806489959933498
+JobSatisfaction,0.03223385535264928
+MonthlyIncome,0.03212287082973703
+YearsAtCompany,0.01442448308842028
+training_x_satisfaction,0.011383237221507999
+PerformanceRating,0.0058649064424170306
