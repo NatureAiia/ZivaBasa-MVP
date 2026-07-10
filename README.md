@@ -1,289 +1,160 @@
 # 🕴️🤔 ZivaBasa 😶‍🌫️
-### AI-Powered Workforce Intelligence Platform for Employment, Skills & Productivity Forecasting  
-> **Part of the ChiedzaAI Ecosystem**
+### MVP (Kaggle-Data Phase)
 
-ZivaBasa is the first module of **ChiedzaAI**, an Explainable AI decision intelligence platform that helps organizations understand how Artificial Intelligence (AI) and Digital Transformation (DT) will reshape employment, workforce skills, and productivity.  
+**Module:** ZivaBasa (part of the ChiedzaAI platform — jobs, employment, productivity & skills forecasting)
+**Phase:** MVP prototype using public Kaggle datasets as a stand-in for real banking-sector data
+**Status:** Architecture proof-of-concept, not a real-world findings phase
 
-The MVP focuses on Zimbabwe's banking sector, providing explainable workforce predictions, skills gap analysis, AI readiness assessment, and decision-support tools for HR leaders, executives, and policymakers.  
+---
 
-<br>
+## 1. Purpose of This Phase
 
-### 🌍 Vision  
-To become Zimbabwe's leading AI-powered workforce intelligence platform that enables organizations to proactively prepare for the future of work through explainable predictions, data-driven insights, and responsible AI.  
+This MVP validates the **explainable multi-task deep learning architecture** proposed for ZivaBasa
+(shared representation trunk → Employment / Productivity / Skills task heads → SHAP explainability layer)
+before real Zimbabwean banking-sector data is available.
 
-<br>
+**What this phase proves:**
+- The multi-task neural network trains and produces sensible per-task predictions
+- The feature engineering pipeline (raw → engineered → learned → fusion) works end-to-end
+- SHAP explainability runs correctly against a multi-output Keras model
+- The MLOps scaffolding (MLflow tracking, reproducible pipeline) is in place
 
-### 🎯 Problem Statement  
-As banks increasingly adopt Artificial Intelligence and Digital Transformation technologies, organizations face significant uncertainty regarding:  
-- Workforce disruption  
-- Job displacement and creation  
-- Future skills demand  
-- Productivity changes  
-- Workforce planning  
-- Reskilling priorities  
+**What this phase does NOT prove:**
+- Anything about actual Zimbabwean bank employment/productivity/skills dynamics
+- Real predictive accuracy on the target population — Kaggle data is a **proxy**, not ground truth
 
-Most organizations rely on assumptions rather than evidence-based forecasting. ZivaBasa bridges this gap by using Explainable AI to forecast workforce transformation and provide actionable recommendations.  
+> ⚠️ Every dataset used here is a substitute for real banking HR/operational/AI-system data.
+> All findings from this phase are **methodological**, not empirical. This must be stated
+> explicitly in any write-up, thesis chapter, or stakeholder demo that references this phase.
 
-<br>
+---
 
-### 💡 Solution  
-ZivaBasa combines Machine Learning, Explainable AI (XAI), and Workforce Analytics to help decision-makers answer questions like:  
-- Which jobs are most at risk?  
-- Which departments need reskilling?  
-- What skills will be required?  
-- How will AI impact productivity?  
-- How should organizations prepare for AI adoption?  
+## 2. Datasets Used (Proxy Data)
 
-The platform transforms workforce data into clear predictions, interactive dashboards, and executive-ready reports.  
+No single Kaggle dataset covers employment + productivity + skills for a banking workforce, so
+three datasets are combined, each feeding a different task head. They are **not** the same
+population — this is a known limitation, documented, not hidden.
 
-<br>
+| Task Head | Dataset | Kaggle Source | Proxy Role |
+|---|---|---|---|
+| Employment / Automation Risk | AI Automation Risk by Job Role | `khushikyad001/ai-automation-risk-by-job-role` | Job-role-level automation exposure |
+| Skills / Readiness | IBM HR Analytics Employee Attrition & Performance | `pavansubhasht/ibm-hr-analytics-attrition-dataset` | Training hours, tenure, satisfaction, role, promotion history |
+| Productivity / AI Adoption | Future of Work in the Age of AI (2020–2026) | `algozee/future-of-work-in-the-age-of-ai-20202026` | AI adoption level, salary trend, skill gap by industry |
 
-### ✨ MVP Features  
+Raw files live in `data/raw/`. Do not edit raw files in place — all cleaning happens in the
+feature engineering notebook and writes to `data/processed/`.
 
-#### 📤 Workforce Data Upload  
-Upload workforce datasets (CSV/Excel) for analysis.  
+---
 
-#### 🤖 AI Workforce Predictions  
-Predict:  
-- Employment Risk  
-- Productivity  
-- Skills Gaps  
-- AI Readiness  
-- Workforce Transformation  
+## 3. Repository Structure
 
-#### 🧠 Explainable AI (XAI)  
-Every prediction includes:  
-- SHAP explanations  
-- Feature importance  
-- Confidence scores  
-- Prediction reasoning  
-
-#### 📊 Interactive Dashboard  
-Visualize:  
-- Workforce KPIs  
-- AI Readiness  
-- Skills Readiness  
-- Productivity Trends  
-- Workforce Risk Heatmaps  
-- Department Comparisons  
-
-#### 🎯 Skills Gap Analysis  
-Identify:  
-- Current workforce capabilities  
-- Future skill requirements  
-- Reskilling priorities  
-- Critical skill shortages  
-
-#### 🔮 Workforce Forecasting  
-Forecast:  
-- Job creation  
-- Job displacement  
-- Workforce demand  
-- Future organizational structure  
-
-#### ⚙️ AI Scenario Simulator  
-Simulate different AI adoption scenarios. Example:  
-- Increase AI adoption  
-- Increase training budget  
-- Increase automation  
-
-Instantly observe workforce impact.  
-
-#### 💼 Recommendation Engine  
-Automatically generate recommendations for:  
-- Reskilling  
-- Hiring  
-- Workforce planning  
-- Productivity improvement  
-- Digital transformation strategy  
-
-#### 📄 Executive Reports  
-Generate professional reports containing:  
-- Workforce analytics  
-- AI insights  
-- Skills analysis  
-- Recommendations  
-- Explainability summaries  
-
-<br>
-
-### 🏗 Architecture  
-```text
-Workforce Data
-│ ▼
-Feature Engineering
-│ ▼
-Feature Routing
-├── Direct Features
-├── Fusion Features
-└── Temporal Features
-│ ▼
-Feature Fusion
-│ ▼
-Multi-Task AI Model (TensorFlow + Keras)
-│ ▼
-Explainable AI (SHAP)
-│ ▼
-Predictions
-├── Employment
-├── Productivity
-└── Skills
-│ ▼
-Decision Support Dashboard
+```
+zivabasa_mvp/
+├── README.md
+├── data/
+│   ├── raw/                     # untouched Kaggle CSVs
+│   └── processed/                # cleaned, feature-engineered outputs
+├── notebooks/
+│   ├── 01_data_acquisition_eda.ipynb
+│   ├── 02_feature_engineering.ipynb
+│   ├── 03_baseline_models.ipynb
+│   ├── 04_multitask_neural_network.ipynb
+│   └── 05_shap_explainability.ipynb
+├── src/
+│   ├── features.py               # feature engineering functions (raw/ratio/index/interaction)
+│   ├── model.py                  # multi-task Keras model definition
+│   └── evaluate.py               # metrics + SHAP helpers
+├── models/                       # saved .keras models + MLflow artifacts
+├── mlruns/                       # MLflow tracking (local)
+└── requirements.txt
 ```
 
-<br>
+---
 
-### 🧠 AI Pipeline  
-The AI engine follows a routed architecture:  
-1. Feature Engineering  
-2. Feature Routing  
-3. Feature Fusion  
-4. Representation Learning  
-5. Multi-Task Learning  
-6. Explainable AI  
-7. Workforce Predictions  
-8. Decision Support  
+## 4. Today's Deliverables (Prediction + Neural Network Notebooks)
 
-<br>
+Two notebooks are the priority for today:
 
-### 📂 Project Structure  
-```text
-zivabasa/
-│ ├── backend/
-│ ├── api/
-│ ├── services/
-│ ├── models/
-│ ├── schemas/
-│ └── main.py
-│ ├── frontend/
-│ ├── app/
-│ ├── components/
-│ ├── lib/
-│ └── public/
-│ ├── ml/
-│ ├── datasets/
-│ ├── preprocessing/
-│ ├── feature_engineering/
-│ ├── feature_routing/
-│ ├── fusion/
-│ ├── models/
-│ ├── explainability/
-│ └── inference/
-│ ├── notebooks/
-├── docs/
-├── docker/
-├── database/
-├── tests/
-├── scripts/
-└── README.md
+### `03_baseline_models.ipynb` — Prediction Baselines
+- Logistic Regression, Decision Tree, Random Forest, Gradient Boosting — one set per task head
+- Metrics: Accuracy, Precision, Recall, F1, ROC-AUC (classification) or RMSE/MAE/R² (regression)
+- Purpose: empirical justification for the deep model — if the neural net doesn't beat these,
+  that's a real finding to report, not a failure to hide
+
+### `04_multitask_neural_network.ipynb` — Multi-Task Deep Model
+- Shared trunk (Dense 256 → BatchNorm → Dropout 0.3 → Dense 128 → Dropout 0.3)
+- Three task-specific heads: Employment, Productivity, Skills
+- Compile with per-task losses (weighted sum, equal weights as starting point — documented as a
+  tunable hyperparameter, not a fixed design choice)
+- Callbacks: EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
+- Log every run to MLflow: dataset version, feature set, task loss weights, final metrics
+
+Both notebooks must log results to `mlruns/` so today's run is auditable later.
+
+---
+
+## 5. Architecture Reference
+
+```
+Input Features (raw + engineered, per task)
+        │
+Shared Trunk: Dense(256, ReLU) → BatchNorm → Dropout(0.3)
+              → Dense(128, ReLU) → Dropout(0.3)
+        │
+   ┌────┴────┬─────────────┐
+   ▼         ▼             ▼
+Employment  Productivity  Skills
+Head        Head          Head
+Dense(64→32)  Dense(64→32)  Dense(64→32)
+   │             │             │
+Output(1)     Output(1)     Output(1)
 ```
 
-<br>
+Feature taxonomy (must match the ChiedzaAI proposal's structure — see `src/features.py`):
 
-### 🛠 Tech Stack  
+| Category | Example (this phase) |
+|---|---|
+| Raw | age, tenure, training hours, job role, automation exposure score |
+| Ratio/Index | Training Hours per Employee, Automation Exposure Index |
+| Interaction | Training Investment × Skill Readiness, AI Adoption × Employment Level |
+| Learned | shared trunk output (not hand-built) |
+| Fusion | concatenated representation feeding the task heads |
 
-#### Frontend  
-- Next.js  
-- React  
-- TypeScript  
-- Tailwind CSS  
-- shadcn/ui  
-- Plotly / Recharts  
+---
 
-#### Backend  
-- FastAPI  
-- Python  
-- SQLAlchemy  
-- Pydantic  
+## 6. Setup
 
-#### AI & Machine Learning  
-- TensorFlow + Keras  
-- Scikit-learn  
-- SHAP  
-- Pandas  
-- NumPy  
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+```
 
-#### Database  
-- PostgreSQL  
+`requirements.txt` should pin: `tensorflow`, `scikit-learn`, `pandas`, `numpy`, `shap`, `mlflow`,
+`matplotlib`, `seaborn`.
 
-#### Infrastructure  
-- Docker  
-- GitHub  
-- VS Code  
-- Google Colab / Jupyter  
+Run notebooks in order (01 → 05). Each notebook reads from `data/processed/` produced by the
+previous one — do not skip 02 (feature engineering) before running 03 or 04.
 
-<br>
+---
 
-### 🚀 Development Roadmap  
+## 7. Known Limitations (Report These, Don't Bury Them)
 
-#### Week 1  
-- Project Setup  
-- Data Engineering  
-- Feature Engineering  
-- Feature Routing  
-- Feature Fusion  
-- AI Model Development  
-- Explainable AI  
+1. **Cross-dataset alignment** — the three datasets are not from the same population; task heads
+   are trained on different samples joined only at the feature-schema level.
+2. **No Zimbabwe/banking specificity** — proxy data is US/general-industry; results won't transfer
+   directly to the target domain.
+3. **No federated learning yet** — this phase runs on a single merged/aligned dataset locally;
+   the proposal's privacy-preserving multi-bank federated setup is out of scope until real bank
+   partners are onboarded.
+4. **Causal-consistent XAI** — this phase implements standard SHAP (associational), not the
+   causal-consistent XAI layer described in the proposal. That is a later research milestone.
 
-#### Week 2  
-- FastAPI Backend  
-- Dashboard Development  
-- Scenario Simulator  
-- Recommendation Engine  
-- Report Generator  
-- Integration  
-- Testing  
-- Documentation  
+---
 
-<br>
+## 8. Next Phase (Not This Sprint)
 
-### 🎯 Target Users  
-- Banks  
-- Human Resource Departments  
-- Executives  
-- Government  
-- Policy Makers  
-- Researchers  
-- Universities  
-
-<br>
-
-### 🔮 Future Roadmap  
-After the MVP, ZivaBasa will expand to include:  
-- Federated Learning  
-- Real-time Banking Integration  
-- Causal AI  
-- Transformer-based Workforce Forecasting  
-- Cross-Bank Benchmarking  
-- National Workforce Intelligence  
-- Predictive Policy Simulation  
-
-<br>
-
-### 🌟 ChiedzaAI Ecosystem  
-ZivaBasa is one of four modules within ChiedzaAI.  
-
-| Module        | Purpose                                      |  
-|---------------|----------------------------------------------|  
-| **ZivaBasa**  | Employment, Workforce, Productivity & Skills |  
-| **ZivaDzidzo**| Education & Future Skills                   |  
-| **ZivaBusiness** | Revenue, Profitability & Customers       |  
-| **ZivaUpfumi**| Economy, GDP & National Growth              |  
-
-Together, these modules provide a comprehensive decision intelligence platform for understanding the impact of AI and Digital Transformation across Zimbabwe.  
-
-<br>
-
-### 🤝 Contributing  
-This project is currently under active research and development. Contributions, ideas, feedback, and collaborations are welcome.  
-
-<br>
-
-### 📄 License  
-This project is released under the **MIT License**.  
-
-<br>
-
-**Project:** ChiedzaAI – Explainable AI Decision Intelligence Platform  
-*"Clarity for AI-driven transformation."*
+- Replace proxy datasets with real bank HR/operational/AI-system data once available
+- Reconcile the feature dictionary (`src/features.py`) against the real raw feature list in the
+  proposal (raw → engineered → learned → fusion taxonomy already matches — swap the data source only)
+- Introduce federated learning across participating banks
+- Move from SHAP to the causal-consistent XAI layer
