@@ -1,0 +1,31 @@
+# ZivaBasa MVP (Kaggle-Data Phase) — dependencies
+# Install with: pip install -r requirements.txt
+
+# Core data handling
+pandas==2.2.2
+numpy==1.26.4
+
+# Deep learning
+tensorflow==2.16.1
+
+# Classical ML baselines
+scikit-learn==1.5.0
+xgboost==2.0.3
+
+# Explainability
+shap==0.45.1
+
+# Experiment tracking
+mlflow==2.14.1
+
+# Visualization
+matplotlib==3.9.0
+seaborn==0.13.2
+
+# Notebook environment
+jupyter==1.0.0
+ipykernel==6.29.4
+
+# Utilities
+joblib==1.4.2
+python-dotenv==1.0.1
