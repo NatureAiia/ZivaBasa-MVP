@@ -188,11 +188,11 @@ def add_ratio_index_features(df: Optional[pd.DataFrame], task_name: str) -> Opti
             "Training events per year of tenure — proxy for ongoing skill investment.",
         )
 
-    if task_name == "employment" and "automation_risk" in df.columns:
-        col = df["automation_risk"]
+    if task_name == "employment" and "automation_risk_score" in df.columns:
+        col = df["automation_risk_score"]
         df["automation_exposure_index"] = (col - col.min()) / (col.max() - col.min() + 1e-9)
         _log_feature(
-            "automation_exposure_index", "index", "employment", ["automation_risk"],
+            "automation_exposure_index", "index", "employment", ["automation_risk_score"],
             "Min-max normalized automation risk score, 0-1 scale.",
         )
 
@@ -225,13 +225,13 @@ def add_interaction_features(df: Optional[pd.DataFrame], task_name: str) -> Opti
             "likely to convert to retention.",
         )
 
-    if task_name == "employment" and {"automation_exposure_index", "digital_skill_level"}.issubset(df.columns):
-        df["exposure_x_digital_skill"] = df["automation_exposure_index"] * df["digital_skill_level"]
+    if task_name == "employment" and {"automation_exposure_index", "skill_complexity_score"}.issubset(df.columns):
+        df["exposure_x_skill_complexity"] = df["automation_exposure_index"] * df["skill_complexity_score"]
         _log_feature(
-            "exposure_x_digital_skill", "interaction", "employment",
-            ["automation_exposure_index", "digital_skill_level"],
-            "Automation exposure weighted by digital skill level — higher digital skill may "
-            "offset raw exposure.",
+            "exposure_x_skill_complexity", "interaction", "employment",
+            ["automation_exposure_index", "skill_complexity_score"],
+            "Automation exposure weighted by skill complexity — higher skill complexity may "
+            "offset raw automation exposure (harder to fully automate complex skill sets).",
         )
 
     return df
@@ -308,12 +308,12 @@ def define_target(df: Optional[pd.DataFrame], task_name: str) -> Optional[pd.Dat
         return None
     df = df.copy()
 
-    if task_name == "employment" and "automation_risk" in df.columns:
-        threshold = df["automation_risk"].quantile(0.75)
-        df["target_high_automation_risk"] = (df["automation_risk"] > threshold).astype(int)
+    if task_name == "employment" and "automation_risk_score" in df.columns:
+        threshold = df["automation_risk_score"].quantile(0.75)
+        df["target_high_automation_risk"] = (df["automation_risk_score"] > threshold).astype(int)
         _log_feature(
-            "target_high_automation_risk", "target", "employment", ["automation_risk"],
-            f"1 if automation_risk above 75th percentile ({threshold:.3f}).",
+            "target_high_automation_risk", "target", "employment", ["automation_risk_score"],
+            f"1 if automation_risk_score above 75th percentile ({threshold:.3f}).",
         )
 
     if task_name == "skills":

@@ -58,8 +58,22 @@ TASK_CONFIGS: Dict[str, TaskConfig] = {
         raw_filename="ai_automation_risk_by_job_role.csv",
         target="target_high_automation_risk",
         task_type="classification",
-        raw_cols=["job_role", "industry", "automation_risk", "salary", "digital_skill_level"],
-        drop_cols=["target_high_automation_risk", "automation_risk", "automation_exposure_index"],
+        # Matches the REAL khushikyad001/ai-automation-risk-by-job-role schema (confirmed
+        # against the actual downloaded CSV — the dataset is job-role-level, not employee-level,
+        # so there's no per-employee "digital_skill_level"; ai_tool_maturity_score / task_repetition_level /
+        # skill_complexity_score are the closest analogues and are used in the engineered features below).
+        raw_cols=["job_role", "industry", "avg_salary_usd", "automation_risk_score",
+                  "ai_tool_maturity_score", "task_repetition_level", "skill_complexity_score",
+                  "training_hours_needed", "job_demand_index", "percent_tasks_automatable"],
+        # NOTE: exposure_x_skill_complexity is dropped too, not just automation_risk_score and
+        # automation_exposure_index — it's a direct multiplicative derivative of
+        # automation_exposure_index (which is itself a monotonic transform of the raw target
+        # source), so it inherits most of that signal. Confirmed via correlation check: this
+        # interaction feature alone correlated ~0.49 with the target even on synthetic random
+        # data. It stays in data/processed/ (documented in the feature dictionary) but must be
+        # excluded from the modeling matrix for THIS task.
+        drop_cols=["target_high_automation_risk", "automation_risk_score",
+                   "automation_exposure_index", "exposure_x_skill_complexity"],
         loss_weight=1.0,
     ),
     "skills": TaskConfig(
