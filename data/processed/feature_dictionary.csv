@@ -1,6 +1,14 @@
 feature_name,category,task_head,source_columns,description
 job_role,raw,employment,['job_role'],"Direct source column, no transformation."
 industry,raw,employment,['industry'],"Direct source column, no transformation."
+avg_salary_usd,raw,employment,['avg_salary_usd'],"Direct source column, no transformation."
+automation_risk_score,raw,employment,['automation_risk_score'],"Direct source column, no transformation."
+ai_tool_maturity_score,raw,employment,['ai_tool_maturity_score'],"Direct source column, no transformation."
+task_repetition_level,raw,employment,['task_repetition_level'],"Direct source column, no transformation."
+skill_complexity_score,raw,employment,['skill_complexity_score'],"Direct source column, no transformation."
+training_hours_needed,raw,employment,['training_hours_needed'],"Direct source column, no transformation."
+job_demand_index,raw,employment,['job_demand_index'],"Direct source column, no transformation."
+percent_tasks_automatable,raw,employment,['percent_tasks_automatable'],"Direct source column, no transformation."
 Age,raw,skills,['Age'],"Direct source column, no transformation."
 JobRole,raw,skills,['JobRole'],"Direct source column, no transformation."
 Department,raw,skills,['Department'],"Direct source column, no transformation."
@@ -14,7 +22,10 @@ industry,raw,productivity,['industry'],"Direct source column, no transformation.
 ai_adoption_level,raw,productivity,['ai_adoption_level'],"Direct source column, no transformation."
 skill_gap_index,raw,productivity,['skill_gap_index'],"Direct source column, no transformation."
 training_intensity_index,index,skills,"['TrainingTimesLastYear', 'YearsAtCompany']",Training events per year of tenure — proxy for ongoing skill investment.
+automation_exposure_index,index,employment,['automation_risk_score'],"Min-max normalized automation risk score, 0-1 scale."
 ai_adoption_index,index,productivity,['ai_adoption_level'],"Min-max normalized AI adoption level, 0-1 scale."
 training_x_satisfaction,interaction,skills,"['training_intensity_index', 'JobSatisfaction']",Training investment weighted by job satisfaction — proxy for skill-readiness likely to convert to retention.
+exposure_x_skill_complexity,interaction,employment,"['automation_exposure_index', 'skill_complexity_score']",Automation exposure weighted by skill complexity — higher skill complexity may offset raw exposure (harder to fully automate complex skill sets).
+target_high_automation_risk,target,employment,['automation_risk_score'],1 if automation_risk_score above 75th percentile (0.750).
 target_attrition,target,skills,['Attrition'],"1 if employee left (attrition), from one-hot encoded Attrition column."
 target_ai_adoption,target,productivity,['ai_adoption_index'],Regression target — normalized AI adoption level.
