@@ -260,7 +260,11 @@ def compute_shap_values(
         return sv, "GradientExplainer"
     except Exception as e:
         logger.warning("GradientExplainer failed (%s); falling back to KernelExplainer.", e)
-        predict_fn = lambda x: keras_model.predict(x, verbose=0).squeeze()
+        # NOTE: use reshape(-1), not squeeze() -- squeeze() collapses a (1, 1) batch (which
+        # KernelExplainer does pass at points during its internal sampling) all the way down to
+        # a 0-d scalar, and shap then crashes trying to index it (`model_out[0]`). reshape(-1)
+        # always keeps at least one dimension.
+        predict_fn = lambda x: keras_model.predict(x, verbose=0).reshape(-1)
         bg_summary = shap.kmeans(background, min(20, background.shape[0]))
         explainer = shap.KernelExplainer(predict_fn, bg_summary)
         sv = explainer.shap_values(explain_set, nsamples=100)
