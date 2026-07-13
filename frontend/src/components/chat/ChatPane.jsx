@@ -20,21 +20,23 @@ const PUTER_SYSTEM = "You are the ZivaBasa workforce intelligence assistant, emb
   "an actual prediction, tell them to switch to the Backend provider for that.";
 
 const PROVIDERS = [
+  { key: "backend", label: "Backend (NVIDIA/Anthropic + tools)" },
   { key: "puter", label: "Puter (free, no key)" },
-  { key: "backend", label: "Backend (predict/explain tools)" },
 ];
 
 export default function ChatPane() {
-  const [provider, setProvider] = useState("puter");
+  const [provider, setProvider] = useState("backend");
   const [puterModel, setPuterModel] = useState("claude-sonnet-5");
   const [menuOpen, setMenuOpen] = useState(false);
   const [messages, setMessages] = useState([
     {
       role: "assistant",
       text:
-        "Using Puter (free, no API key) by default — I can chat but can't call the ZivaBasa " +
-        "prediction models directly here. Switch to \"Backend\" above for real predict/explain " +
-        "tool calls (needs an Anthropic or NVIDIA key configured on your server).",
+        "Using your backend's configured provider (NVIDIA by default when NVIDIA_API_KEY is " +
+        "set) — I can call the ZivaBasa predict/explain tools directly. If you see a \"no " +
+        "provider configured\" error, add NVIDIA_API_KEY (or ANTHROPIC_API_KEY) to your " +
+        "backend's .env and restart it. Switch to \"Puter\" above for free chat without any " +
+        "backend key, but without tool access.",
     },
   ]);
   const [input, setInput] = useState("");

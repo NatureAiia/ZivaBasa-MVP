@@ -40,7 +40,8 @@ export default function AdvancedPredict() {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 max-w-5xl mx-auto w-full">
+    <div className="flex-1 overflow-y-auto">
+      <div className="p-6 max-w-5xl mx-auto w-full">
       {/* Step tabs */}
       <div className="flex items-center gap-1 mb-6 bg-surface2 rounded-xl p-1 w-fit">
         {TASKS.map((task) => {
@@ -151,6 +152,7 @@ export default function AdvancedPredict() {
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
     </div>
   );
 }

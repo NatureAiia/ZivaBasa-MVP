@@ -4,6 +4,8 @@ import { ArrowUpRight } from "lucide-react";
 import Card from "../components/common/Card";
 import Badge from "../components/common/Badge";
 import CorporateKPIGrid from "../components/dashboard/CorporateKPIGrid";
+import MeshTextHover from "../components/effects/MeshTextHover";
+import Typewriter from "../components/effects/Typewriter";
 import { staggerContainer, fadeUpItem } from "../lib/motion";
 
 const MODELS = [
@@ -16,10 +18,33 @@ const MODELS = [
 
 export default function ChiedzaDashboard() {
   return (
-    <div className="flex-1 overflow-y-auto p-8 max-w-5xl mx-auto w-full">
+    <div className="flex-1 overflow-y-auto">
+      <div className="p-8 max-w-5xl mx-auto w-full">
       <motion.div variants={staggerContainer} initial="hidden" animate="show" className="flex flex-col gap-8">
         <motion.div variants={fadeUpItem}>
-          <h1 className="font-display text-2xl font-semibold text-ink">ChiedzaAI</h1>
+          <div className="flex items-center gap-3">
+            <div style={{ width: 260, height: 64 }}>
+              <MeshTextHover
+                text="ChiedzaAI"
+                color="#9BA3B7"
+                colorSplit={true}
+                customColors={["#E8A33D", "#2FBF9F"]}
+                force={14}
+                font={{ fontFamily: "Space Grotesk", variant: "SemiBold", fontSize: 46 }}
+              />
+            </div>
+            <span className="text-ink-faint text-xl font-display">—</span>
+            <div style={{ height: 40 }} className="font-mono text-sm text-ink-muted">
+              <Typewriter
+                texts={MODELS.map((m) => m.name)}
+                typedColor="#E8A33D"
+                color="#9BA3B7"
+                cursorChar="_"
+                font={{ fontFamily: "IBM Plex Mono", variant: "Regular", fontSize: 15 }}
+                ease={{ type: "tween", duration: 0.06, delay: 1.1, ease: "easeInOut" }}
+              />
+            </div>
+          </div>
           <p className="text-sm text-ink-muted mt-1">Decision intelligence, one model at a time.</p>
         </motion.div>
 
@@ -52,6 +77,7 @@ export default function ChiedzaDashboard() {
           </div>
         </motion.div>
       </motion.div>
+      </div>
     </div>
   );
 }

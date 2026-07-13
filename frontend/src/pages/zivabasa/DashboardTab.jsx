@@ -19,7 +19,8 @@ export default function DashboardTab() {
   }, []);
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 max-w-5xl mx-auto w-full">
+    <div className="flex-1 overflow-y-auto">
+      <div className="p-6 max-w-5xl mx-auto w-full">
       <motion.div variants={staggerContainer} initial="hidden" animate="show" className="flex flex-col gap-6">
         <motion.div variants={fadeUpItem} className="flex items-center justify-between">
           <div>
@@ -68,6 +69,7 @@ export default function DashboardTab() {
           <DepartmentBreakdown />
         </motion.div>
       </motion.div>
+      </div>
     </div>
   );
 }

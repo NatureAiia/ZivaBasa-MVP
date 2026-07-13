@@ -140,10 +140,12 @@ def _run_tool(name: str, args: dict) -> dict:
 def active_provider() -> Optional[str]:
     if CHAT_PROVIDER in ("anthropic", "nvidia"):
         return CHAT_PROVIDER
-    if ANTHROPIC_API_KEY:
-        return "anthropic"
+    # NVIDIA preferred by default when both keys are present — override with
+    # CHAT_PROVIDER=anthropic if you want the other one instead.
     if NVIDIA_API_KEY:
         return "nvidia"
+    if ANTHROPIC_API_KEY:
+        return "anthropic"
     return None
 
 

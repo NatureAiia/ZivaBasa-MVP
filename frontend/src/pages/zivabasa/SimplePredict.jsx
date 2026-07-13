@@ -9,7 +9,8 @@ export default function SimplePredict() {
   const [task, setTask] = useState("employment");
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 max-w-4xl mx-auto w-full">
+    <div className="flex-1 overflow-y-auto">
+      <div className="p-6 max-w-4xl mx-auto w-full">
       <motion.div variants={staggerContainer} initial="hidden" animate="show" className="flex flex-col gap-5">
         <motion.div variants={fadeUpItem}>
           <h1 className="font-display text-lg font-semibold text-ink">Upload your data</h1>
@@ -45,6 +46,7 @@ export default function SimplePredict() {
           <BatchUpload key={task} task={task} />
         </motion.div>
       </motion.div>
+      </div>
     </div>
   );
 }

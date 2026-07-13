@@ -28,7 +28,8 @@ export default function HistoryTab() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 max-w-4xl mx-auto w-full">
+    <div className="flex-1 overflow-y-auto">
+      <div className="p-6 max-w-4xl mx-auto w-full">
       <motion.div variants={staggerContainer} initial="hidden" animate="show" className="flex flex-col gap-3">
         <AnimatePresence>
           {history.map((entry) => (
@@ -70,6 +71,7 @@ export default function HistoryTab() {
           ))}
         </AnimatePresence>
       </motion.div>
+      </div>
     </div>
   );
 }
