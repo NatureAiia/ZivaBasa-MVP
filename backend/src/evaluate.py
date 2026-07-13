@@ -248,6 +248,16 @@ def compute_shap_values(
     """
     GradientExplainer first (works with TF2 eager Keras models); falls back to KernelExplainer
     (model-agnostic, slower) if that fails for any reason. Returns (shap_values, explainer_name).
+
+    KNOWN, DELIBERATE TRADEOFF (verified 2026-07-13): GradientExplainer currently always fails
+    here and falls back to KernelExplainer. Root cause: shap==0.45.1's GradientExplainer calls
+    tf.keras.backend.learning_phase(), which Keras 3 (bundled with our pinned tensorflow==2.16.1)
+    removed -- AttributeError every time. shap==0.52.0 fixes this, but requires numpy>=2.0, which
+    conflicts with tensorflow==2.16.1's numpy<2.0 requirement (and pyarrow/mlflow's pins). Fixing
+    this "properly" means upgrading the whole TF/numpy stack and re-verifying every trained model
+    still behaves identically under numpy 2 -- too risky to do incidentally. KernelExplainer is
+    slower but has been verified correct (base_value + sum(shap_values) ~= prediction). Revisit
+    if/when the TF/numpy stack gets upgraded deliberately, with full retraining verification.
     """
     import shap
 

@@ -40,29 +40,36 @@ src/
 
 ## What's real vs. prototype (read this before demoing)
 
-- **Predict tab** — fully wired to your FastAPI backend. Same guided flow as v1
-  (Employment → Skills → Productivity → Summary), same SHAP ledger, same scaler fix.
-- **Dashboard tab** — real `/health` check against your API; recent-activity list reads
-  real logged runs.
-- **History tab** — real, but **client-side only** (`localStorage`). No backend persistence
-  exists yet — runs don't sync across devices/browsers. Wiring this to a real DB table is a
-  natural next step once there's auth.
-- **Report generation** (Studio panel + History tab + Predict Summary) — real, generates an
-  actual `.md` file from your latest completed run. Not a styled PDF yet.
-- **Chat tab's Chat pane** — **UI prototype only**. There's no conversational backend wired up
-  (the FastAPI app only exposes `/health`, `/schema`, `/predict`, `/explain` — no chat
-  endpoint). It echoes what you type so the interaction pattern is real, but nothing is
-  actually asking the model anything. Says so directly in the UI.
-- **Sources panel** — drag/drop UI works, files are listed, but nothing is uploaded anywhere
-  (no backend endpoint exists to receive them). Says so directly in the UI.
-- **Studio's stub tiles** (Audio Overview, Video Overview, Mind Map, Quiz) — visual only,
-  marked "soon," mirroring NotebookLM's Studio without pretending they're built.
+- **Predict tab, "Upload & Analyze" (default view)** — real, new. Upload a CSV per task
+  (Employment/Skills/Productivity), the backend matches columns by name (including computing
+  engineered features like `training_intensity_index` from raw HR columns automatically),
+  scores every row, and returns KPI cards, a department/segment breakdown, and a top-risk list.
+  This is the CEO-facing flow — no manual per-field data entry required.
+- **Predict tab, "Single-role (advanced)"** — the original v1-ported flow: manual feature entry,
+  chained Employment → Skills → Productivity → Summary, SHAP ledger. Kept for analysts who want
+  to explore one hypothetical scenario at a time.
+- **Corporate dashboard** (both ChiedzaAI's top-level Dashboards page and ZivaBasa's own
+  Dashboard tab) — real, pulls from whatever batch uploads have been run. Big numbers: roles at
+  automation risk (+ payroll value), employees at attrition risk (+ income value), productivity
+  signal, department breakdown. Honestly labeled as not including "jobs created" (no model
+  predicts that) and flags that skills-gap *recommendations* (as opposed to attrition risk)
+  aren't built yet.
+- **Chat tab's Chat pane** — real, wired to the backend's `/chat` endpoint, which can call the
+  actual `predict_task`/`explain_task` tools. Needs `ANTHROPIC_API_KEY` or `NVIDIA_API_KEY` set
+  on the *backend* (see its `.env.example`) — if neither is set, the chat pane surfaces that
+  honestly instead of pretending to answer.
+- **History tab** — real, but **client-side only** (`localStorage`), same as before.
+- **Report generation** — real, generates a `.md` from a completed advanced-mode run.
+- **Sources panel** (inside Chat tab) — still a UI prototype, not wired to the batch-predict
+  endpoint. For real file-driven predictions, use Predict → Upload & Analyze.
+- **Studio's stub tiles** (Audio/Video Overview, Mind Map, Quiz) — visual only, marked "soon."
 
 ## Known gaps worth tackling next
 
-- No auth — anyone with the URL sees everything.
-- No real chat backend — would need an LLM endpoint that can call `/predict`/`/explain` as
-  tools and reason over the results.
-- Report export is Markdown, not a formatted PDF — `xlsx`/`docx`/`pdf` skills could generate a
-  nicer artifact server-side.
-- History has no backend table — currently `localStorage` per browser.
+- No auth.
+- NVIDIA NIM chat path is written to the documented OpenAI-compatible contract but was never
+  tested against a live key or `integrate.api.nvidia.com` (unreachable from the sandbox this
+  was built in) — verify before relying on it.
+- Sources panel doesn't feed the batch-predict endpoint yet.
+- History/batch results have no backend table — currently `localStorage` per browser.
+- Report export is Markdown, not a formatted PDF.

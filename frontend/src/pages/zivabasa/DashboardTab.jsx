@@ -1,25 +1,18 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowRight, Activity, TrendingUp, Users, Cpu } from "lucide-react";
+import { ArrowRight, Activity } from "lucide-react";
 import Card from "../../components/common/Card";
 import Badge from "../../components/common/Badge";
-import Skeleton from "../../components/common/Skeleton";
 import ClarityRing from "../../components/common/ClarityRing";
+import CorporateKPIGrid from "../../components/dashboard/CorporateKPIGrid";
+import DepartmentBreakdown from "../../components/dashboard/DepartmentBreakdown";
 import { staggerContainer, fadeUpItem } from "../../lib/motion";
 import { api } from "../../lib/api";
-import { getHistory } from "../../lib/history";
-
-const TASK_META = [
-  { key: "employment", icon: Users, label: "Employment", desc: "Automation risk by job role" },
-  { key: "skills", icon: TrendingUp, label: "Skills", desc: "Attrition risk from workforce signals" },
-  { key: "productivity", icon: Cpu, label: "Productivity", desc: "AI adoption impact, standardized" },
-];
 
 export default function DashboardTab() {
   const [health, setHealth] = useState(null);
   const [error, setError] = useState(null);
-  const history = getHistory();
 
   useEffect(() => {
     api.health().then(setHealth).catch((e) => setError(e.message));
@@ -39,7 +32,7 @@ export default function DashboardTab() {
               whileTap={{ scale: 0.97 }}
               className="flex items-center gap-1.5 bg-gold text-bg rounded-xl px-4 py-2 text-sm font-semibold"
             >
-              Run a prediction <ArrowRight size={15} />
+              Upload data <ArrowRight size={15} />
             </motion.span>
           </Link>
         </motion.div>
@@ -66,32 +59,13 @@ export default function DashboardTab() {
           </Card>
         </motion.div>
 
-        <motion.div variants={fadeUpItem} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {TASK_META.map(({ key, icon: Icon, label, desc }) => (
-            <Card key={key} animated={false} className="flex flex-col gap-2">
-              <Icon size={18} className="text-gold" />
-              <h3 className="text-sm font-semibold text-ink">{label}</h3>
-              <p className="text-xs text-ink-muted">{desc}</p>
-            </Card>
-          ))}
+        <motion.div variants={fadeUpItem}>
+          <h2 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold mb-3">Corporate summary</h2>
+          <CorporateKPIGrid />
         </motion.div>
 
         <motion.div variants={fadeUpItem}>
-          <Card animated={false}>
-            <h2 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold mb-3">Recent activity</h2>
-            {history.length === 0 ? (
-              <p className="text-xs text-ink-faint">No runs yet. Head to the Predict tab to get started.</p>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {history.slice(0, 5).map((h) => (
-                  <div key={h.id} className="flex items-center justify-between text-xs text-ink-muted border-b border-border last:border-0 pb-2 last:pb-0">
-                    <span>{new Date(h.timestamp).toLocaleString()}</span>
-                    <span className="font-mono text-ink-faint">Employment · Skills · Productivity</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
+          <DepartmentBreakdown />
         </motion.div>
       </motion.div>
     </div>

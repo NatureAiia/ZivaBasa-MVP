@@ -50,6 +50,14 @@ class TaskArtifacts:
         ]
         return np.asarray([scaled], dtype="float32")
 
+    def transform_batch(self, raw_matrix: np.ndarray) -> np.ndarray:
+        """Same as transform() but for an (n_rows, input_dim) matrix at once — used by the
+        batch-predict endpoint so a CSV upload of thousands of rows is one vectorized numpy
+        operation, not a Python loop calling transform() per row."""
+        mean_ = self.scaler.mean_[self.scaler_index]
+        scale_ = self.scaler.scale_[self.scaler_index]
+        return ((raw_matrix - mean_) / scale_).astype("float32")
+
 
 class ModelRegistry:
     """Holds loaded artifacts for every task head. Populated once via `load_all()`."""

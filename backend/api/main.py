@@ -16,25 +16,28 @@ startup, there's no auth, and SHAP explanations run on-demand (slower than /pred
 meant to prove the trained multi-task model + SHAP pipeline can actually be served, per the
 14-day plan's Day 8 deliverable.
 """
-
 from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
+load_dotenv()  # picks up ANTHROPIC_API_KEY / NVIDIA_API_KEY / CHAT_PROVIDER from .env if present
+                # -- must run before api.chat is imported, since that module reads them at
+                # import time via os.environ.get()
+
 import numpy as np
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api.schemas import (
-    PredictRequest,
-    PredictResponse,
-    SchemaResponse,
-    ExplainResponse,
-    FeatureContribution,
-    HealthResponse,
+from api.schemas import (
+    PredictRequest, PredictResponse, SchemaResponse,
+    ExplainResponse, FeatureContribution, HealthResponse,
+    ChatRequest, ChatResponse,
 )
-from backend.api.model_registry import registry
+from api.model_registry import registry
+from api import batch as batch_module
+from api import chat as chat_module
 from src import evaluate
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s [%(name)s] %(message)s")
@@ -172,3 +175,61 @@ def explain(task: str, request: PredictRequest, top_k: int = 10):
         top_contributions=contributions[:top_k],
         explainer_used=explainer_name,
     )
+
+
+# Feature that doubles as a $-value column for "value at risk" aggregation, when present in
+# the task's own required features (both employment and skills already require a salary-like
+# field as a model input, so no extra column is needed from the upload beyond the model's own
+# required features).
+_VALUE_COLUMN = {"employment": "avg_salary_usd", "skills": "MonthlyIncome"}
+
+
+@app.post("/predict/batch/{task}")
+async def predict_batch(task: str, file: UploadFile = File(...)):
+    artifacts = _get_task_or_404(task)
+
+    if not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=422, detail="Only .csv files are supported right now.")
+
+    file_bytes = await file.read()
+    try:
+        parsed = batch_module.parse_and_validate(file_bytes, task, artifacts.feature_names)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    df = parsed["df"]
+    X_scaled = artifacts.transform_batch(parsed["feature_matrix"])
+    raw_outputs = artifacts.keras_model(X_scaled, training=False).numpy().reshape(-1)
+
+    if artifacts.task_type == "classification":
+        aggregate, by_segment, top_risk = batch_module.aggregate_classification(
+            df, raw_outputs, parsed["label_col"], parsed["segment_col"],
+            value_col=_VALUE_COLUMN.get(task),
+        )
+    else:
+        aggregate, by_segment, top_risk = batch_module.aggregate_regression(
+            df, raw_outputs, parsed["label_col"], parsed["segment_col"]
+        )
+
+    return {
+        "task": task,
+        "task_type": artifacts.task_type,
+        "n_rows": parsed["n_rows"],
+        "n_dropped": parsed["n_dropped"],
+        "label_column": parsed["label_col"],
+        "segment_column": parsed["segment_col"],
+        "aggregate": aggregate,
+        "by_segment": by_segment,
+        "top_rows": top_risk,
+    }
+
+
+@app.post("/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest):
+    try:
+        result = await chat_module.send_chat([m.model_dump() for m in request.messages])
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Chat provider call failed: {e}")
+    return ChatResponse(**result)

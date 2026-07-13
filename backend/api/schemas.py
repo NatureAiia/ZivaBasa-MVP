@@ -43,3 +43,17 @@ class ExplainResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     tasks_loaded: List[str]
+
+
+class ChatMessage(BaseModel):
+    role: str  # "user" or "assistant"
+    content: str
+
+
+class ChatRequest(BaseModel):
+    messages: List[ChatMessage]
+
+
+class ChatResponse(BaseModel):
+    reply: str
+    provider: str
