@@ -231,6 +231,16 @@
   .result-label.safe { background: var(--teal-soft); color: var(--teal); }
   .result-sub { font-size: 12px; color: var(--ink-muted); }
 
+  .confidence-caveat {
+    margin-top: 10px;
+    font-size: 11px;
+    color: var(--amber);
+    background: var(--amber-soft);
+    border-radius: 6px;
+    padding: 8px 10px;
+    line-height: 1.5;
+  }
+
   /* ---------- Explanation ledger (signature element) ---------- */
   .ledger { margin-top: 8px; }
   .ledger-row {
@@ -508,6 +518,36 @@
     el.errorBanner.style.display = "none";
   }
 
+  // Adaptive-precision percent formatter. A flat toFixed(1) silently rounds tiny values
+  // (e.g. 0.0000426%) down to "0.0%", which reads as "the model says zero" when the model
+  // actually said something extremely small but nonzero. This keeps real precision visible
+  // at the extremes while staying compact for ordinary mid-range values.
+  function formatPercent(p) {
+    const pct = p * 100;
+    if (pct === 0) return "0%";
+    const abspct = Math.abs(pct);
+    if (abspct < 0.001) return pct.toExponential(2) + "%";
+    if (abspct < 1) return pct.toFixed(4) + "%";
+    if (abspct < 10) return pct.toFixed(2) + "%";
+    return pct.toFixed(1) + "%";
+  }
+
+  // Same idea for raw (non-percent) numbers, e.g. SHAP base value / prediction / regression
+  // output — a flat toFixed(4) has the identical "reads as zero" problem at small magnitudes.
+  function formatRaw(v) {
+    if (v === 0) return "0.0000";
+    const absv = Math.abs(v);
+    if (absv < 0.0001) return v.toExponential(2);
+    return v.toFixed(4);
+  }
+
+  // Flags predictions extreme enough (essentially certain 0 or 1) to be worth a calibration
+  // caveat — a model trained on ~thousands of proxy rows with no calibration step can produce
+  // overconfident sigmoid outputs that shouldn't be read as "impossible" / "certain".
+  function isOverconfident(probability) {
+    return probability < 0.001 || probability > 0.999;
+  }
+
   function allTasksComplete() {
     return TASKS.every((t) => state.results[t].predict && state.results[t].explain);
   }
@@ -694,19 +734,29 @@
   function renderPrediction(result) {
     if (result.task_type === "classification") {
       const isRisk = result.label === 1;
+      const caveat = isOverconfident(result.probability)
+        ? `<div class="confidence-caveat">Extremely confident output — this prototype's model is trained on a few thousand proxy rows with no calibration step, so near-0%/near-100% readings can reflect an overconfident model, not certainty. Treat as directional, not exact.</div>`
+        : "";
       el.predictionBody.innerHTML = `
         <div class="result-headline">
-          <span class="result-value ${isRisk ? "negative" : "positive"}">${(result.probability * 100).toFixed(1)}%</span>
+          <span class="result-value ${isRisk ? "negative" : "positive"}">${formatPercent(result.probability)}</span>
           <span class="result-label ${isRisk ? "risk" : "safe"}">${isRisk ? "Positive" : "Negative"}</span>
         </div>
         <div class="result-sub">Predicted probability for task "${result.task}"</div>
+        ${caveat}
       `;
     } else {
+      const direction = result.raw_output >= 0 ? "above-average" : "below-average";
       el.predictionBody.innerHTML = `
         <div class="result-headline">
-          <span class="result-value positive">${result.raw_output.toFixed(4)}</span>
+          <span class="result-value positive">${formatRaw(result.raw_output)}</span>
         </div>
-        <div class="result-sub">Predicted value for task "${result.task}" (regression)</div>
+        <div class="result-sub">
+          Standardized regression output for task "${result.task}" — a z-score against the
+          training distribution, not a natural-scale number. ${result.raw_output >= 0 ? "+" : ""}${result.raw_output.toFixed(2)}
+          means this input is predicted <strong>${direction}</strong> the training-set mean
+          (0 = exactly average, ±1 ≈ one standard deviation).
+        </div>
       `;
     }
   }
@@ -754,8 +804,8 @@
     el.explanationBody.innerHTML = `
       <div class="ledger">${rows}</div>
       <div class="ledger-caption">
-        Base value (average model output over the background sample): <span class="mono">${result.base_value.toFixed(4)}</span>.
-        This prediction: <span class="mono">${result.prediction.toFixed(4)}</span>.
+        Base value (average model output over the background sample): <span class="mono">${formatRaw(result.base_value)}</span>.
+        This prediction: <span class="mono">${formatRaw(result.prediction)}</span>.
         Explainer used: <span class="mono">${result.explainer_used}</span>.
       </div>
     `;
@@ -781,12 +831,12 @@
   function formatPredictionValue(predict) {
     if (predict.task_type === "classification") {
       return {
-        text: `${(predict.probability * 100).toFixed(1)}%`,
+        text: formatPercent(predict.probability),
         cls: predict.label === 1 ? "negative" : "positive",
         sub: predict.label === 1 ? "Positive" : "Negative",
       };
     }
-    return { text: predict.raw_output.toFixed(4), cls: "positive", sub: "regression output" };
+    return { text: formatRaw(predict.raw_output), cls: "positive", sub: "standardized regression output (z-score)" };
   }
 
   function renderSummary() {
