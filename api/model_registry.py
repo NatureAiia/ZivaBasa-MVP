@@ -7,9 +7,11 @@ is another consumer of the same pipeline the notebooks use, not a separate imple
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
+import joblib
 import numpy as np
 
 from src import config, features, evaluate, model as model_module
@@ -25,6 +27,28 @@ class TaskArtifacts:
     feature_names: List[str]
     input_dim: int
     shap_background: np.ndarray  # small cached sample for on-demand SHAP explanations
+    scaler: object  # fitted StandardScaler (src/features.py scale_numeric) — must be applied
+                     # to any raw feature vector before it reaches keras_model or SHAP, since
+                     # the model was trained on standardized inputs, not raw ones.
+    scaler_index: List[int]  # position of each self.feature_names[i] within scaler.feature_names_in_
+                              # — the scaler was fit BEFORE leakage columns (e.g. employment's
+                              # automation_exposure_index, exposure_x_skill_complexity) were
+                              # dropped from the modeling matrix in evaluate.make_splits, so it
+                              # has more columns than the model actually takes. We must select
+                              # by name, not assume the scaler's column count matches input_dim.
+
+    def transform(self, raw_features: List[float]) -> np.ndarray:
+        """Applies the task's saved StandardScaler to a single raw feature vector, in
+        schema order (matches GET /schema/{task}). Returns a (1, input_dim) float32 array
+        ready for keras_model / SHAP. Skipping this step is the #1 cause of degenerate
+        (near-constant, ~0) predictions and all-zero SHAP contributions."""
+        mean_ = self.scaler.mean_
+        scale_ = self.scaler.scale_
+        scaled = [
+            (raw_features[i] - mean_[self.scaler_index[i]]) / scale_[self.scaler_index[i]]
+            for i in range(len(raw_features))
+        ]
+        return np.asarray([scaled], dtype="float32")
 
 
 class ModelRegistry:
@@ -48,6 +72,38 @@ class ModelRegistry:
 
                 keras_model = model_module.MultiTaskTrainer.load_task_model(task_name)
 
+                scaler_path = os.path.join(config.SCALER_DIR, f"{task_name}_scaler.pkl")
+                if not os.path.exists(scaler_path):
+                    logger.error(
+                        "[%s] no saved scaler at %s — skipping task. Predictions without the "
+                        "scaler are meaningless (the model was trained on standardized inputs).",
+                        task_name, scaler_path,
+                    )
+                    continue
+                scaler = joblib.load(scaler_path)
+
+                feature_names = splits["feature_names"]
+                scaler_names = list(getattr(scaler, "feature_names_in_", []))
+                if not scaler_names:
+                    logger.error(
+                        "[%s] saved scaler has no feature_names_in_ (fit on a bare ndarray, "
+                        "not a named DataFrame) — cannot safely map modeling features to scaler "
+                        "columns by name. Skipping task. Re-fit the scaler via "
+                        "features.scale_numeric() on a DataFrame to fix this.",
+                        task_name,
+                    )
+                    continue
+                try:
+                    scaler_index = [scaler_names.index(name) for name in feature_names]
+                except ValueError as e:
+                    logger.error(
+                        "[%s] a modeling feature is missing from the fitted scaler's columns "
+                        "(%s). feature_names=%s, scaler columns=%s. Skipping task — the scaler "
+                        "is stale relative to the current feature set and must be re-fit.",
+                        task_name, e, feature_names, scaler_names,
+                    )
+                    continue
+
                 rng = np.random.RandomState(config.RANDOM_STATE)
                 n_bg = min(shap_background_size, len(splits["X_train"]))
                 bg_idx = rng.choice(len(splits["X_train"]), size=n_bg, replace=False)
@@ -57,9 +113,11 @@ class ModelRegistry:
                     task_name=task_name,
                     task_type=cfg.task_type,
                     keras_model=keras_model,
-                    feature_names=splits["feature_names"],
+                    feature_names=feature_names,
                     input_dim=splits["input_dim"],
                     shap_background=background,
+                    scaler=scaler,
+                    scaler_index=scaler_index,
                 )
                 logger.info("[%s] loaded: input_dim=%d, task_type=%s",
                             task_name, splits["input_dim"], cfg.task_type)

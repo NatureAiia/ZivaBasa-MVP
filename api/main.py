@@ -108,7 +108,11 @@ def predict(task: str, request: PredictRequest):
             ),
         )
 
-    X = np.asarray([request.features], dtype="float32")
+    # Raw user-entered values must be standardized with the task's saved scaler before
+    # reaching the model — it was trained on z-scored features, not raw ones. Feeding raw
+    # values directly (the previous bug) produces wildly out-of-distribution input that
+    # saturates the network into a near-constant, uninformative output.
+    X = artifacts.transform(request.features)
     raw_output = float(artifacts.keras_model(X, training=False).numpy().squeeze())
 
     response = PredictResponse(
@@ -133,7 +137,10 @@ def explain(task: str, request: PredictRequest, top_k: int = 10):
             ),
         )
 
-    X = np.asarray([request.features], dtype="float32")
+    # Same scaling fix as /predict: SHAP must be computed on standardized input, since that's
+    # what the model and its background sample are in. We keep the *raw* value in each
+    # FeatureContribution below so the ledger stays human-readable (e.g. "45000", not "-1.4").
+    X = artifacts.transform(request.features)
     try:
         shap_values, explainer_name = evaluate.compute_shap_values(
             artifacts.keras_model, artifacts.shap_background, X

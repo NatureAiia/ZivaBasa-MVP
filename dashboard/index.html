@@ -300,6 +300,98 @@
     margin-top: 24px;
     line-height: 1.6;
   }
+
+  /* ---------- Guided flow additions ---------- */
+  .tab.locked { color: var(--ink-faint); cursor: not-allowed; }
+  .tab .check {
+    color: var(--teal);
+    margin-right: 4px;
+  }
+
+  .continue-row {
+    display: none;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .continue-row.visible { display: flex; }
+  .continue-row .continue-hint {
+    font-size: 11px;
+    color: var(--ink-faint);
+  }
+  .btn-continue {
+    background: var(--teal);
+    color: #fff;
+    white-space: nowrap;
+  }
+  .btn-continue:hover:not(:disabled) { opacity: 0.9; }
+
+  #summaryView { display: none; }
+  #summaryView.visible { display: block; }
+
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  @media (max-width: 900px) {
+    .summary-grid { grid-template-columns: 1fr; }
+  }
+  .summary-task-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 16px 18px;
+  }
+  .summary-task-card h3 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-faint);
+    font-weight: 600;
+    margin: 0 0 10px;
+  }
+  .summary-task-value {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 22px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .summary-task-value.positive { color: var(--teal); }
+  .summary-task-value.negative { color: var(--amber); }
+  .summary-drivers {
+    font-size: 12px;
+    color: var(--ink-muted);
+    line-height: 1.7;
+  }
+  .summary-drivers .driver-name {
+    font-family: "IBM Plex Mono", monospace;
+    color: var(--ink);
+  }
+  .summary-narrative {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 18px 20px;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--ink);
+  }
+  .summary-narrative h2 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-faint);
+    font-weight: 600;
+    margin: 0 0 12px;
+  }
+  .restart-row { margin-top: 20px; }
 </style>
 </head>
 <body>
@@ -322,7 +414,7 @@
 
   <div id="errorBanner" class="error-banner" style="display:none;"></div>
 
-  <div class="grid">
+  <div class="grid" id="taskView">
     <div class="card" id="inputCard">
       <h2>Input features</h2>
       <div id="fields"><div class="empty-state">Loading schema…</div></div>
@@ -341,7 +433,19 @@
       <div class="card" id="explanationCard">
         <h2>Why — SHAP contribution ledger</h2>
         <div id="explanationBody" class="empty-state">Run “Explain” to see which features drove this prediction.</div>
+        <div class="continue-row" id="continueRow">
+          <span class="continue-hint" id="continueHint"></span>
+          <button class="btn-continue" id="continueBtn"></button>
+        </div>
       </div>
+    </div>
+  </div>
+
+  <div id="summaryView">
+    <div class="summary-grid" id="summaryGrid"></div>
+    <div class="summary-narrative" id="summaryNarrative"></div>
+    <div class="btn-row restart-row">
+      <button class="btn-secondary" id="restartBtn">Start over from Employment</button>
     </div>
   </div>
 
@@ -362,12 +466,18 @@
     skills: "Skills / Attrition",
     productivity: "Productivity / AI Adoption",
   };
+  const NEXT_TASK_LABEL = {
+    employment: "Skills",
+    skills: "Productivity",
+  };
 
   const state = {
     apiBase: document.getElementById("apiBase").value.replace(/\/$/, ""),
     activeTask: "employment",
     schemas: {},   // task -> {task_type, input_dim, feature_names}
+    results: {},   // task -> {features, predict, explain}
   };
+  TASKS.forEach((t) => { state.results[t] = { features: null, predict: null, explain: null }; });
 
   const el = {
     tabs: document.getElementById("tabs"),
@@ -380,6 +490,14 @@
     statusDot: document.getElementById("statusDot"),
     statusText: document.getElementById("statusText"),
     apiBaseInput: document.getElementById("apiBase"),
+    taskView: document.getElementById("taskView"),
+    summaryView: document.getElementById("summaryView"),
+    summaryGrid: document.getElementById("summaryGrid"),
+    summaryNarrative: document.getElementById("summaryNarrative"),
+    continueRow: document.getElementById("continueRow"),
+    continueHint: document.getElementById("continueHint"),
+    continueBtn: document.getElementById("continueBtn"),
+    restartBtn: document.getElementById("restartBtn"),
   };
 
   function showError(message) {
@@ -388,6 +506,10 @@
   }
   function clearError() {
     el.errorBanner.style.display = "none";
+  }
+
+  function allTasksComplete() {
+    return TASKS.every((t) => state.results[t].predict && state.results[t].explain);
   }
 
   async function apiFetch(path, options) {
@@ -426,22 +548,60 @@
   function renderTabs() {
     el.tabs.innerHTML = "";
     TASKS.forEach((task) => {
+      const done = state.results[task].predict && state.results[task].explain;
       const tab = document.createElement("div");
       tab.className = "tab" + (task === state.activeTask ? " active" : "");
       tab.setAttribute("role", "tab");
-      tab.innerHTML = `<span class="eyebrow">${task}</span>${TASK_LABELS[task]}`;
+      tab.innerHTML = `<span class="eyebrow">${task}</span>${done ? '<span class="check">✓</span>' : ""}${TASK_LABELS[task]}`;
       tab.addEventListener("click", () => selectTask(task));
       el.tabs.appendChild(tab);
     });
+
+    const summaryTab = document.createElement("div");
+    const unlocked = allTasksComplete();
+    summaryTab.className = "tab" + (state.activeTask === "summary" ? " active" : "") + (unlocked ? "" : " locked");
+    summaryTab.setAttribute("role", "tab");
+    summaryTab.innerHTML = `<span class="eyebrow">summary</span>Overall Summary`;
+    if (unlocked) {
+      summaryTab.addEventListener("click", () => selectTask("summary"));
+    }
+    el.tabs.appendChild(summaryTab);
   }
 
   async function selectTask(task) {
     state.activeTask = task;
     renderTabs();
     clearError();
-    el.predictionBody.innerHTML = '<div class="empty-state">Run a prediction to see output here.</div>';
-    el.explanationBody.innerHTML = '<div class="empty-state">Run “Explain” to see which features drove this prediction.</div>';
+
+    if (task === "summary") {
+      el.taskView.classList.remove("grid");
+      el.taskView.style.display = "none";
+      el.summaryView.classList.add("visible");
+      renderSummary();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    el.taskView.style.display = "";
+    el.taskView.classList.add("grid");
+    el.summaryView.classList.remove("visible");
+    el.continueRow.classList.remove("visible");
+
+    const stored = state.results[task];
+    if (stored.predict) {
+      renderPrediction(stored.predict);
+    } else {
+      el.predictionBody.innerHTML = '<div class="empty-state">Run a prediction to see output here.</div>';
+    }
+    if (stored.explain) {
+      renderExplanation(stored.explain);
+      showContinueRow(task);
+    } else {
+      el.explanationBody.innerHTML = '<div class="empty-state">Run “Explain” to see which features drove this prediction.</div>';
+    }
+
     await loadSchema(task);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function loadSchema(task) {
@@ -451,22 +611,40 @@
     try {
       const schema = await apiFetch(`/schema/${task}`);
       state.schemas[task] = schema;
-      renderFields(schema);
+      renderFields(schema, task);
       el.predictBtn.disabled = false;
-      el.explainBtn.disabled = false;
+      el.explainBtn.disabled = !state.results[task].predict; // Explain only unlocks after Predict
     } catch (e) {
       el.fields.innerHTML = `<div class="empty-state">Could not load schema for "${task}".<br>${e.message}</div>`;
     }
   }
 
-  function renderFields(schema) {
+  // Carries a value forward from any other task's entered features that shares the same
+  // feature name, so the user isn't retyping overlapping inputs (e.g. training_hours_needed).
+  function carriedValue(featureName, task) {
+    const stored = state.results[task].features;
+    if (stored && Object.prototype.hasOwnProperty.call(stored, featureName)) {
+      return stored[featureName];
+    }
+    for (const other of TASKS) {
+      if (other === task) continue;
+      const otherFeatures = state.results[other].features;
+      if (otherFeatures && Object.prototype.hasOwnProperty.call(otherFeatures, featureName)) {
+        return otherFeatures[featureName];
+      }
+    }
+    return 0;
+  }
+
+  function renderFields(schema, task) {
     el.fields.innerHTML = "";
     schema.feature_names.forEach((name, i) => {
       const wrap = document.createElement("div");
       wrap.className = "field";
+      const value = carriedValue(name, task);
       wrap.innerHTML = `
         <label for="feat-${i}">${name}</label>
-        <input id="feat-${i}" type="number" step="any" value="0" data-feature-index="${i}" />
+        <input id="feat-${i}" type="number" step="any" value="${value}" data-feature-index="${i}" data-feature-name="${name}" />
       `;
       el.fields.appendChild(wrap);
     });
@@ -476,26 +654,37 @@
     const schema = state.schemas[task];
     const inputs = el.fields.querySelectorAll("input[data-feature-index]");
     const features = new Array(schema.input_dim).fill(0);
+    const byName = {};
     inputs.forEach((input) => {
       const idx = parseInt(input.getAttribute("data-feature-index"), 10);
+      const name = input.getAttribute("data-feature-name");
       const val = parseFloat(input.value);
-      features[idx] = Number.isFinite(val) ? val : 0;
+      const safe = Number.isFinite(val) ? val : 0;
+      features[idx] = safe;
+      byName[name] = safe;
     });
-    return features;
+    return { features, byName };
   }
 
   async function runPredict() {
     clearError();
     const task = state.activeTask;
-    const features = collectFeatures(task);
+    const { features, byName } = collectFeatures(task);
     el.predictionBody.innerHTML = '<div class="empty-state">Predicting…</div>';
+    el.explanationBody.innerHTML = '<div class="empty-state">Run “Explain” to see which features drove this prediction.</div>';
+    el.continueRow.classList.remove("visible");
     try {
       const result = await apiFetch(`/predict/${task}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ features }),
       });
+      state.results[task].features = byName;
+      state.results[task].predict = result;
+      state.results[task].explain = null; // a new prediction invalidates any prior explanation
       renderPrediction(result);
+      el.explainBtn.disabled = false;
+      renderTabs();
     } catch (e) {
       el.predictionBody.innerHTML = `<div class="empty-state">${e.message}</div>`;
       showError(e.message);
@@ -525,15 +714,20 @@
   async function runExplain() {
     clearError();
     const task = state.activeTask;
-    const features = collectFeatures(task);
+    const { features, byName } = collectFeatures(task);
     el.explanationBody.innerHTML = '<div class="empty-state">Computing SHAP explanation… this can take a few seconds.</div>';
+    el.continueRow.classList.remove("visible");
     try {
       const result = await apiFetch(`/explain/${task}?top_k=8`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ features }),
       });
+      state.results[task].features = byName;
+      state.results[task].explain = result;
       renderExplanation(result);
+      showContinueRow(task);
+      renderTabs();
     } catch (e) {
       el.explanationBody.innerHTML = `<div class="empty-state">${e.message}</div>`;
       showError(e.message);
@@ -567,8 +761,89 @@
     `;
   }
 
+  function showContinueRow(task) {
+    const idx = TASKS.indexOf(task);
+    const isLast = idx === TASKS.length - 1;
+    if (isLast) {
+      el.continueHint.textContent = "Employment, Skills, and Productivity are all done.";
+      el.continueBtn.textContent = "View overall summary →";
+    } else {
+      const nextTask = TASKS[idx + 1];
+      el.continueHint.textContent = `${TASK_LABELS[task]} complete.`;
+      el.continueBtn.textContent = `Continue to ${NEXT_TASK_LABEL[task]} →`;
+    }
+    el.continueBtn.onclick = () => {
+      selectTask(isLast ? "summary" : TASKS[idx + 1]);
+    };
+    el.continueRow.classList.add("visible");
+  }
+
+  function formatPredictionValue(predict) {
+    if (predict.task_type === "classification") {
+      return {
+        text: `${(predict.probability * 100).toFixed(1)}%`,
+        cls: predict.label === 1 ? "negative" : "positive",
+        sub: predict.label === 1 ? "Positive" : "Negative",
+      };
+    }
+    return { text: predict.raw_output.toFixed(4), cls: "positive", sub: "regression output" };
+  }
+
+  function renderSummary() {
+    el.summaryGrid.innerHTML = TASKS.map((task) => {
+      const r = state.results[task];
+      if (!r.predict) return `<div class="summary-task-card"><h3>${TASK_LABELS[task]}</h3><div class="empty-state">Not run</div></div>`;
+      const v = formatPredictionValue(r.predict);
+      const drivers = r.explain
+        ? r.explain.top_contributions.slice(0, 3).map((c) =>
+            `<div><span class="driver-name">${c.feature}</span>: ${c.shap_value >= 0 ? "+" : ""}${c.shap_value.toFixed(3)}</div>`
+          ).join("")
+        : `<div class="empty-state">No explanation run</div>`;
+      return `
+        <div class="summary-task-card">
+          <h3>${TASK_LABELS[task]}</h3>
+          <div class="summary-task-value ${v.cls}">${v.text}</div>
+          <div class="result-sub" style="margin-bottom:10px;">${v.sub}</div>
+          <div class="summary-drivers">${drivers}</div>
+        </div>
+      `;
+    }).join("");
+
+    // Plain-language synthesis. Deliberately conservative in wording — this stitches together
+    // three independently-trained task heads on non-row-aligned proxy datasets (see MVP docs
+    // Section 10, "Known Limitations"), so this is a narrative summary, not a joint inference.
+    const emp = state.results.employment.predict;
+    const skl = state.results.skills.predict;
+    const prod = state.results.productivity.predict;
+
+    const empFlag = emp && emp.task_type === "classification" && emp.label === 1;
+    const sklFlag = skl && skl.task_type === "classification" && skl.label === 1;
+
+    let flags = [];
+    if (empFlag) flags.push("elevated automation-risk signal on Employment");
+    if (sklFlag) flags.push("elevated attrition-risk signal on Skills");
+    const flagSentence = flags.length
+      ? `This input combination triggers ${flags.join(" and ")}.`
+      : "This input combination does not trigger either classification task's risk flag.";
+
+    el.summaryNarrative.innerHTML = `
+      <h2>Overall summary</h2>
+      <p>${flagSentence} Productivity is reported as a continuous score (not a risk flag) —
+      read it alongside the two flags rather than as confirmation of them.</p>
+      <p>Each task head is a separately trained model on a different proxy dataset (see Known
+      Limitations, MVP docs §10) — these are not row-aligned records of the same entity, so this
+      summary is a narrative juxtaposition of three predictions, not a single joint model output.</p>
+      <p style="color:var(--ink-faint); font-size:12px;">Prototype, Kaggle proxy data. Not a
+      real-world workforce finding — see the footnote below for the full caveat.</p>
+    `;
+  }
+
   el.predictBtn.addEventListener("click", runPredict);
   el.explainBtn.addEventListener("click", runExplain);
+  el.restartBtn.addEventListener("click", () => {
+    TASKS.forEach((t) => { state.results[t] = { features: null, predict: null, explain: null }; });
+    selectTask("employment");
+  });
   el.apiBaseInput.addEventListener("change", async () => {
     state.apiBase = el.apiBaseInput.value.replace(/\/$/, "");
     await checkHealth();
