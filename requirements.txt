@@ -4,6 +4,9 @@
 # Core data handling
 pandas==2.2.2
 numpy==1.26.4
+pyarrow==15.0.2  # required by pandas for read_parquet/to_parquet (src/features.py) — was
+                  # previously undeclared and only worked by accident via mlflow's own
+                  # transitive dependency on it
 
 # Deep learning
 tensorflow==2.16.1
