@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import Shell from "./components/layout/Shell";
 import ChiedzaDashboard from "./pages/ChiedzaDashboard";
 import InDevelopment from "./pages/InDevelopment";
+import CostMonitoring from "./pages/CostMonitoring";
 import ZivaBasaLayout from "./pages/zivabasa/ZivaBasaLayout";
 import DashboardTab from "./pages/zivabasa/DashboardTab";
 import ChatTab from "./pages/zivabasa/ChatTab";
@@ -28,7 +29,7 @@ export default function App() {
           <Route key={slug} path={`models/${slug}`} element={<InDevelopment />} />
         ))}
 
-        <Route path="cost-monitoring" element={<InDevelopment />} />
+        <Route path="cost-monitoring" element={<CostMonitoring />} />
         <Route path="*" element={<InDevelopment />} />
       </Route>
     </Routes>
