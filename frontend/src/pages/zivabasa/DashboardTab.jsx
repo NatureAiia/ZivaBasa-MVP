@@ -7,8 +7,11 @@ import Badge from "../../components/common/Badge";
 import ClarityRing from "../../components/common/ClarityRing";
 import CorporateKPIGrid from "../../components/dashboard/CorporateKPIGrid";
 import DepartmentBreakdown from "../../components/dashboard/DepartmentBreakdown";
+import Typewriter from "../../components/effects/Typewriter";
 import { staggerContainer, fadeUpItem } from "../../lib/motion";
 import { api } from "../../lib/api";
+
+const RISK_PHRASES = ["Employee", "Skills", "Productivity", "Automation risk", "Lack of skills", "Low productivity"];
 
 export default function DashboardTab() {
   const [health, setHealth] = useState(null);
@@ -22,9 +25,22 @@ export default function DashboardTab() {
     <div className="flex-1 overflow-y-auto">
       <div className="p-6 max-w-5xl mx-auto w-full">
       <motion.div variants={staggerContainer} initial="hidden" animate="show" className="flex flex-col gap-6">
-        <motion.div variants={fadeUpItem} className="flex items-center justify-between">
+        <motion.div variants={fadeUpItem} className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h1 className="font-display text-xl font-semibold text-ink">ZivaBasa</h1>
+            <div className="flex items-center gap-3 flex-wrap">
+              <h1 className="font-display text-xl font-semibold text-ink">ZivaBasa</h1>
+              <span className="text-ink-faint text-xl font-display">—</span>
+              <div style={{ height: 24 }} className="flex items-center">
+                <Typewriter
+                  texts={RISK_PHRASES}
+                  typedColor="rgb(var(--ink))"
+                  color="rgb(var(--ink))"
+                  cursorChar="_"
+                  font={{ fontFamily: "Space Grotesk", fontWeight: 600, fontSize: 20 }}
+                  ease={{ type: "tween", duration: 0.05, delay: 1, ease: "easeInOut" }}
+                />
+              </div>
+            </div>
             <p className="text-sm text-ink-muted mt-1">Know your work — workforce transformation intelligence.</p>
           </div>
           <Link to="../predict">

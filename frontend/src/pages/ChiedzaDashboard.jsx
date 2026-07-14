@@ -22,25 +22,25 @@ export default function ChiedzaDashboard() {
       <div className="p-8 max-w-5xl mx-auto w-full">
       <motion.div variants={staggerContainer} initial="hidden" animate="show" className="flex flex-col gap-8">
         <motion.div variants={fadeUpItem}>
-          <div className="flex items-center gap-3">
-            <div style={{ width: 260, height: 64 }}>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div style={{ width: 280, height: 70 }}>
               <MeshTextHover
                 text="ChiedzaAI"
                 color="#9BA3B7"
                 colorSplit={true}
-                customColors={["#E8A33D", "#2FBF9F"]}
+                customColors={["#E8A33D", "#2FBF9F", "#6C7CFF"]}
                 force={14}
                 font={{ fontFamily: "Space Grotesk", variant: "SemiBold", fontSize: 46 }}
               />
             </div>
-            <span className="text-ink-faint text-xl font-display">—</span>
-            <div style={{ height: 40 }} className="font-mono text-sm text-ink-muted">
+            <span className="text-ink-faint text-3xl font-display">—</span>
+            <div style={{ height: 46 }} className="flex items-center">
               <Typewriter
                 texts={MODELS.map((m) => m.name)}
-                typedColor="#E8A33D"
+                typedColor="#9BA3B7"
                 color="#9BA3B7"
                 cursorChar="_"
-                font={{ fontFamily: "IBM Plex Mono", variant: "Regular", fontSize: 15 }}
+                font={{ fontFamily: "Space Grotesk", fontWeight: 600, fontSize: 46 }}
                 ease={{ type: "tween", duration: 0.06, delay: 1.1, ease: "easeInOut" }}
               />
             </div>

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Check, Lock, ArrowRight } from "lucide-react";
 import clsx from "clsx";
 import Card from "../../components/common/Card";
-import TaskForm from "../../components/predict/TaskForm";
+import ExecutiveTaskForm from "../../components/predict/ExecutiveTaskForm";
 import PredictionResult from "../../components/predict/PredictionResult";
 import ShapLedger from "../../components/predict/ShapLedger";
 import OverallSummary from "../../components/predict/OverallSummary";
@@ -103,8 +103,9 @@ export default function AdvancedPredict() {
         ) : (
           <motion.div key={activeTask} variants={fadeScale} initial="hidden" animate="show" exit="exit" className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             <Card animated={false}>
-              <h2 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold mb-4">Input features</h2>
-              <TaskForm
+              <h2 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold mb-4">Assessment Inputs</h2>
+              <ExecutiveTaskForm
+                task={activeTask}
                 schema={schema}
                 loading={loadingSchema || !schema}
                 initialValues={schema ? carriedFeatures(activeTask, schema.feature_names) : []}
@@ -118,16 +119,16 @@ export default function AdvancedPredict() {
 
             <div className="flex flex-col gap-5">
               <Card animated={false}>
-                <h2 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold mb-4">Prediction</h2>
+                <h2 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold mb-4">Result</h2>
                 {current?.predict ? (
                   <PredictionResult result={current.predict} />
                 ) : (
-                  <p className="text-xs text-ink-faint">Run a prediction to see output here.</p>
+                  <p className="text-xs text-ink-faint">Run an assessment to see the result here.</p>
                 )}
               </Card>
 
               <Card animated={false}>
-                <h2 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold mb-4">Why — SHAP contribution ledger</h2>
+                <h2 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold mb-4">What's Driving This Result</h2>
                 {current?.explain ? (
                   <>
                     <ShapLedger result={current.explain} />
@@ -145,7 +146,7 @@ export default function AdvancedPredict() {
                     </div>
                   </>
                 ) : (
-                  <p className="text-xs text-ink-faint">Run "Explain" to see which features drove this prediction.</p>
+                  <p className="text-xs text-ink-faint">Run "Show Key Drivers" to see what's influencing this result.</p>
                 )}
               </Card>
             </div>

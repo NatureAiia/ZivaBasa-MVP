@@ -16,7 +16,7 @@
   --surface-2: 27 35 51;    /* #1B2333 */
   --border: 38 48 74;       /* #26304A */
   --ink: 237 239 245;       /* #EDEFF5 */
-  --ink-muted: 155 163 183; /* #9BA3B7 */
+  --ink-muted: 168 175 194; /* #A8AFC2 — nudged up from #9BA3B7 for clearer contrast */
   --ink-faint: 100 108 128; /* #646C80 */
 
   --gold: 232 163 61;       /* #E8A33D — "knowing / illumination" accent, signature ring color */
@@ -55,7 +55,16 @@ body {
   background: rgb(var(--bg));
   color: rgb(var(--ink));
   font-family: "Inter", sans-serif;
+  font-weight: 500; /* bumped from the browser default 400 — thin body text read as washed-out
+                        in both themes, especially over the new background animation */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   transition: background-color 300ms var(--ease, ease), color 300ms var(--ease, ease);
+}
+
+h1, h2, h3, .font-display {
+  font-weight: 700; /* headings get a firmer weight than the 600 "semibold" default so they
+                        stay legible against the animated background */
 }
 
 /* Cross-fade every themeable surface, not just body — this is what makes the toggle feel like
