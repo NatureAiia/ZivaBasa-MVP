@@ -8,7 +8,7 @@ import { metaFor, GROUP_ORDER } from "../../lib/fieldMeta";
 
 function formatDisplay(meta, value) {
   if (meta.type === "currency") return `$${Number(value).toLocaleString()}`;
-  if (meta.type === "percent") return `${value}%`;
+  if (meta.type === "percent") return `${Math.round(value * 100)}%`;
   if (meta.unit) return `${value} ${meta.unit}`;
   return `${value}`;
 }

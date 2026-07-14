@@ -189,3 +189,26 @@ def _top_rows(df: pd.DataFrame, values: np.ndarray, label_col, n=10, descending=
         label = str(df.iloc[i][label_col]) if label_col and label_col in df.columns else f"Row {i + 1}"
         rows.append({"label": label, "value": float(values[i])})
     return rows
+
+
+# Capped at 500 rows — plenty for a scatter/interaction plot to read as a real distribution,
+# without sending an unbounded payload back for a 50,000-row upload.
+ROW_RECORDS_CAP = 500
+
+
+def build_row_records(df: pd.DataFrame, feature_matrix: np.ndarray, feature_names: list[str],
+                       raw_outputs: np.ndarray, task_type: str, label_col) -> list[dict]:
+    """Per-row feature values + prediction, capped — feeds Studio's Interaction Explorer and
+    the client-side composite index cards. Not included for very large uploads' full row set,
+    by design (payload size), only the aggregate/top-risk/by-segment stats scale unbounded."""
+    n = min(len(df), ROW_RECORDS_CAP)
+    records = []
+    for i in range(n):
+        rec = {feature_names[j]: float(feature_matrix[i, j]) for j in range(len(feature_names))}
+        rec["_value"] = float(raw_outputs[i])
+        if task_type == "classification":
+            rec["_label"] = int(raw_outputs[i] > 0.5)
+        if label_col and label_col in df.columns:
+            rec["_name"] = str(df.iloc[i][label_col])
+        records.append(rec)
+    return records

@@ -211,9 +211,15 @@ async def predict_batch(task: str, file: UploadFile = File(...)):
             df, raw_outputs, parsed["label_col"], parsed["segment_col"]
         )
 
+    rows = batch_module.build_row_records(
+        df, parsed["feature_matrix"], artifacts.feature_names, raw_outputs,
+        artifacts.task_type, parsed["label_col"],
+    )
+
     return {
         "task": task,
         "task_type": artifacts.task_type,
+        "feature_names": artifacts.feature_names,
         "n_rows": parsed["n_rows"],
         "n_dropped": parsed["n_dropped"],
         "label_column": parsed["label_col"],
@@ -221,6 +227,7 @@ async def predict_batch(task: str, file: UploadFile = File(...)):
         "aggregate": aggregate,
         "by_segment": by_segment,
         "top_rows": top_risk,
+        "rows": rows,
     }
 
 
