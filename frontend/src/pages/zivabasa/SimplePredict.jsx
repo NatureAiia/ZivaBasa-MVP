@@ -2,6 +2,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import clsx from "clsx";
 import BatchUpload from "../../components/batch/BatchUpload";
+import ShinyPill from "../../components/effects/ShinyPill";
 import { TASKS, TASK_LABELS } from "../../lib/api";
 import { staggerContainer, fadeUpItem } from "../../lib/motion";
 
@@ -13,7 +14,16 @@ export default function SimplePredict() {
       <div className="p-6 max-w-4xl mx-auto w-full">
       <motion.div variants={staggerContainer} initial="hidden" animate="show" className="flex flex-col gap-5">
         <motion.div variants={fadeUpItem}>
-          <h1 className="font-display text-lg font-semibold text-ink">Upload your data</h1>
+          <div style={{ height: 26, width: 220 }}>
+            <ShinyPill
+              text="Upload your data"
+              textColor="rgb(var(--ink))"
+              shineColor="#E8A33D"
+              shineColor2="#2FBF9F"
+              speed={2.2}
+              font={{ fontFamily: "Space Grotesk", fontSize: "18px", fontWeight: 600 }}
+            />
+          </div>
           <p className="text-sm text-ink-muted mt-1">
             Drop a CSV export from your HR or workforce system. We'll match the columns and
             score every row — no manual data entry.

@@ -8,6 +8,7 @@ import ClarityRing from "../../components/common/ClarityRing";
 import CorporateKPIGrid from "../../components/dashboard/CorporateKPIGrid";
 import DepartmentBreakdown from "../../components/dashboard/DepartmentBreakdown";
 import Typewriter from "../../components/effects/Typewriter";
+import ShinyPill from "../../components/effects/ShinyPill";
 import { staggerContainer, fadeUpItem } from "../../lib/motion";
 import { api } from "../../lib/api";
 
@@ -41,7 +42,17 @@ export default function DashboardTab() {
                 />
               </div>
             </div>
-            <p className="text-sm text-ink-muted mt-1">Know your work — workforce transformation intelligence.</p>
+            <div className="mt-1" style={{ maxWidth: 420 }}>
+              <ShinyPill
+                text="Know your work — workforce transformation intelligence."
+                textColor="rgb(var(--ink-muted))"
+                shineColor="#E8A33D"
+                shineColor2="#2FBF9F"
+                speed={2.8}
+                font={{ fontFamily: "Inter", fontSize: "14px", fontWeight: 500, lineHeight: "1.4em" }}
+                style={{ whiteSpace: "normal", width: "100%" }}
+              />
+            </div>
           </div>
           <Link to="../predict">
             <motion.span

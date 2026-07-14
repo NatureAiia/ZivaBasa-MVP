@@ -10,14 +10,15 @@ export default function ShinyPill(props) {
 
   const isFixedWidth = style?.width === "100%";
   const shellStyle = {
-    ...style,
     position: "relative",
     display: "inline-flex",
     alignItems: "center",
     boxSizing: "border-box",
-    ...(isFixedWidth ? {} : { minWidth: "max-content", width: "auto" }),
     whiteSpace: "nowrap",
+    ...(isFixedWidth ? {} : { minWidth: "max-content", width: "auto" }),
     ...font,
+    ...style, // spread last so a consumer can deliberately override whiteSpace/width (e.g. to
+              // let a long sentence wrap on mobile instead of overflowing horizontally)
   };
 
   // Gradient text fill for the shine layer — a real two-stop gradient (shineColor ->
@@ -27,7 +28,7 @@ export default function ShinyPill(props) {
     inset: 0,
     display: "flex",
     alignItems: "center",
-    whiteSpace: "nowrap",
+    whiteSpace: shellStyle.whiteSpace,
     backgroundImage: `linear-gradient(90deg, ${shineColor}, ${shineColor2 || shineColor})`,
     WebkitBackgroundClip: "text",
     backgroundClip: "text",

@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { AlertTriangle, FileDown, RotateCcw, Wallet } from "lucide-react";
 import Card from "../components/common/Card";
 import Badge from "../components/common/Badge";
+import ShinyPill from "../components/effects/ShinyPill";
 import { staggerContainer, fadeUpItem } from "../lib/motion";
 import { COST_CATEGORIES } from "../lib/costModel";
 import { getCostEntries, setCostEntry, clearCostEntries } from "../lib/costStore";
@@ -39,10 +40,17 @@ export default function CostMonitoring() {
               <h1 className="font-display text-xl font-semibold text-ink flex items-center gap-2">
                 <Wallet size={20} className="text-gold" /> Cost Monitoring
               </h1>
-              <p className="text-sm text-ink-muted mt-1">
-                Model, human, licence, hardware/storage, and compliance costs — grounded in the
-                AI4I proposal's real cost drivers.
-              </p>
+              <div className="mt-1" style={{ maxWidth: 460 }}>
+                <ShinyPill
+                  text="Model, human, licence, hardware/storage, and compliance costs — grounded in the AI4I proposal's real cost drivers."
+                  textColor="rgb(var(--ink-muted))"
+                  shineColor="#E8A33D"
+                  shineColor2="#2FBF9F"
+                  speed={2.8}
+                  font={{ fontFamily: "Inter", fontSize: "14px", fontWeight: 500, lineHeight: "1.4em" }}
+                  style={{ whiteSpace: "normal", width: "100%" }}
+                />
+              </div>
             </div>
             <div className="flex gap-2">
               <button
