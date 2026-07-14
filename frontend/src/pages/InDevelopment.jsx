@@ -5,9 +5,9 @@ import ClarityRing from "../components/common/ClarityRing";
 import Button from "../components/common/Button";
 
 const NAMES = {
-  "ziva-bank": "Ziva Bank",
-  "ziva-dataops": "Ziva DataOps",
-  "ziva-business": "Ziva Business",
+  "ziva-bank": "ZivaBank",
+  "ziva-dataops": "ZivaDataOps",
+  "ziva-business": "ZivaBusiness",
   "ziva-upskill": "ZivaUpskill",
 };
 

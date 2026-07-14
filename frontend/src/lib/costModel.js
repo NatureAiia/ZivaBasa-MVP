@@ -42,7 +42,7 @@ export const COST_CATEGORIES = [
   {
     key: "human",
     label: "Human Costs",
-    description: "Team time to finish the build and keep it running afterward.",
+    description: "Team time to finish the build and keep it running afterward, plus day-to-day operating overhead.",
     items: [
       {
         key: "remaining_build",
@@ -63,6 +63,55 @@ export const COST_CATEGORIES = [
         label: "Ongoing support & maintenance",
         driver: "Retraining, dependency upgrades, and customer support once institutions are paying.",
         source: "Proposal §5.3",
+      },
+      {
+        key: "rent",
+        label: "Office / workspace rent",
+        driver: "Physical or co-working space for the team — not itemized in the AI4I proposal, but a real recurring cost for any team building this.",
+        source: "Operational overhead (not in proposal)",
+      },
+      {
+        key: "meals",
+        label: "Team meals & refreshments",
+        driver: "Coffee, lunch, and general team welfare during build/ops hours.",
+        source: "Operational overhead (not in proposal)",
+      },
+      {
+        key: "wifi",
+        label: "Internet / WiFi connectivity",
+        driver: "Team connectivity — a hard dependency for a cloud-hosted, API-dependent product.",
+        source: "Operational overhead (not in proposal)",
+      },
+    ],
+  },
+  {
+    key: "maintenance",
+    label: "Maintenance Costs",
+    description: "Keeping the system correct and running after the initial build, distinct from new feature work.",
+    items: [
+      {
+        key: "model_retraining",
+        label: "Model retraining & drift monitoring",
+        driver: "Re-training the 3 task models as real data replaces Kaggle proxies, and monitoring for prediction drift over time.",
+        source: "Proposal §5.3 (support & maintenance)",
+      },
+      {
+        key: "dependency_upgrades",
+        label: "Dependency & security upgrades",
+        driver: "Keeping TensorFlow, FastAPI, React, and the rest of the pinned stack current — including the SHAP/Keras 3/numpy conflict noted in §2.3, which a future upgrade cycle may need to resolve.",
+        source: "Proposal §2.3, §5.3",
+      },
+      {
+        key: "infra_monitoring",
+        label: "Infrastructure monitoring & uptime",
+        driver: "Uptime monitoring, error tracking, and incident response once this is more than a local prototype.",
+        source: "Proposal §4.3 (audit logs, not yet built)",
+      },
+      {
+        key: "backup_recovery",
+        label: "Backup & disaster recovery",
+        driver: "Once real bank data and a persistence layer exist, backups stop being optional.",
+        source: "Operational overhead (not in proposal)",
       },
     ],
   },
