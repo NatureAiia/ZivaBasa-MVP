@@ -1,23 +1,24 @@
 # 🕴️🤔 ZivaBasa 😶‍🌫️
-### MVP (Kaggle-Data Phase)
+### AI-Powered Workforce Intelligence Platform — MVP (Kaggle-Data Phase)
 
 **Module:** ZivaBasa (part of the ChiedzaAI platform — jobs, employment, productivity & skills forecasting)
 **Phase:** MVP prototype using public Kaggle datasets as a stand-in for real banking-sector data
-**Status:** Architecture proof-of-concept, not a real-world findings phase
+**Status:** Working end-to-end prototype (frontend + API + models) on proxy data — not a real-world findings phase
 
 ---
 
 ## 1. Purpose of This Phase
 
 This MVP validates the **explainable multi-task deep learning architecture** proposed for ZivaBasa
-(shared representation trunk → Employment / Productivity / Skills task heads → SHAP explainability layer)
-before real Zimbabwean banking-sector data is available.
+(shared representation trunk → Employment / Productivity / Skills task heads → SHAP explainability layer),
+served through a real API and dashboard, before real Zimbabwean banking-sector data is available.
 
 **What this phase proves:**
 - The multi-task neural network trains and produces sensible per-task predictions
 - The feature engineering pipeline (raw → engineered → learned → fusion) works end-to-end
 - SHAP explainability runs correctly against a multi-output Keras model
-- The MLOps scaffolding (MLflow tracking, reproducible pipeline) is in place
+- The full stack — FastAPI serving predictions/explanations, a React dashboard consuming them,
+  batch CSV upload, and an LLM-backed chat interface — works together as a real product, not just notebooks
 
 **What this phase does NOT prove:**
 - Anything about actual Zimbabwean bank employment/productivity/skills dynamics
@@ -29,7 +30,42 @@ before real Zimbabwean banking-sector data is available.
 
 ---
 
-## 2. Datasets Used (Proxy Data)
+## 2. What's Real vs. Prototype (read before demoing)
+
+- **Predict → Upload & Analyze** — real. Upload a CSV per task (Employment/Skills/Productivity),
+  the backend matches columns by name, engineers features automatically, scores every row, and
+  returns KPI cards, a department/segment breakdown, and a top-risk list. This is the CEO-facing flow.
+- **Predict → Single-role (advanced)** — real. Manual feature entry, chained Employment → Skills →
+  Productivity → Summary, with a full SHAP explanation ledger per prediction.
+- **Corporate dashboard** — real, pulls from whatever batch uploads have been run in the current
+  browser session. Honestly labeled as not including "jobs created" (no model predicts that yet),
+  and skills-gap *recommendations* (as opposed to attrition risk) aren't built yet.
+- **Chat tab** — real, wired to the backend's `/chat` endpoint, which can call the actual
+  `predict_task`/`explain_task` tools. Requires `ANTHROPIC_API_KEY` or `NVIDIA_API_KEY` on the backend.
+- **History** — real, but client-side only (`localStorage`) — no backend persistence yet.
+- **Report generation** — real, exports a `.md` summary from a completed advanced-mode run (not PDF yet).
+- **No auth, no database** yet. Everything runs against in-memory models + browser-local state.
+
+See `backend/README.md` and `frontend/README.md` for the full, current, module-level detail — this
+root file is the map, those are the ground truth for each half of the stack.
+
+---
+
+## 3. Tech Stack (actual, not aspirational)
+
+| Layer | Technology |
+|---|---|
+| Frontend | Vite + React 19 + React Router 7 + Tailwind CSS + Framer Motion + lucide-react |
+| Backend | FastAPI (Python) + Pydantic + Uvicorn |
+| ML | TensorFlow/Keras (multi-task shared-trunk network) + scikit-learn/XGBoost baselines |
+| Explainability | SHAP (KernelExplainer — see `backend/README.md` for why, not GradientExplainer) |
+| Experiment tracking | MLflow (local) |
+| Chat | Anthropic or NVIDIA NIM (OpenAI-compatible), called from the FastAPI `/chat` endpoint |
+| Database | None yet — file-based (`data/raw/`, `data/processed/`) + browser `localStorage` for history |
+
+---
+
+## 4. Datasets Used (Proxy Data)
 
 No single Kaggle dataset covers employment + productivity + skills for a banking workforce, so
 three datasets are combined, each feeding a different task head. They are **not** the same
@@ -41,59 +77,54 @@ population — this is a known limitation, documented, not hidden.
 | Skills / Readiness | IBM HR Analytics Employee Attrition & Performance | `pavansubhasht/ibm-hr-analytics-attrition-dataset` | Training hours, tenure, satisfaction, role, promotion history |
 | Productivity / AI Adoption | Future of Work in the Age of AI (2020–2026) | `algozee/future-of-work-in-the-age-of-ai-20202026` | AI adoption level, salary trend, skill gap by industry |
 
-Raw files live in `data/raw/`. Do not edit raw files in place — all cleaning happens in the
-feature engineering notebook and writes to `data/processed/`.
+Raw files live in `backend/data/raw/`. Do not edit raw files in place — all cleaning happens in the
+feature engineering notebook and writes to `backend/data/processed/`.
 
 ---
 
-## 3. Repository Structure
+## 5. Repository Structure
 
 ```
-zivabasa_mvp/
-├── README.md
-├── data/
-│   ├── raw/                     # untouched Kaggle CSVs
-│   └── processed/                # cleaned, feature-engineered outputs
-├── notebooks/
-│   ├── 01_data_acquisition_eda.ipynb
-│   ├── 02_feature_engineering.ipynb
-│   ├── 03_baseline_models.ipynb
-│   ├── 04_multitask_neural_network.ipynb
-│   └── 05_shap_explainability.ipynb
-├── src/
-│   ├── features.py               # feature engineering functions (raw/ratio/index/interaction)
-│   ├── model.py                  # multi-task Keras model definition
-│   └── evaluate.py               # metrics + SHAP helpers
-├── models/                       # saved .keras models + MLflow artifacts
-├── mlruns/                       # MLflow tracking (local)
-└── requirements.txt
+ZivaBasa-MVP/
+├── README.md                     # this file
+├── Documentation/                 # proposal + presentation PDFs
+├── dashboard/                     # standalone static dashboard shell
+├── backend/
+│   ├── README.md                  # backend-specific docs — read this before touching the API
+│   ├── api/
+│   │   ├── main.py                 # FastAPI app: /health, /schema, /predict, /explain
+│   │   ├── batch.py                 # CSV batch upload/scoring
+│   │   ├── chat.py                  # LLM chat endpoint (Anthropic/NVIDIA)
+│   │   ├── model_registry.py        # loads all task models + scalers at startup
+│   │   └── schemas.py               # Pydantic request/response models
+│   ├── src/
+│   │   ├── config.py                 # per-task config: target column, leakage-column drops
+│   │   ├── features.py               # feature engineering pipeline
+│   │   ├── model.py                  # multi-task Keras model definition
+│   │   └── evaluate.py               # metrics + SHAP helpers
+│   ├── notebooks/                   # 01 EDA → 02 features → 03 baselines → 04 multitask NN → 05 SHAP → 06 sanity check
+│   ├── data/{raw,processed}/         # Kaggle proxy datasets + engineered outputs
+│   ├── models/                      # saved Keras models, scalers, SHAP outputs per task
+│   └── requirements.txt
+└── frontend/
+    ├── README.md                     # frontend-specific docs — read this before touching the UI
+    └── src/
+        ├── lib/                        # API client, theme, motion variants, report builder, history
+        ├── hooks/                       # usePredictionFlow (Employment→Skills→Productivity→Summary chain)
+        ├── components/
+        │   ├── layout/                    # Sidebar, Shell, ThemeToggle
+        │   ├── common/                     # Card, Badge, Button, Skeleton, EmptyState, ClarityRing
+        │   ├── predict/                     # TaskForm, PredictionResult, ShapLedger, OverallSummary
+        │   └── chat/                        # ChatPane, StudioPanel, SourcesPanel, HistoryStrip
+        └── pages/
+            ├── ChiedzaDashboard.jsx           # top-level product picker
+            ├── InDevelopment.jsx              # placeholder for other Ziva products
+            └── zivabasa/                       # ZivaBasaLayout + Dashboard/Chat/Predict/History tabs
 ```
 
 ---
 
-## 4. Today's Deliverables (Prediction + Neural Network Notebooks)
-
-Two notebooks are the priority for today:
-
-### `03_baseline_models.ipynb` — Prediction Baselines
-- Logistic Regression, Decision Tree, Random Forest, Gradient Boosting — one set per task head
-- Metrics: Accuracy, Precision, Recall, F1, ROC-AUC (classification) or RMSE/MAE/R² (regression)
-- Purpose: empirical justification for the deep model — if the neural net doesn't beat these,
-  that's a real finding to report, not a failure to hide
-
-### `04_multitask_neural_network.ipynb` — Multi-Task Deep Model
-- Shared trunk (Dense 256 → BatchNorm → Dropout 0.3 → Dense 128 → Dropout 0.3)
-- Three task-specific heads: Employment, Productivity, Skills
-- Compile with per-task losses (weighted sum, equal weights as starting point — documented as a
-  tunable hyperparameter, not a fixed design choice)
-- Callbacks: EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
-- Log every run to MLflow: dataset version, feature set, task loss weights, final metrics
-
-Both notebooks must log results to `mlruns/` so today's run is auditable later.
-
----
-
-## 5. Architecture Reference
+## 6. Architecture Reference
 
 ```
 Input Features (raw + engineered, per task)
@@ -110,7 +141,7 @@ Dense(64→32)  Dense(64→32)  Dense(64→32)
 Output(1)     Output(1)     Output(1)
 ```
 
-Feature taxonomy (must match the ChiedzaAI proposal's structure — see `src/features.py`):
+Feature taxonomy (must match the ChiedzaAI proposal's structure — see `backend/src/features.py`):
 
 | Category | Example (this phase) |
 |---|---|
@@ -122,22 +153,66 @@ Feature taxonomy (must match the ChiedzaAI proposal's structure — see `src/fea
 
 ---
 
-## 6. Setup
+## 7. API Endpoints (`backend/api/main.py`)
 
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-```
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/health` | which tasks loaded successfully |
+| GET | `/schema/{task}` | feature names, input_dim, task_type for a task |
+| POST | `/predict/{task}` | `{"features": [...]}` in schema order → prediction |
+| POST | `/explain/{task}?top_k=8` | same input → SHAP contribution ledger |
+| POST | `/predict/batch/{task}` | CSV upload → scored rows + aggregate KPIs |
+| POST | `/chat` | LLM chat, can call `predict_task`/`explain_task` as tools |
 
-`requirements.txt` should pin: `tensorflow`, `scikit-learn`, `pandas`, `numpy`, `shap`, `mlflow`,
-`matplotlib`, `seaborn`.
-
-Run notebooks in order (01 → 05). Each notebook reads from `data/processed/` produced by the
-previous one — do not skip 02 (feature engineering) before running 03 or 04.
+`task` is one of `employment`, `skills`, `productivity` today (see §9 for a planned 4th).
 
 ---
 
-## 7. Known Limitations (Report These, Don't Bury Them)
+## 8. Setup
+
+**Backend:**
+```bash
+cd backend
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+uvicorn api.main:app --reload --port 8000
+```
+Check it's alive: `curl http://localhost:8000/health` should return all three tasks loaded.
+
+**Frontend:**
+```bash
+cd frontend
+npm install
+npm run dev
+```
+By default the app talks to `http://localhost:8000`. Override with a `frontend/.env`:
+```
+VITE_API_BASE=http://localhost:8000
+```
+
+Run notebooks in order (01 → 06) if retraining models. Each notebook reads from
+`backend/data/processed/` produced by the previous one — do not skip 02 (feature engineering)
+before running 03 or 04.
+
+---
+
+## 9. Planned Next: Shift Intelligence (SWS Integration)
+
+A fourth task, **`skill_match`**, is planned to bring shift-and-skill matching concepts from the
+sister project **FFIMS Shift & Workforce Scheduling** (Africa University's Fleet & Facilities
+Integrated Management System) into ZivaBasa — turning static risk predictions into concrete
+internal redeployment recommendations (who can be reskilled/redeployed instead of let go, and why).
+
+- Follows the exact same `/schema/{task}` → `/predict/{task}` → `/explain/{task}` contract as the
+  existing three tasks, so it plugs into the existing Predict/Chat/History UI with minimal changes.
+- Adds a new **Roster** tab inside the ZivaBasa layout for shift-coverage and redeployment-candidate
+  views, reusing existing `Card`/`Badge`/`ClarityRing` components and the `ShapLedger` explanation pattern.
+- A full build spec for this is maintained separately (Claude Code build prompt) rather than in this
+  README, to keep implementation detail out of the architecture doc — see the project's internal docs.
+
+---
+
+## 10. Known Limitations (Report These, Don't Bury Them)
 
 1. **Cross-dataset alignment** — the three datasets are not from the same population; task heads
    are trained on different samples joined only at the feature-schema level.
@@ -148,13 +223,19 @@ previous one — do not skip 02 (feature engineering) before running 03 or 04.
    partners are onboarded.
 4. **Causal-consistent XAI** — this phase implements standard SHAP (associational), not the
    causal-consistent XAI layer described in the proposal. That is a later research milestone.
+5. **No auth, no persistent database** — history and batch results live in browser `localStorage`
+   only; nothing survives a cleared cache or a different device.
+6. **SHAP uses KernelExplainer, not GradientExplainer** — a Keras 3 / shap version conflict, not a
+   bug. See `backend/README.md` §"Known issues" before "fixing" this again.
 
 ---
 
-## 8. Next Phase (Not This Sprint)
+## 11. Next Phase (Not This Sprint)
 
 - Replace proxy datasets with real bank HR/operational/AI-system data once available
-- Reconcile the feature dictionary (`src/features.py`) against the real raw feature list in the
-  proposal (raw → engineered → learned → fusion taxonomy already matches — swap the data source only)
+- Build the `skill_match` task and Roster tab described in §9
+- Add a persistent database (batch history, auth) — currently everything is file-based or browser-local
 - Introduce federated learning across participating banks
 - Move from SHAP to the causal-consistent XAI layer
+- Reconcile the feature dictionary (`backend/src/features.py`) against the real raw feature list in
+  the proposal once real data is available (taxonomy already matches — swap the data source only)
