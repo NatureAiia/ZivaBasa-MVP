@@ -1,19 +1,26 @@
 """
-chat.py — LLM chat wired to the ZivaBasa predict/explain tools, with two pluggable providers.
+chat.py — LLM chat wired to the ZivaBasa predict/explain tools, with four pluggable
+providers: Anthropic, NVIDIA NIM, Google Gemini, Groq.
 
-HONESTY NOTE, read before assuming either provider is "free":
-  - Anthropic's Claude API is metered/paid per token — there is no standing free tier as of
-    this writing. If ANTHROPIC_API_KEY is unset or out of credits, calls fail with a clear
-    error (surfaced to the frontend, not swallowed).
+HONESTY NOTE, read before assuming any of these are "free":
+  - Anthropic's Claude API is metered/paid per token — no standing free tier.
   - NVIDIA NIM (build.nvidia.com) has historically offered free preview API credits with rate
-    limits for hosted models including the Nemotron family, but terms/limits change and this
-    was not verified live against NVIDIA's current catalog while writing this (that domain
-    isn't reachable from the sandbox this was built in). Verify your model slug and current
-    quota at https://build.nvidia.com before relying on this in front of anyone.
+    limits, terms/limits change; verify at https://build.nvidia.com.
+  - Google Gemini has a genuine free tier via AI Studio (generativelanguage.googleapis.com)
+    with daily rate limits that vary by model; verify current limits at
+    https://ai.google.dev/pricing.
+  - Groq offers a free developer tier with rate limits on open models (Llama, etc.) hosted on
+    their custom inference hardware; verify at https://console.groq.com.
+  None of these four were reachable from the sandbox this was written in (network allowlist
+  doesn't include their API hosts) — every provider function below is written strictly to each
+  vendor's documented API contract, not verified against a live call. Test each one against
+  your own key before relying on it in front of anyone, same caveat as before, now across four
+  providers instead of two.
 
-Provider selection: whichever of ANTHROPIC_API_KEY / NVIDIA_API_KEY is set. If both are set,
-CHAT_PROVIDER=anthropic|nvidia picks explicitly. If neither is set, /chat returns a 503 with a
-clear "no provider configured" message rather than pretending to work.
+Model picker: GET /chat/models returns the catalog below with key_present per provider so the
+frontend can show what's actually usable vs. what still needs a key, without hardcoding that
+logic on the frontend. POST /chat accepts an optional `provider` field to pick explicitly;
+omitting it falls back to auto-detect (first configured key, in MODEL_CATALOG order).
 """
 from __future__ import annotations
 
@@ -30,10 +37,14 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
 NVIDIA_API_KEY = os.environ.get("NVIDIA_API_KEY")
 NVIDIA_MODEL = os.environ.get("NVIDIA_MODEL", "nvidia/llama-3.1-nemotron-70b-instruct")
-CHAT_PROVIDER = os.environ.get("CHAT_PROVIDER")  # explicit override if both keys are set
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+CHAT_PROVIDER = os.environ.get("CHAT_PROVIDER")  # explicit override if multiple keys are set
 
 SYSTEM_PROMPT = """You are the ZivaBasa workforce intelligence assistant, embedded in ChiedzaAI.
-You have two tools: predict_task and explain_task, covering three tasks:
+You have two tools: predict_task and explain_task, covering four tasks:
   - employment: automation-risk classification. Features: avg_salary_usd, ai_tool_maturity_score,
     task_repetition_level, skill_complexity_score, training_hours_needed, job_demand_index,
     percent_tasks_automatable.
@@ -42,12 +53,16 @@ You have two tools: predict_task and explain_task, covering three tasks:
     TrainingTimesLastYear/YearsAtCompany if not given), training_x_satisfaction (=
     training_intensity_index * JobSatisfaction if not given).
   - productivity: standardized regression score. Features: skill_gap_index.
+  - skill_match: job/skill redeployment-fit classification. Features: seniority_years,
+    recent_training_hours, performance_rating, avg_salary_usd, recent_ot_hours,
+    skill_overlap_count, missing_skill_count, overlap_x_training (=
+    skill_overlap_count * recent_training_hours if not given).
 
 Rules:
 - Always explain results in plain business language, not raw z-scores or jargon, unless asked
   for technical detail.
-- This is a prototype trained on Kaggle proxy data, not real company data. Say so when giving
-  a prediction, briefly, without being repetitive about it every single message.
+- This is a prototype trained on Kaggle proxy / synthetic data, not real company data. Say so
+  when giving a prediction, briefly, without being repetitive about it every single message.
 - If a probability is below 0.1% or above 99.9%, flag it as possibly overconfident (uncalibrated
   model on limited training data), not as certainty.
 - If you don't have enough information to fill a tool's required features, ask the person for
@@ -61,7 +76,7 @@ TOOLS_ANTHROPIC = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "task": {"type": "string", "enum": ["employment", "skills", "productivity"]},
+                "task": {"type": "string", "enum": ["employment", "skills", "productivity", "skill_match"]},
                 "features": {
                     "type": "object",
                     "description": "Feature name -> numeric value. Use GET /schema/{task} names.",
@@ -76,7 +91,7 @@ TOOLS_ANTHROPIC = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "task": {"type": "string", "enum": ["employment", "skills", "productivity"]},
+                "task": {"type": "string", "enum": ["employment", "skills", "productivity", "skill_match"]},
                 "features": {"type": "object", "description": "Feature name -> numeric value."},
             },
             "required": ["task", "features"],
@@ -84,11 +99,20 @@ TOOLS_ANTHROPIC = [
     },
 ]
 
-# Same two tools, OpenAI-style function-calling shape (NVIDIA NIM's chat/completions endpoint
-# is OpenAI-compatible).
+# Same two tools, OpenAI-style function-calling shape (NVIDIA NIM's and Groq's chat/completions
+# endpoints are both OpenAI-compatible).
 TOOLS_OPENAI = [
     {"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}}
     for t in TOOLS_ANTHROPIC
+]
+
+# Gemini's function-calling shape: functionDeclarations with "parameters" instead of
+# "input_schema", no "type": "function" wrapper.
+TOOLS_GEMINI = [
+    {"functionDeclarations": [
+        {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}
+        for t in TOOLS_ANTHROPIC
+    ]}
 ]
 
 
@@ -137,15 +161,68 @@ def _run_tool(name: str, args: dict) -> dict:
     return {"error": f"Unknown tool '{name}'"}
 
 
-def active_provider() -> Optional[str]:
-    if CHAT_PROVIDER in ("anthropic", "nvidia"):
+# Single source of truth for what shows up in the frontend's model picker. Order here is also
+# the auto-detect fallback order. "description" is deliberately one plain sentence — this is
+# what a non-technical person reads in a dropdown, not documentation.
+MODEL_CATALOG = [
+    {
+        "provider": "anthropic",
+        "model": ANTHROPIC_MODEL,
+        "label": "Claude (Anthropic)",
+        "description": "Best all-around choice — strong reasoning and reliably uses the prediction tools correctly.",
+        "supports_tools": True,
+        "key_env": "ANTHROPIC_API_KEY",
+    },
+    {
+        "provider": "nvidia",
+        "model": NVIDIA_MODEL,
+        "label": "Nemotron (NVIDIA NIM)",
+        "description": "Free-tier NVIDIA-hosted model, good at technical/analytical questions.",
+        "supports_tools": True,
+        "key_env": "NVIDIA_API_KEY",
+    },
+    {
+        "provider": "groq",
+        "model": GROQ_MODEL,
+        "label": "Llama 3.3 70B (Groq)",
+        "description": "Free-tier, the fastest of the four — best when you want quick back-and-forth answers.",
+        "supports_tools": True,
+        "key_env": "GROQ_API_KEY",
+    },
+    {
+        "provider": "gemini",
+        "model": GEMINI_MODEL,
+        "label": "Gemini Flash (Google)",
+        "description": "Free-tier from Google — best if you're pasting in or discussing long documents (Word/PDF text), it handles long context well.",
+        "supports_tools": True,
+        "key_env": "GEMINI_API_KEY",
+    },
+]
+
+_KEY_LOOKUP = {
+    "ANTHROPIC_API_KEY": ANTHROPIC_API_KEY,
+    "NVIDIA_API_KEY": NVIDIA_API_KEY,
+    "GROQ_API_KEY": GROQ_API_KEY,
+    "GEMINI_API_KEY": GEMINI_API_KEY,
+}
+
+
+def list_models() -> list[dict]:
+    return [
+        {**{k: v for k, v in m.items() if k != "key_env"}, "key_present": bool(_KEY_LOOKUP.get(m["key_env"]))}
+        for m in MODEL_CATALOG
+    ]
+
+
+def active_provider(requested: Optional[str] = None) -> Optional[str]:
+    configured = {m["provider"] for m in MODEL_CATALOG if _KEY_LOOKUP.get(m["key_env"])}
+    if requested:
+        return requested if requested in configured else None
+    if CHAT_PROVIDER in configured:
         return CHAT_PROVIDER
-    # NVIDIA preferred by default when both keys are present — override with
-    # CHAT_PROVIDER=anthropic if you want the other one instead.
-    if NVIDIA_API_KEY:
-        return "nvidia"
-    if ANTHROPIC_API_KEY:
-        return "anthropic"
+    for m in MODEL_CATALOG:
+        if m["provider"] in configured:
+            return m["provider"]
     return None
 
 
@@ -190,25 +267,26 @@ async def chat_anthropic(messages: list[dict]) -> str:
         return "I made several tool calls but couldn't reach a final answer in time — try a more specific question."
 
 
-async def chat_nvidia(messages: list[dict]) -> str:
-    """OpenAI-compatible tool-calling loop against NVIDIA NIM. UNVERIFIED against a live key —
-    integrate.api.nvidia.com isn't reachable from the sandbox this was written in. Written to
-    the documented OpenAI-compatible contract; test against your own NVIDIA_API_KEY."""
+async def _chat_openai_compatible(messages: list[dict], base_url: str, api_key: str, model: str,
+                                   provider_label: str) -> str:
+    """Shared tool-calling loop for any OpenAI-compatible chat/completions endpoint — NVIDIA NIM
+    and Groq both implement this contract, so one implementation serves both rather than
+    duplicating the same loop with a different base_url."""
     api_messages = [{"role": "system", "content": SYSTEM_PROMPT}] + list(messages)
     async with httpx.AsyncClient(timeout=60) as client:
         for _ in range(4):
             resp = await client.post(
-                "https://integrate.api.nvidia.com/v1/chat/completions",
-                headers={"Authorization": f"Bearer {NVIDIA_API_KEY}", "Content-Type": "application/json"},
+                base_url,
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                 json={
-                    "model": NVIDIA_MODEL,
+                    "model": model,
                     "messages": api_messages,
                     "tools": TOOLS_OPENAI,
                     "max_tokens": 1024,
                 },
             )
             if resp.status_code != 200:
-                raise RuntimeError(f"NVIDIA NIM API error {resp.status_code}: {resp.text[:500]}")
+                raise RuntimeError(f"{provider_label} API error {resp.status_code}: {resp.text[:500]}")
             data = resp.json()
             choice = data["choices"][0]["message"]
             tool_calls = choice.get("tool_calls") or []
@@ -228,12 +306,85 @@ async def chat_nvidia(messages: list[dict]) -> str:
         return "I made several tool calls but couldn't reach a final answer in time — try a more specific question."
 
 
-async def send_chat(messages: list[dict]) -> dict:
-    provider = active_provider()
-    if provider is None:
+async def chat_nvidia(messages: list[dict]) -> str:
+    return await _chat_openai_compatible(
+        messages, "https://integrate.api.nvidia.com/v1/chat/completions",
+        NVIDIA_API_KEY, NVIDIA_MODEL, "NVIDIA NIM",
+    )
+
+
+async def chat_groq(messages: list[dict]) -> str:
+    return await _chat_openai_compatible(
+        messages, "https://api.groq.com/openai/v1/chat/completions",
+        GROQ_API_KEY, GROQ_MODEL, "Groq",
+    )
+
+
+def _gemini_role(role: str) -> str:
+    # Gemini uses "model" instead of "assistant"; everything else maps straight across.
+    return "model" if role == "assistant" else "user"
+
+
+async def chat_gemini(messages: list[dict]) -> str:
+    """Gemini's REST API has its own shapes for both messages (contents/parts) and function
+    calling (functionCall/functionResponse parts, not a separate tool-role message) — different
+    enough from both Anthropic's and the OpenAI-compatible shape that it needs its own loop
+    rather than reusing either helper above."""
+    contents = [{"role": _gemini_role(m["role"]), "parts": [{"text": m["content"]}]} for m in messages]
+    url = (f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+           f"?key={GEMINI_API_KEY}")
+
+    async with httpx.AsyncClient(timeout=60) as client:
+        for _ in range(4):
+            resp = await client.post(
+                url,
+                headers={"Content-Type": "application/json"},
+                json={
+                    "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+                    "contents": contents,
+                    "tools": TOOLS_GEMINI,
+                },
+            )
+            if resp.status_code != 200:
+                raise RuntimeError(f"Gemini API error {resp.status_code}: {resp.text[:500]}")
+            data = resp.json()
+            candidates = data.get("candidates") or []
+            if not candidates:
+                return "No response from Gemini (empty candidates — possibly blocked by safety filters)."
+            parts = candidates[0].get("content", {}).get("parts", [])
+            function_calls = [p["functionCall"] for p in parts if "functionCall" in p]
+
+            if not function_calls:
+                return "".join(p.get("text", "") for p in parts)
+
+            contents.append({"role": "model", "parts": parts})
+            response_parts = []
+            for fc in function_calls:
+                result = _run_tool(fc["name"], fc.get("args", {}))
+                response_parts.append({"functionResponse": {"name": fc["name"], "response": result}})
+            contents.append({"role": "user", "parts": response_parts})
+        return "I made several tool calls but couldn't reach a final answer in time — try a more specific question."
+
+
+_DISPATCH = {
+    "anthropic": chat_anthropic,
+    "nvidia": chat_nvidia,
+    "groq": chat_groq,
+    "gemini": chat_gemini,
+}
+
+
+async def send_chat(messages: list[dict], provider: Optional[str] = None) -> dict:
+    resolved = active_provider(provider)
+    if resolved is None:
+        if provider:
+            raise RuntimeError(
+                f"'{provider}' isn't configured (no matching API key set on the backend). "
+                f"Configured providers: {[p for p in _DISPATCH if active_provider(p)]}"
+            )
         raise RuntimeError(
-            "No chat provider configured. Set ANTHROPIC_API_KEY or NVIDIA_API_KEY as an "
-            "environment variable before starting the API."
+            "No chat provider configured. Set one of ANTHROPIC_API_KEY, NVIDIA_API_KEY, "
+            "GROQ_API_KEY, GEMINI_API_KEY as an environment variable before starting the API."
         )
-    reply = await (chat_anthropic(messages) if provider == "anthropic" else chat_nvidia(messages))
-    return {"reply": reply, "provider": provider}
+    reply = await _DISPATCH[resolved](messages)
+    return {"reply": reply, "provider": resolved}

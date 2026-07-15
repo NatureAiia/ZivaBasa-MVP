@@ -1,18 +1,20 @@
 import { useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Upload, FileSpreadsheet, AlertTriangle, TrendingDown, TrendingUp, Users, Building2 } from "lucide-react";
+import { Upload, FileSpreadsheet, AlertTriangle, TrendingDown, TrendingUp, Users, Building2, Shuffle } from "lucide-react";
 import clsx from "clsx";
 import Card from "../common/Card";
 import ClarityRing from "../common/ClarityRing";
 import { staggerContainer, fadeUpItem } from "../../lib/motion";
 import { api, TASKS, TASK_LABELS, TASK_SHORT_LABELS } from "../../lib/api";
 import { saveBatchResult } from "../../lib/batchStore";
+import { addSource } from "../../lib/sourcesStore";
 import { formatPercent } from "../../lib/format";
 
 const TASK_COPY = {
   employment: { verb: "roles", risk: "automation risk", icon: TrendingDown },
   skills: { verb: "employees", risk: "attrition risk", icon: Users },
   productivity: { verb: "roles", risk: "AI-adoption impact", icon: TrendingUp },
+  skill_match: { verb: "staff-role pairs", risk: "strong redeployment matches", icon: Shuffle },
 };
 
 export default function BatchUpload({ task, onResult }) {
@@ -32,6 +34,7 @@ export default function BatchUpload({ task, onResult }) {
       const res = await api.predictBatch(task, file);
       setResult(res);
       saveBatchResult(task, res);
+      addSource({ name: file.name, kind: "csv", size: file.size, task, rowCount: res.n_rows });
       setState("done");
       onResult?.(res);
     } catch (e) {

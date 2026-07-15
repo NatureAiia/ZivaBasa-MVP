@@ -71,12 +71,13 @@ export const api = {
     }
     return res.json();
   },
-  chat: (messages) =>
+  chat: (messages, provider = null) =>
     request("/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages }),
+      body: JSON.stringify({ messages, provider }),
     }),
+  chatModels: () => request("/chat/models"),
 };
 
 export const TASKS = ["employment", "skills", "productivity", "skill_match"];

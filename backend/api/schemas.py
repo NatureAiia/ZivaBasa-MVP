@@ -52,6 +52,16 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: List[ChatMessage]
+    provider: Optional[str] = None  # explicit choice from the frontend's model picker; None = auto-detect
+
+
+class ChatModelInfo(BaseModel):
+    provider: str
+    model: str
+    label: str
+    description: str
+    supports_tools: bool
+    key_present: bool
 
 
 class ChatResponse(BaseModel):

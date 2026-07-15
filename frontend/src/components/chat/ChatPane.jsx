@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Sparkles, AlertTriangle, ChevronDown } from "lucide-react";
+import { Send, Sparkles, ChevronDown, KeyRound } from "lucide-react";
 import clsx from "clsx";
 import { fadeUpItem } from "../../lib/motion";
 import { api } from "../../lib/api";
@@ -15,28 +15,35 @@ const SUGGESTIONS = [
 ];
 
 const PUTER_SYSTEM = "You are the ZivaBasa workforce intelligence assistant, embedded in ChiedzaAI. " +
-  "You do not have live access to the Employment/Skills/Productivity prediction models in this mode " +
-  "(that requires the 'Backend' provider) — answer from general knowledge, and if the person asks for " +
-  "an actual prediction, tell them to switch to the Backend provider for that.";
+  "You do not have live access to the Employment/Skills/Productivity/Skill Match prediction models in this mode " +
+  "(that requires one of the 'Backend' models) — answer from general knowledge, and if the person asks for " +
+  "an actual prediction, tell them to switch to a Backend model for that.";
 
-const PROVIDERS = [
-  { key: "backend", label: "Backend (NVIDIA/Anthropic + tools)" },
-  { key: "puter", label: "Puter (free, no key)" },
-];
+// Puter's models shown with the same {label, description} shape as the backend catalog, so
+// the whole menu (backend models + Puter models) renders from one list instead of two
+// differently-shaped option sets bolted together.
+const PUTER_OPTION_GROUP = {
+  key: "puter",
+  title: "Free, no key needed (runs in your browser)",
+  options: Object.entries(PUTER_MODELS).map(([id, desc]) => ({
+    id,
+    label: desc.split(" — ")[0],
+    description: desc.split(" — ")[1] || "",
+    keyPresent: true,
+  })),
+};
 
 export default function ChatPane() {
-  const [provider, setProvider] = useState("backend");
-  const [puterModel, setPuterModel] = useState("claude-sonnet-5");
+  const [backendModels, setBackendModels] = useState([]);
+  const [selection, setSelection] = useState({ mode: "puter", id: "claude-sonnet-5" });
   const [menuOpen, setMenuOpen] = useState(false);
   const [messages, setMessages] = useState([
     {
       role: "assistant",
       text:
-        "Using your backend's configured provider (NVIDIA by default when NVIDIA_API_KEY is " +
-        "set) — I can call the ZivaBasa predict/explain tools directly. If you see a \"no " +
-        "provider configured\" error, add NVIDIA_API_KEY (or ANTHROPIC_API_KEY) to your " +
-        "backend's .env and restart it. Switch to \"Puter\" above for free chat without any " +
-        "backend key, but without tool access.",
+        "Pick a model above to chat with — models marked \"needs API key\" need that key added " +
+        "to your backend's .env first. The Puter models work immediately with no setup, but " +
+        "can't run live predictions; a Backend model can.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -44,8 +51,25 @@ export default function ChatPane() {
   const endRef = useRef(null);
 
   useEffect(() => {
+    api.chatModels()
+      .then((res) => {
+        setBackendModels(res.models || []);
+        const firstAvailable = (res.models || []).find((m) => m.key_present);
+        if (firstAvailable) setSelection({ mode: "backend", id: firstAvailable.provider });
+      })
+      .catch(() => {}); // backend not reachable yet — Puter still works standalone
+  }, []);
+
+  useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, sending]);
+
+  const selectedLabel = () => {
+    if (selection.mode === "backend") {
+      return backendModels.find((m) => m.provider === selection.id)?.label || "Choose a model";
+    }
+    return PUTER_OPTION_GROUP.options.find((o) => o.id === selection.id)?.label || "Choose a model";
+  };
 
   const send = async (text) => {
     const t = (text ?? input).trim();
@@ -56,15 +80,15 @@ export default function ChatPane() {
     setSending(true);
     try {
       let replyText, replyProvider;
-      if (provider === "puter") {
+      if (selection.mode === "puter") {
         const history = [
           { role: "system", content: PUTER_SYSTEM },
           ...nextMessages.map((m) => ({ role: m.role, content: m.text })),
         ];
-        replyText = await sendPuterChat(history, puterModel);
-        replyProvider = `puter:${puterModel}`;
+        replyText = await sendPuterChat(history, selection.id);
+        replyProvider = `puter:${selection.id}`;
       } else {
-        const res = await api.chat(nextMessages.map((m) => ({ role: m.role, content: m.text })));
+        const res = await api.chat(nextMessages.map((m) => ({ role: m.role, content: m.text })), selection.id);
         replyText = res.reply;
         replyProvider = res.provider;
       }
@@ -78,14 +102,14 @@ export default function ChatPane() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Provider selector */}
+      {/* Model picker */}
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
         <div className="relative">
           <button
             onClick={() => setMenuOpen((o) => !o)}
             className="flex items-center gap-1.5 text-xs font-medium text-ink bg-surface2 border border-border rounded-lg px-2.5 py-1.5 hover:border-gold/40 transition-colors"
           >
-            {PROVIDERS.find((p) => p.key === provider)?.label}
+            {selectedLabel()}
             <ChevronDown size={12} />
           </button>
           <AnimatePresence>
@@ -94,36 +118,61 @@ export default function ChatPane() {
                 initial={{ opacity: 0, y: -6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
-                className="absolute z-10 mt-1 bg-surface border border-border rounded-xl shadow-card-dark p-1 w-56"
+                className="absolute z-10 mt-1 bg-surface border border-border rounded-xl shadow-card-dark p-1.5 w-72 flex flex-col gap-2"
               >
-                {PROVIDERS.map((p) => (
-                  <button
-                    key={p.key}
-                    onClick={() => { setProvider(p.key); setMenuOpen(false); }}
-                    className={clsx(
-                      "w-full text-left text-xs px-2.5 py-2 rounded-lg transition-colors",
-                      provider === p.key ? "bg-gold/10 text-gold" : "text-ink-muted hover:bg-surface2 hover:text-ink"
-                    )}
-                  >
-                    {p.label}
-                  </button>
-                ))}
+                {backendModels.length > 0 && (
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide text-ink-faint font-semibold px-1.5 pb-1">
+                      Backend models — can run live predictions
+                    </p>
+                    {backendModels.map((m) => (
+                      <button
+                        key={m.provider}
+                        disabled={!m.key_present}
+                        onClick={() => { setSelection({ mode: "backend", id: m.provider }); setMenuOpen(false); }}
+                        className={clsx(
+                          "w-full text-left px-2.5 py-2 rounded-lg transition-colors",
+                          !m.key_present && "opacity-45 cursor-not-allowed",
+                          selection.mode === "backend" && selection.id === m.provider
+                            ? "bg-gold/10"
+                            : m.key_present && "hover:bg-surface2"
+                        )}
+                      >
+                        <span className={clsx("text-xs font-medium flex items-center gap-1.5", selection.id === m.provider && selection.mode === "backend" ? "text-gold" : "text-ink")}>
+                          {m.label}
+                          {!m.key_present && <KeyRound size={10} className="text-ink-faint" />}
+                        </span>
+                        <span className="block text-[10px] text-ink-faint mt-0.5 leading-snug">
+                          {m.key_present ? m.description : "Needs an API key added to your backend"}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-ink-faint font-semibold px-1.5 pb-1">
+                    {PUTER_OPTION_GROUP.title}
+                  </p>
+                  {PUTER_OPTION_GROUP.options.map((o) => (
+                    <button
+                      key={o.id}
+                      onClick={() => { setSelection({ mode: "puter", id: o.id }); setMenuOpen(false); }}
+                      className={clsx(
+                        "w-full text-left px-2.5 py-2 rounded-lg transition-colors",
+                        selection.mode === "puter" && selection.id === o.id ? "bg-gold/10" : "hover:bg-surface2"
+                      )}
+                    >
+                      <span className={clsx("text-xs font-medium", selection.mode === "puter" && selection.id === o.id ? "text-gold" : "text-ink")}>
+                        {o.label}
+                      </span>
+                      <span className="block text-[10px] text-ink-faint mt-0.5 leading-snug">{o.description}</span>
+                    </button>
+                  ))}
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
-
-        {provider === "puter" && (
-          <select
-            value={puterModel}
-            onChange={(e) => setPuterModel(e.target.value)}
-            className="text-xs bg-surface2 border border-border rounded-lg px-2 py-1.5 text-ink-muted outline-none"
-          >
-            {Object.keys(PUTER_MODELS).map((m) => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
-        )}
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-3">

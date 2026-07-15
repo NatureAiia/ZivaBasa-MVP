@@ -231,10 +231,17 @@ async def predict_batch(task: str, file: UploadFile = File(...)):
     }
 
 
+@app.get("/chat/models")
+async def chat_models():
+    return {"models": chat_module.list_models()}
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     try:
-        result = await chat_module.send_chat([m.model_dump() for m in request.messages])
+        result = await chat_module.send_chat(
+            [m.model_dump() for m in request.messages], provider=request.provider
+        )
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
