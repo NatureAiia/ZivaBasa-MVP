@@ -8,15 +8,10 @@ import MeshTextHover from "../components/effects/MeshTextHover";
 import ShinyPill from "../components/effects/ShinyPill";
 import Typewriter from "../components/effects/Typewriter";
 import { MODELS } from "../components/layout/Sidebar";
-import { COST_CATEGORIES } from "../lib/costModel";
-import { getCostEntries } from "../lib/costStore";
+import { computeCostTotals } from "../lib/costCompute";
 import { staggerContainer, fadeUpItem } from "../lib/motion";
 
-const costEntries = getCostEntries();
-const categoryTotals = COST_CATEGORIES.map((cat) => ({
-  cat,
-  total: cat.items.reduce((sum, item) => sum + (Number(costEntries[item.key]?.monthlyUsd) || 0), 0),
-}));
+const { categoryTotals, grandTotal, enteredCount, totalItems } = computeCostTotals();
 const costGroups = [
   { key: "model", label: "Model", categoryKeys: ["model"] },
   { key: "licence-maintenance", label: "Licence & Maintenance", categoryKeys: ["licence", "maintenance"] },
@@ -25,9 +20,6 @@ const costGroups = [
   ...group,
   total: categoryTotals.filter(({ cat }) => group.categoryKeys.includes(cat.key)).reduce((sum, item) => sum + item.total, 0),
 }));
-const grandTotal = categoryTotals.reduce((sum, item) => sum + item.total, 0);
-const enteredCount = Object.values(costEntries).filter((entry) => Number(entry?.monthlyUsd) > 0).length;
-const totalItems = COST_CATEGORIES.reduce((sum, cat) => sum + cat.items.length, 0);
 
 export default function ChiedzaDashboard() {
   return (

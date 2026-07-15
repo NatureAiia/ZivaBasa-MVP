@@ -1,21 +1,17 @@
 import { useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, FileDown, RotateCcw, Wallet } from "lucide-react";
+import { AlertTriangle, FileDown, RotateCcw, Wallet, Zap } from "lucide-react";
 import Card from "../components/common/Card";
 import Badge from "../components/common/Badge";
 import ShinyPill from "../components/effects/ShinyPill";
 import { staggerContainer, fadeUpItem } from "../lib/motion";
-import { COST_CATEGORIES } from "../lib/costModel";
 import { getCostEntries, setCostEntry, clearCostEntries } from "../lib/costStore";
 import { downloadCostReport } from "../lib/costReport";
-
-function CategoryTotal(entries, category) {
-  return category.items.reduce((sum, item) => sum + (Number(entries[item.key]?.monthlyUsd) || 0), 0);
-}
+import { computeCostTotals, AUTO_TRACKED_ITEM_KEY } from "../lib/costCompute";
+import { usageSummary } from "../lib/usageStore";
 
 export default function CostMonitoring() {
   const [entries, setEntries] = useState(getCostEntries());
-  const categoryRefs = useRef({});
 
   const updateItem = (itemKey, field, value) => {
     const current = entries[itemKey] || {};
@@ -23,13 +19,12 @@ export default function CostMonitoring() {
     setEntries(setCostEntry(itemKey, next));
   };
 
-  const categoryTotals = useMemo(
-    () => COST_CATEGORIES.map((cat) => ({ cat, total: CategoryTotal(entries, cat) })),
+  const categoryRefs = useRef({});
+  const { categoryTotals, grandTotal, enteredCount, totalItems, autoLlmCostUsd } = useMemo(
+    () => computeCostTotals(entries),
     [entries]
   );
-  const grandTotal = categoryTotals.reduce((sum, c) => sum + c.total, 0);
-  const enteredCount = Object.values(entries).filter((e) => Number(e?.monthlyUsd) > 0).length;
-  const totalItems = COST_CATEGORIES.reduce((n, c) => n + c.items.length, 0);
+  const llmUsage = useMemo(() => usageSummary(true), [entries]);
 
   const scrollToCategory = (key) => {
     categoryRefs.current[key]?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -84,9 +79,11 @@ export default function CostMonitoring() {
               <p className="text-xs text-ink-muted leading-relaxed">
                 <strong className="text-ink">No real costing exercise has been done yet.</strong>{" "}
                 Per the AI4I proposal (§5.3): figures here need a finance specialist working from
-                confirmed ZCHPC hosting costs and pilot data volumes. Nothing on this page is
-                pre-filled — every number below is whatever you enter, stored only in this
-                browser. Treat the totals as a live scratchpad, not a budget.
+                confirmed ZCHPC hosting costs and pilot data volumes. Nothing here is fabricated —
+                every number below is whatever you enter, stored only in this browser, except
+                "Chat LLM API usage," which is computed automatically from real logged chat calls
+                (still an estimate — see that item for details). Treat the totals as a live
+                scratchpad, not a budget.
               </p>
             </Card>
           </motion.div>
@@ -138,35 +135,63 @@ export default function CostMonitoring() {
                 <div className="flex flex-col gap-4">
                   {cat.items.map((item) => {
                     const entry = entries[item.key] || {};
+                    const isAuto = item.key === AUTO_TRACKED_ITEM_KEY;
                     return (
                       <div key={item.key} className="border-t border-border pt-3 first:border-t-0 first:pt-0">
                         <div className="flex items-start justify-between gap-3 flex-wrap">
                           <div className="flex-1 min-w-[220px]">
-                            <div className="text-xs font-medium text-ink">{item.label}</div>
+                            <div className="text-xs font-medium text-ink flex items-center gap-1.5">
+                              {item.label}
+                              {isAuto && (
+                                <Badge tone="teal">
+                                  <Zap size={9} /> Auto
+                                </Badge>
+                              )}
+                            </div>
                             <p className="text-[11px] text-ink-faint mt-0.5 leading-relaxed">{item.driver}</p>
-                            <span className="text-[10px] text-ink-faint italic">{item.source}</span>
+                            {isAuto ? (
+                              <span className="text-[10px] text-ink-faint italic">
+                                Computed automatically from {llmUsage.totalMessages} logged chat message
+                                {llmUsage.totalMessages === 1 ? "" : "s"} this month, at estimated per-provider
+                                rates — see Chat tab for the live picker. Rough estimate, not an invoice.
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-ink-faint italic">{item.source}</span>
+                            )}
                           </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span className="text-xs text-ink-faint">$</span>
-                            <input
-                              type="number"
-                              min="0"
-                              step="10"
-                              placeholder="0"
-                              value={entry.monthlyUsd ?? ""}
-                              onChange={(e) => updateItem(item.key, "monthlyUsd", e.target.value)}
-                              className="w-28 bg-surface2 border border-border rounded-lg px-2.5 py-1.5 text-sm font-mono text-ink outline-none focus:border-gold/50 transition-colors"
-                            />
-                            <span className="text-xs text-ink-faint">/mo</span>
-                          </div>
+                          {isAuto ? (
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-xs text-ink-faint">$</span>
+                              <span className="w-28 text-right font-mono text-sm text-ink">
+                                {autoLlmCostUsd.toFixed(2)}
+                              </span>
+                              <span className="text-xs text-ink-faint">/mo</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-xs text-ink-faint">$</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="10"
+                                placeholder="0"
+                                value={entry.monthlyUsd ?? ""}
+                                onChange={(e) => updateItem(item.key, "monthlyUsd", e.target.value)}
+                                className="w-28 bg-surface2 border border-border rounded-lg px-2.5 py-1.5 text-sm font-mono text-ink outline-none focus:border-gold/50 transition-colors"
+                              />
+                              <span className="text-xs text-ink-faint">/mo</span>
+                            </div>
+                          )}
                         </div>
-                        <input
-                          type="text"
-                          placeholder="Optional note (e.g. quote source, assumption)"
-                          value={entry.note ?? ""}
-                          onChange={(e) => updateItem(item.key, "note", e.target.value)}
-                          className="mt-2 w-full bg-transparent border-b border-border text-xs text-ink-muted outline-none focus:border-gold/50 transition-colors py-1"
-                        />
+                        {!isAuto && (
+                          <input
+                            type="text"
+                            placeholder="Optional note (e.g. quote source, assumption)"
+                            value={entry.note ?? ""}
+                            onChange={(e) => updateItem(item.key, "note", e.target.value)}
+                            className="mt-2 w-full bg-transparent border-b border-border text-xs text-ink-muted outline-none focus:border-gold/50 transition-colors py-1"
+                          />
+                        )}
                       </div>
                     );
                   })}

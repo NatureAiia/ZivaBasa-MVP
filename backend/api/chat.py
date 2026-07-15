@@ -226,8 +226,9 @@ def active_provider(requested: Optional[str] = None) -> Optional[str]:
     return None
 
 
-async def chat_anthropic(messages: list[dict]) -> str:
+async def chat_anthropic(messages: list[dict]) -> tuple[str, dict]:
     api_messages = list(messages)
+    usage = {"input_tokens": 0, "output_tokens": 0}
     async with httpx.AsyncClient(timeout=60) as client:
         for _ in range(4):  # bounded tool-use loop
             resp = await client.post(
@@ -248,11 +249,15 @@ async def chat_anthropic(messages: list[dict]) -> str:
             if resp.status_code != 200:
                 raise RuntimeError(f"Anthropic API error {resp.status_code}: {resp.text[:500]}")
             data = resp.json()
+            call_usage = data.get("usage") or {}
+            usage["input_tokens"] += call_usage.get("input_tokens", 0)
+            usage["output_tokens"] += call_usage.get("output_tokens", 0)
             content = data.get("content", [])
             tool_uses = [b for b in content if b.get("type") == "tool_use"]
 
             if not tool_uses:
-                return "".join(b.get("text", "") for b in content if b.get("type") == "text")
+                text = "".join(b.get("text", "") for b in content if b.get("type") == "text")
+                return text, usage
 
             api_messages.append({"role": "assistant", "content": content})
             tool_results = []
@@ -264,7 +269,7 @@ async def chat_anthropic(messages: list[dict]) -> str:
                     "content": json.dumps(result),
                 })
             api_messages.append({"role": "user", "content": tool_results})
-        return "I made several tool calls but couldn't reach a final answer in time — try a more specific question."
+        return "I made several tool calls but couldn't reach a final answer in time — try a more specific question.", usage
 
 
 async def _chat_openai_compatible(messages: list[dict], base_url: str, api_key: str, model: str,
@@ -273,6 +278,7 @@ async def _chat_openai_compatible(messages: list[dict], base_url: str, api_key: 
     and Groq both implement this contract, so one implementation serves both rather than
     duplicating the same loop with a different base_url."""
     api_messages = [{"role": "system", "content": SYSTEM_PROMPT}] + list(messages)
+    usage = {"input_tokens": 0, "output_tokens": 0}
     async with httpx.AsyncClient(timeout=60) as client:
         for _ in range(4):
             resp = await client.post(
@@ -288,11 +294,14 @@ async def _chat_openai_compatible(messages: list[dict], base_url: str, api_key: 
             if resp.status_code != 200:
                 raise RuntimeError(f"{provider_label} API error {resp.status_code}: {resp.text[:500]}")
             data = resp.json()
+            call_usage = data.get("usage") or {}
+            usage["input_tokens"] += call_usage.get("prompt_tokens", 0)
+            usage["output_tokens"] += call_usage.get("completion_tokens", 0)
             choice = data["choices"][0]["message"]
             tool_calls = choice.get("tool_calls") or []
 
             if not tool_calls:
-                return choice.get("content", "")
+                return choice.get("content", ""), usage
 
             api_messages.append(choice)
             for tc in tool_calls:
@@ -303,17 +312,17 @@ async def _chat_openai_compatible(messages: list[dict], base_url: str, api_key: 
                     "tool_call_id": tc["id"],
                     "content": json.dumps(result),
                 })
-        return "I made several tool calls but couldn't reach a final answer in time — try a more specific question."
+        return "I made several tool calls but couldn't reach a final answer in time — try a more specific question.", usage
 
 
-async def chat_nvidia(messages: list[dict]) -> str:
+async def chat_nvidia(messages: list[dict]) -> tuple[str, dict]:
     return await _chat_openai_compatible(
         messages, "https://integrate.api.nvidia.com/v1/chat/completions",
         NVIDIA_API_KEY, NVIDIA_MODEL, "NVIDIA NIM",
     )
 
 
-async def chat_groq(messages: list[dict]) -> str:
+async def chat_groq(messages: list[dict]) -> tuple[str, dict]:
     return await _chat_openai_compatible(
         messages, "https://api.groq.com/openai/v1/chat/completions",
         GROQ_API_KEY, GROQ_MODEL, "Groq",
@@ -325,7 +334,7 @@ def _gemini_role(role: str) -> str:
     return "model" if role == "assistant" else "user"
 
 
-async def chat_gemini(messages: list[dict]) -> str:
+async def chat_gemini(messages: list[dict]) -> tuple[str, dict]:
     """Gemini's REST API has its own shapes for both messages (contents/parts) and function
     calling (functionCall/functionResponse parts, not a separate tool-role message) — different
     enough from both Anthropic's and the OpenAI-compatible shape that it needs its own loop
@@ -333,6 +342,7 @@ async def chat_gemini(messages: list[dict]) -> str:
     contents = [{"role": _gemini_role(m["role"]), "parts": [{"text": m["content"]}]} for m in messages]
     url = (f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
            f"?key={GEMINI_API_KEY}")
+    usage = {"input_tokens": 0, "output_tokens": 0}
 
     async with httpx.AsyncClient(timeout=60) as client:
         for _ in range(4):
@@ -348,14 +358,17 @@ async def chat_gemini(messages: list[dict]) -> str:
             if resp.status_code != 200:
                 raise RuntimeError(f"Gemini API error {resp.status_code}: {resp.text[:500]}")
             data = resp.json()
+            call_usage = data.get("usageMetadata") or {}
+            usage["input_tokens"] += call_usage.get("promptTokenCount", 0)
+            usage["output_tokens"] += call_usage.get("candidatesTokenCount", 0)
             candidates = data.get("candidates") or []
             if not candidates:
-                return "No response from Gemini (empty candidates — possibly blocked by safety filters)."
+                return "No response from Gemini (empty candidates — possibly blocked by safety filters).", usage
             parts = candidates[0].get("content", {}).get("parts", [])
             function_calls = [p["functionCall"] for p in parts if "functionCall" in p]
 
             if not function_calls:
-                return "".join(p.get("text", "") for p in parts)
+                return "".join(p.get("text", "") for p in parts), usage
 
             contents.append({"role": "model", "parts": parts})
             response_parts = []
@@ -363,7 +376,7 @@ async def chat_gemini(messages: list[dict]) -> str:
                 result = _run_tool(fc["name"], fc.get("args", {}))
                 response_parts.append({"functionResponse": {"name": fc["name"], "response": result}})
             contents.append({"role": "user", "parts": response_parts})
-        return "I made several tool calls but couldn't reach a final answer in time — try a more specific question."
+        return "I made several tool calls but couldn't reach a final answer in time — try a more specific question.", usage
 
 
 _DISPATCH = {
@@ -386,5 +399,5 @@ async def send_chat(messages: list[dict], provider: Optional[str] = None) -> dic
             "No chat provider configured. Set one of ANTHROPIC_API_KEY, NVIDIA_API_KEY, "
             "GROQ_API_KEY, GEMINI_API_KEY as an environment variable before starting the API."
         )
-    reply = await _DISPATCH[resolved](messages)
-    return {"reply": reply, "provider": resolved}
+    reply, usage = await _DISPATCH[resolved](messages)
+    return {"reply": reply, "provider": resolved, "usage": usage}

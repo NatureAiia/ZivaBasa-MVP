@@ -5,6 +5,8 @@ import clsx from "clsx";
 import { fadeUpItem } from "../../lib/motion";
 import { api } from "../../lib/api";
 import { sendPuterChat, PUTER_MODELS } from "../../lib/puter";
+import { logUsage } from "../../lib/usageStore";
+import { estimateCostUsd } from "../../lib/chatPricing";
 import ClarityRing from "../common/ClarityRing";
 
 const SUGGESTIONS = [
@@ -87,10 +89,22 @@ export default function ChatPane() {
         ];
         replyText = await sendPuterChat(history, selection.id);
         replyProvider = `puter:${selection.id}`;
+        // Genuinely free — no token accounting available from Puter's response, but still
+        // logged so the usage summary reflects real message volume, not just backend calls.
+        logUsage({ provider: replyProvider, model: selection.id, inputTokens: 0, outputTokens: 0, costUsd: 0 });
       } else {
         const res = await api.chat(nextMessages.map((m) => ({ role: m.role, content: m.text })), selection.id);
         replyText = res.reply;
         replyProvider = res.provider;
+        const inputTokens = res.usage?.input_tokens || 0;
+        const outputTokens = res.usage?.output_tokens || 0;
+        logUsage({
+          provider: replyProvider,
+          model: backendModels.find((m) => m.provider === replyProvider)?.model || replyProvider,
+          inputTokens,
+          outputTokens,
+          costUsd: estimateCostUsd(replyProvider, inputTokens, outputTokens),
+        });
       }
       setMessages((m) => [...m, { role: "assistant", text: replyText, provider: replyProvider }]);
     } catch (e) {

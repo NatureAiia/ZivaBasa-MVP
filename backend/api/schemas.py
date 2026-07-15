@@ -67,3 +67,4 @@ class ChatModelInfo(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
     provider: str
+    usage: Optional[dict] = None

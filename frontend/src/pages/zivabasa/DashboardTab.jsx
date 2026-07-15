@@ -7,6 +7,7 @@ import Badge from "../../components/common/Badge";
 import ClarityRing from "../../components/common/ClarityRing";
 import CorporateKPIGrid from "../../components/dashboard/CorporateKPIGrid";
 import DepartmentBreakdown from "../../components/dashboard/DepartmentBreakdown";
+import ChatUsageSummary from "../../components/dashboard/ChatUsageSummary";
 import Typewriter from "../../components/effects/Typewriter";
 import ShinyPill from "../../components/effects/ShinyPill";
 import { staggerContainer, fadeUpItem } from "../../lib/motion";
@@ -94,6 +95,10 @@ export default function DashboardTab() {
 
         <motion.div variants={fadeUpItem}>
           <DepartmentBreakdown />
+        </motion.div>
+
+        <motion.div variants={fadeUpItem}>
+          <ChatUsageSummary />
         </motion.div>
       </motion.div>
       </div>
