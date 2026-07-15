@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Trash2, Sparkles, CheckCircle2, XCircle, Clock, ArrowRight, Network } from "lucide-react";
+import { Plus, Trash2, Sparkles, CheckCircle2, XCircle, Clock, ArrowRight, Network, FileText, X, File as FileIcon } from "lucide-react";
 import Card from "../../components/common/Card";
 import Badge from "../../components/common/Badge";
 import EmptyState from "../../components/common/EmptyState";
@@ -11,6 +11,7 @@ import { getAssignments, recommendAssignment, decideAssignment } from "../../lib
 import { matchScore, SKILL_LABELS } from "../../lib/skillMatchClient";
 import OrgChart from "../../components/organization/OrgChart";
 import RoleEditor from "../../components/organization/RoleEditor";
+import OrgStructureUpload from "../../components/organization/OrgStructureUpload";
 
 function productivityNarrative(overlapCount, missingCount) {
   const total = overlapCount + missingCount;
@@ -30,6 +31,7 @@ export default function MyOrganizationTab() {
   const [assignments, setAssignments] = useState(getAssignments);
   const [editingId, setEditingId] = useState(null); // null = not editing, "new" = adding, else node id
   const [selectedId, setSelectedId] = useState(null);
+  const [referenceFile, setReferenceFile] = useState(null);
 
   const selected = nodes.find((n) => n.id === selectedId);
   const editingNode = editingId && editingId !== "new" ? nodes.find((n) => n.id === editingId) : null;
@@ -77,14 +79,46 @@ export default function MyOrganizationTab() {
             </p>
           </div>
           {editingId === null && (
-            <button
-              onClick={() => setEditingId("new")}
-              className="flex items-center gap-1.5 bg-gold text-bg rounded-xl px-3.5 py-2 text-xs font-semibold hover:brightness-110"
-            >
-              <Plus size={14} /> Add a role
-            </button>
+            <div className="flex items-center gap-2">
+              <OrgStructureUpload onAttach={setReferenceFile} />
+              <button
+                onClick={() => setEditingId("new")}
+                className="flex items-center gap-1.5 bg-gold text-bg rounded-xl px-3.5 py-2 text-xs font-semibold hover:brightness-110"
+              >
+                <Plus size={14} /> Add a role
+              </button>
+            </div>
           )}
         </div>
+
+        {referenceFile && (
+          <motion.div variants={fadeUpItem} className="rounded-xl border border-border bg-surface2/50 p-3 flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              {(referenceFile.kind === "image" || referenceFile.kind === "svg") ? (
+                <img src={referenceFile.url} alt={referenceFile.name} className="w-10 h-10 object-cover rounded-lg border border-border shrink-0" />
+              ) : (
+                <div className="w-10 h-10 rounded-lg border border-border bg-surface flex items-center justify-center shrink-0">
+                  {referenceFile.kind === "pdf" ? <FileText size={16} className="text-red" /> : <FileIcon size={16} className="text-ink-faint" />}
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <span className="text-xs text-ink truncate block">{referenceFile.name}</span>
+                <span className="text-[10px] text-ink-faint">Attached as a reference — not read automatically, add roles manually below</span>
+              </div>
+              <button onClick={() => setReferenceFile(null)} className="text-ink-faint hover:text-red shrink-0" aria-label="Remove reference file">
+                <X size={14} />
+              </button>
+            </div>
+            {(referenceFile.kind === "image" || referenceFile.kind === "svg") && (
+              <img src={referenceFile.url} alt={referenceFile.name} className="max-h-64 w-auto rounded-lg border border-border self-start" />
+            )}
+            {referenceFile.kind === "pdf" && (
+              <a href={referenceFile.url} target="_blank" rel="noreferrer" className="text-[11px] text-gold hover:underline self-start">
+                Open PDF in a new tab →
+              </a>
+            )}
+          </motion.div>
+        )}
 
         {editingId !== null && (
           <motion.div variants={fadeUpItem}>
