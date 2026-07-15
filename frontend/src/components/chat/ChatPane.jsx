@@ -1,13 +1,12 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Sparkles, ChevronDown, KeyRound, Plus, FileDown } from "lucide-react";
+import { Send, Sparkles, ChevronDown, KeyRound, Plus } from "lucide-react";
 import clsx from "clsx";
 import { fadeUpItem } from "../../lib/motion";
 import { api } from "../../lib/api";
 import { sendPuterChat, PUTER_MODELS } from "../../lib/puter";
 import { logUsage } from "../../lib/usageStore";
 import { estimateCostUsd } from "../../lib/chatPricing";
-import { downloadBlob } from "../../lib/report";
 import { getChatSession, saveChatSession, clearChatSession } from "../../lib/chatSessionStore";
 import ClarityRing from "../common/ClarityRing";
 
@@ -54,7 +53,6 @@ export default function ChatPane() {
   const [toolCallLog, setToolCallLog] = useState(initialSession.toolCallLog); // for the Chat report's "predictions made" section
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const [downloadingReport, setDownloadingReport] = useState(false);
   const endRef = useRef(null);
 
   useEffect(() => {
@@ -133,18 +131,6 @@ export default function ChatPane() {
     clearChatSession();
   };
 
-  const downloadChatReport = async () => {
-    setDownloadingReport(true);
-    try {
-      const blob = await api.chatReport(messages, toolCallLog);
-      downloadBlob(`zivabasa-chat-report-${Date.now()}.docx`, blob);
-    } catch (e) {
-      alert(`Couldn't generate report: ${e.message}`);
-    } finally {
-      setDownloadingReport(false);
-    }
-  };
-
   return (
     <div className="flex flex-col h-full">
       {/* Model picker */}
@@ -220,13 +206,6 @@ export default function ChatPane() {
         </div>
 
         <div className="flex items-center gap-1.5">
-          <button
-            onClick={downloadChatReport}
-            disabled={downloadingReport || messages.length <= 1}
-            className="flex items-center gap-1.5 text-xs font-medium text-ink-muted hover:text-ink bg-surface2 border border-border rounded-lg px-2.5 py-1.5 hover:border-gold/40 transition-colors disabled:opacity-40 disabled:pointer-events-none"
-          >
-            <FileDown size={13} /> {downloadingReport ? "Generating…" : "Chat report"}
-          </button>
           <button
             onClick={newChat}
             className="flex items-center gap-1.5 text-xs font-medium text-ink-muted hover:text-ink bg-surface2 border border-border rounded-lg px-2.5 py-1.5 hover:border-gold/40 transition-colors"
