@@ -35,6 +35,27 @@ async function request(path, options) {
   return res.json();
 }
 
+async function requestBlob(path, options) {
+  const base = getBase();
+  let res;
+  try {
+    res = await fetch(base + path, options);
+  } catch (e) {
+    throw new Error(`Could not reach API at ${base}. Is uvicorn running? (${e.message})`);
+  }
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      detail = body.detail || JSON.stringify(body);
+    } catch {
+      /* non-JSON error body, keep statusText */
+    }
+    throw new Error(`${res.status}: ${detail}`);
+  }
+  return res.blob();
+}
+
 export const api = {
   base: getBase,
   health: () => request("/health"),
@@ -78,6 +99,18 @@ export const api = {
       body: JSON.stringify({ messages, provider }),
     }),
   chatModels: () => request("/chat/models"),
+  predictReport: (results) =>
+    requestBlob("/reports/predict", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ results }),
+    }),
+  chatReport: (messages, toolCalls = []) =>
+    requestBlob("/reports/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages, tool_calls: toolCalls }),
+    }),
 };
 
 export const TASKS = ["employment", "skills", "productivity", "skill_match"];

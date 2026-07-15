@@ -68,3 +68,19 @@ class ChatResponse(BaseModel):
     reply: str
     provider: str
     usage: Optional[dict] = None
+    tool_calls: Optional[list] = None
+
+
+class PredictReportRequest(BaseModel):
+    results: dict  # { task_name: {predict: {...}, explain: {...}|None} } — same shape the
+                    # frontend's history entries already have
+
+
+class ChatReportMessage(BaseModel):
+    role: str
+    text: str
+
+
+class ChatReportRequest(BaseModel):
+    messages: List[ChatReportMessage]
+    tool_calls: list = []

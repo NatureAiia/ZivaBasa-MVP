@@ -58,15 +58,37 @@ You have two tools: predict_task and explain_task, covering four tasks:
     skill_overlap_count, missing_skill_count, overlap_x_training (=
     skill_overlap_count * recent_training_hours if not given).
 
-Rules:
+HOW TO HANDLE A QUESTION THAT NEEDS A PREDICTION:
+1. If you have enough of the listed features (even rough estimates the person gives you in
+   plain language — "high repetition," "$45k," "3 years tenure" — you can map those to numbers
+   yourself), call the tool and answer from its real output.
+2. If you're missing values you need, ask for exactly those values, by name, in one short
+   question — not a general-knowledge essay about "what typically drives this." Example: "What's
+   the role's approximate salary, and how would you rate task repetition — low, medium, or
+   high?" Then stop and wait for the answer. Do not pad the question with paragraphs of
+   background theory first.
+3. Never substitute a lecture on general risk factors for actually attempting the prediction —
+   if you can reasonably estimate the missing values from what's already been said, do that and
+   run the tool rather than declining and explaining the theory instead.
+
+HOW TO WRITE:
+- Talk like a person, not a report generator. Default to plain paragraphs.
+- Do not use markdown headers (##), bold text, or bullet-point lists unless the person is
+  asking for a structured breakdown of 4+ distinct items — a normal conversational answer, even
+  a detailed one, should be flowing prose, not a formatted document.
+- Keep answers as short as the question allows. A yes/no-shaped question gets a short answer,
+  not a full structured writeup.
+- If something is genuinely ambiguous or you're missing information, ask one specific
+  clarifying question and stop — don't guess silently, and don't answer a different, easier
+  question instead of asking.
+
+OTHER RULES:
 - Always explain results in plain business language, not raw z-scores or jargon, unless asked
   for technical detail.
 - This is a prototype trained on Kaggle proxy / synthetic data, not real company data. Say so
   when giving a prediction, briefly, without being repetitive about it every single message.
 - If a probability is below 0.1% or above 99.9%, flag it as possibly overconfident (uncalibrated
   model on limited training data), not as certainty.
-- If you don't have enough information to fill a tool's required features, ask the person for
-  the missing values rather than guessing plausible-sounding numbers.
 """
 
 TOOLS_ANTHROPIC = [
@@ -226,9 +248,10 @@ def active_provider(requested: Optional[str] = None) -> Optional[str]:
     return None
 
 
-async def chat_anthropic(messages: list[dict]) -> tuple[str, dict]:
+async def chat_anthropic(messages: list[dict]) -> tuple[str, dict, list]:
     api_messages = list(messages)
     usage = {"input_tokens": 0, "output_tokens": 0}
+    tool_log = []
     async with httpx.AsyncClient(timeout=60) as client:
         for _ in range(4):  # bounded tool-use loop
             resp = await client.post(
@@ -257,19 +280,20 @@ async def chat_anthropic(messages: list[dict]) -> tuple[str, dict]:
 
             if not tool_uses:
                 text = "".join(b.get("text", "") for b in content if b.get("type") == "text")
-                return text, usage
+                return text, usage, tool_log
 
             api_messages.append({"role": "assistant", "content": content})
             tool_results = []
             for tu in tool_uses:
                 result = _run_tool(tu["name"], tu.get("input", {}))
+                tool_log.append({"name": tu["name"], "args": tu.get("input", {}), "result": result})
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": tu["id"],
                     "content": json.dumps(result),
                 })
             api_messages.append({"role": "user", "content": tool_results})
-        return "I made several tool calls but couldn't reach a final answer in time — try a more specific question.", usage
+        return "I made several tool calls but couldn't reach a final answer in time — try a more specific question.", usage, tool_log
 
 
 async def _chat_openai_compatible(messages: list[dict], base_url: str, api_key: str, model: str,
@@ -279,6 +303,7 @@ async def _chat_openai_compatible(messages: list[dict], base_url: str, api_key: 
     duplicating the same loop with a different base_url."""
     api_messages = [{"role": "system", "content": SYSTEM_PROMPT}] + list(messages)
     usage = {"input_tokens": 0, "output_tokens": 0}
+    tool_log = []
     async with httpx.AsyncClient(timeout=60) as client:
         for _ in range(4):
             resp = await client.post(
@@ -301,28 +326,29 @@ async def _chat_openai_compatible(messages: list[dict], base_url: str, api_key: 
             tool_calls = choice.get("tool_calls") or []
 
             if not tool_calls:
-                return choice.get("content", ""), usage
+                return choice.get("content", ""), usage, tool_log
 
             api_messages.append(choice)
             for tc in tool_calls:
                 args = json.loads(tc["function"]["arguments"])
                 result = _run_tool(tc["function"]["name"], args)
+                tool_log.append({"name": tc["function"]["name"], "args": args, "result": result})
                 api_messages.append({
                     "role": "tool",
                     "tool_call_id": tc["id"],
                     "content": json.dumps(result),
                 })
-        return "I made several tool calls but couldn't reach a final answer in time — try a more specific question.", usage
+        return "I made several tool calls but couldn't reach a final answer in time — try a more specific question.", usage, tool_log
 
 
-async def chat_nvidia(messages: list[dict]) -> tuple[str, dict]:
+async def chat_nvidia(messages: list[dict]) -> tuple[str, dict, list]:
     return await _chat_openai_compatible(
         messages, "https://integrate.api.nvidia.com/v1/chat/completions",
         NVIDIA_API_KEY, NVIDIA_MODEL, "NVIDIA NIM",
     )
 
 
-async def chat_groq(messages: list[dict]) -> tuple[str, dict]:
+async def chat_groq(messages: list[dict]) -> tuple[str, dict, list]:
     return await _chat_openai_compatible(
         messages, "https://api.groq.com/openai/v1/chat/completions",
         GROQ_API_KEY, GROQ_MODEL, "Groq",
@@ -334,7 +360,7 @@ def _gemini_role(role: str) -> str:
     return "model" if role == "assistant" else "user"
 
 
-async def chat_gemini(messages: list[dict]) -> tuple[str, dict]:
+async def chat_gemini(messages: list[dict]) -> tuple[str, dict, list]:
     """Gemini's REST API has its own shapes for both messages (contents/parts) and function
     calling (functionCall/functionResponse parts, not a separate tool-role message) — different
     enough from both Anthropic's and the OpenAI-compatible shape that it needs its own loop
@@ -343,6 +369,7 @@ async def chat_gemini(messages: list[dict]) -> tuple[str, dict]:
     url = (f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
            f"?key={GEMINI_API_KEY}")
     usage = {"input_tokens": 0, "output_tokens": 0}
+    tool_log = []
 
     async with httpx.AsyncClient(timeout=60) as client:
         for _ in range(4):
@@ -363,20 +390,21 @@ async def chat_gemini(messages: list[dict]) -> tuple[str, dict]:
             usage["output_tokens"] += call_usage.get("candidatesTokenCount", 0)
             candidates = data.get("candidates") or []
             if not candidates:
-                return "No response from Gemini (empty candidates — possibly blocked by safety filters).", usage
+                return "No response from Gemini (empty candidates — possibly blocked by safety filters).", usage, tool_log
             parts = candidates[0].get("content", {}).get("parts", [])
             function_calls = [p["functionCall"] for p in parts if "functionCall" in p]
 
             if not function_calls:
-                return "".join(p.get("text", "") for p in parts), usage
+                return "".join(p.get("text", "") for p in parts), usage, tool_log
 
             contents.append({"role": "model", "parts": parts})
             response_parts = []
             for fc in function_calls:
                 result = _run_tool(fc["name"], fc.get("args", {}))
+                tool_log.append({"name": fc["name"], "args": fc.get("args", {}), "result": result})
                 response_parts.append({"functionResponse": {"name": fc["name"], "response": result}})
             contents.append({"role": "user", "parts": response_parts})
-        return "I made several tool calls but couldn't reach a final answer in time — try a more specific question.", usage
+        return "I made several tool calls but couldn't reach a final answer in time — try a more specific question.", usage, tool_log
 
 
 _DISPATCH = {
@@ -399,5 +427,5 @@ async def send_chat(messages: list[dict], provider: Optional[str] = None) -> dic
             "No chat provider configured. Set one of ANTHROPIC_API_KEY, NVIDIA_API_KEY, "
             "GROQ_API_KEY, GEMINI_API_KEY as an environment variable before starting the API."
         )
-    reply, usage = await _DISPATCH[resolved](messages)
-    return {"reply": reply, "provider": resolved, "usage": usage}
+    reply, usage, tool_calls = await _DISPATCH[resolved](messages)
+    return {"reply": reply, "provider": resolved, "usage": usage, "tool_calls": tool_calls}

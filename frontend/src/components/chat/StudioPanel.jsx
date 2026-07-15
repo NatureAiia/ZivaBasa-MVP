@@ -1,9 +1,11 @@
 import { FileDown, ChevronRight } from "lucide-react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import clsx from "clsx";
 import { getHistory } from "../../lib/history";
-import { buildReportMarkdown, downloadReport } from "../../lib/report";
+import { downloadBlob } from "../../lib/report";
 import { getAllBatchResults } from "../../lib/batchStore";
+import { api } from "../../lib/api";
 import IndexCards from "../studio/IndexCards";
 import InteractionExplorer from "../studio/InteractionExplorer";
 
@@ -40,11 +42,19 @@ export default function StudioPanel() {
   const hasIndexData = Object.values(batches).some(Boolean);
   const hasInteractionData = Object.values(batches).some((b) => b?.rows?.length > 0);
   const hasRosterData = !!batches.skill_match;
+  const [downloading, setDownloading] = useState(false);
 
-  const handleGenerateReport = () => {
+  const handleGenerateReport = async () => {
     if (!latest) return;
-    const md = buildReportMarkdown(latest.results);
-    downloadReport(`zivabasa-report-${Date.now()}.md`, md);
+    setDownloading(true);
+    try {
+      const blob = await api.predictReport(latest.results);
+      downloadBlob(`zivabasa-predict-report-${Date.now()}.docx`, blob);
+    } catch (e) {
+      alert(`Couldn't generate report: ${e.message}`);
+    } finally {
+      setDownloading(false);
+    }
   };
 
   return (
@@ -52,17 +62,17 @@ export default function StudioPanel() {
       <h3 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold">Studio</h3>
 
       <StudioBlock
-        title="Download a report"
-        description={latest ? "Turns your latest prediction into a shareable file." : "Run a prediction first, then come back here."}
+        title="Predict report (Word)"
+        description={latest ? "Turns your latest prediction into a clean, shareable .docx with charts." : "Run a prediction first, then come back here."}
         active={!!latest}
       >
         <button
           onClick={handleGenerateReport}
-          disabled={!latest}
+          disabled={!latest || downloading}
           className="flex items-center gap-2 rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-left text-xs text-ink hover:bg-gold/15 transition-colors disabled:opacity-40 disabled:pointer-events-none w-fit"
         >
           <FileDown size={14} className="text-gold shrink-0" />
-          <span className="font-medium">Download report</span>
+          <span className="font-medium">{downloading ? "Generating…" : "Download Word report"}</span>
         </button>
       </StudioBlock>
 

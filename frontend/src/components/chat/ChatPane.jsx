@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Sparkles, ChevronDown, KeyRound } from "lucide-react";
+import { Send, Sparkles, ChevronDown, KeyRound, Plus, FileDown } from "lucide-react";
 import clsx from "clsx";
 import { fadeUpItem } from "../../lib/motion";
 import { api } from "../../lib/api";
 import { sendPuterChat, PUTER_MODELS } from "../../lib/puter";
 import { logUsage } from "../../lib/usageStore";
 import { estimateCostUsd } from "../../lib/chatPricing";
+import { downloadBlob } from "../../lib/report";
 import ClarityRing from "../common/ClarityRing";
 
 const SUGGESTIONS = [
@@ -35,21 +36,23 @@ const PUTER_OPTION_GROUP = {
   })),
 };
 
+const WELCOME_MESSAGE = {
+  role: "assistant",
+  text:
+    "Pick a model above to chat with — models marked \"needs API key\" need that key added " +
+    "to your backend's .env first. The Puter models work immediately with no setup, but " +
+    "can't run live predictions; a Backend model can.",
+};
+
 export default function ChatPane() {
   const [backendModels, setBackendModels] = useState([]);
-  const [selection, setSelection] = useState({ mode: "puter", id: "claude-sonnet-5" });
+  const [selection, setSelection] = useState({ mode: "puter", id: "anthropic/claude-sonnet-5" });
   const [menuOpen, setMenuOpen] = useState(false);
-  const [messages, setMessages] = useState([
-    {
-      role: "assistant",
-      text:
-        "Pick a model above to chat with — models marked \"needs API key\" need that key added " +
-        "to your backend's .env first. The Puter models work immediately with no setup, but " +
-        "can't run live predictions; a Backend model can.",
-    },
-  ]);
+  const [messages, setMessages] = useState([WELCOME_MESSAGE]);
+  const [toolCallLog, setToolCallLog] = useState([]); // for the Chat report's "predictions made" section
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [downloadingReport, setDownloadingReport] = useState(false);
   const endRef = useRef(null);
 
   useEffect(() => {
@@ -105,6 +108,9 @@ export default function ChatPane() {
           outputTokens,
           costUsd: estimateCostUsd(replyProvider, inputTokens, outputTokens),
         });
+        if (res.tool_calls?.length) {
+          setToolCallLog((log) => [...log, ...res.tool_calls]);
+        }
       }
       setMessages((m) => [...m, { role: "assistant", text: replyText, provider: replyProvider }]);
     } catch (e) {
@@ -114,10 +120,28 @@ export default function ChatPane() {
     }
   };
 
+  const newChat = () => {
+    setMessages([WELCOME_MESSAGE]);
+    setToolCallLog([]);
+    setInput("");
+  };
+
+  const downloadChatReport = async () => {
+    setDownloadingReport(true);
+    try {
+      const blob = await api.chatReport(messages, toolCallLog);
+      downloadBlob(`zivabasa-chat-report-${Date.now()}.docx`, blob);
+    } catch (e) {
+      alert(`Couldn't generate report: ${e.message}`);
+    } finally {
+      setDownloadingReport(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Model picker */}
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
+      <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-border">
         <div className="relative">
           <button
             onClick={() => setMenuOpen((o) => !o)}
@@ -186,6 +210,22 @@ export default function ChatPane() {
               </motion.div>
             )}
           </AnimatePresence>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={downloadChatReport}
+            disabled={downloadingReport || messages.length <= 1}
+            className="flex items-center gap-1.5 text-xs font-medium text-ink-muted hover:text-ink bg-surface2 border border-border rounded-lg px-2.5 py-1.5 hover:border-gold/40 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+          >
+            <FileDown size={13} /> {downloadingReport ? "Generating…" : "Chat report"}
+          </button>
+          <button
+            onClick={newChat}
+            className="flex items-center gap-1.5 text-xs font-medium text-ink-muted hover:text-ink bg-surface2 border border-border rounded-lg px-2.5 py-1.5 hover:border-gold/40 transition-colors"
+          >
+            <Plus size={13} /> New chat
+          </button>
         </div>
       </div>
 

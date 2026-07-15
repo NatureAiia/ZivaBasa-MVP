@@ -5,15 +5,26 @@ import Card from "../../components/common/Card";
 import EmptyState from "../../components/common/EmptyState";
 import { staggerContainer, fadeUpItem } from "../../lib/motion";
 import { getHistory, deleteHistoryEntry } from "../../lib/history";
-import { buildReportMarkdown, downloadReport } from "../../lib/report";
+import { downloadBlob } from "../../lib/report";
 import { formatPercent, formatRaw } from "../../lib/format";
-import { TASKS, TASK_LABELS, TASK_SHORT_LABELS } from "../../lib/api";
+import { TASKS, TASK_LABELS, TASK_SHORT_LABELS, api } from "../../lib/api";
 
 export default function HistoryTab() {
   const [history, setHistory] = useState(getHistory());
+  const [downloadingId, setDownloadingId] = useState(null);
 
   const remove = (id) => setHistory(deleteHistoryEntry(id));
-  const download = (entry) => downloadReport(`zivabasa-report-${entry.id}.md`, buildReportMarkdown(entry.results));
+  const download = async (entry) => {
+    setDownloadingId(entry.id);
+    try {
+      const blob = await api.predictReport(entry.results);
+      downloadBlob(`zivabasa-predict-report-${entry.id}.docx`, blob);
+    } catch (e) {
+      alert(`Couldn't generate report: ${e.message}`);
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
   if (history.length === 0) {
     return (
@@ -54,7 +65,8 @@ export default function HistoryTab() {
                 </div>
                 <button
                   onClick={() => download(entry)}
-                  className="text-ink-faint hover:text-gold transition-colors"
+                  disabled={downloadingId === entry.id}
+                  className="text-ink-faint hover:text-gold transition-colors disabled:opacity-40"
                   aria-label="Download report"
                 >
                   <FileDown size={16} />

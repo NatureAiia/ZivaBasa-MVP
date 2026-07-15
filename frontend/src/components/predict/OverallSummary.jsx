@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { FileDown, RotateCcw } from "lucide-react";
 import Card from "../common/Card";
@@ -5,9 +6,12 @@ import Button from "../common/Button";
 import { staggerContainer, fadeUpItem } from "../../lib/motion";
 import { TASKS, TASK_LABELS } from "../../lib/api";
 import { formatPercent, formatRaw } from "../../lib/format";
-import { buildReportMarkdown, downloadReport } from "../../lib/report";
+import { downloadBlob } from "../../lib/report";
+import { metaFor } from "../../lib/fieldMeta";
+import { api } from "../../lib/api";
 
 export default function OverallSummary({ results, onRestart }) {
+  const [downloading, setDownloading] = useState(false);
   const emp = results.employment.predict;
   const skl = results.skills.predict;
   const empFlag = emp?.task_type === "classification" && emp.label === 1;
@@ -19,9 +23,16 @@ export default function OverallSummary({ results, onRestart }) {
     ? `This input combination triggers ${flags.join(" and ")}.`
     : "This input combination does not trigger either classification task's risk flag.";
 
-  const handleDownload = () => {
-    const md = buildReportMarkdown(results);
-    downloadReport(`zivabasa-report-${Date.now()}.md`, md);
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      const blob = await api.predictReport(results);
+      downloadBlob(`zivabasa-predict-report-${Date.now()}.docx`, blob);
+    } catch (e) {
+      alert(`Couldn't generate report: ${e.message}`);
+    } finally {
+      setDownloading(false);
+    }
   };
 
   return (
@@ -51,7 +62,7 @@ export default function OverallSummary({ results, onRestart }) {
                 <div className="text-[11px] text-ink-muted space-y-1">
                   {r.explain.top_contributions.slice(0, 3).map((c) => (
                     <div key={c.feature}>
-                      <span className="font-mono text-ink">{c.feature}</span>: {c.shap_value >= 0 ? "+" : ""}{c.shap_value.toFixed(3)}
+                      <span className="text-ink">{metaFor(c.feature, task).label}</span>: {c.shap_value >= 0 ? "+" : ""}{c.shap_value.toFixed(3)}
                     </div>
                   ))}
                 </div>
@@ -78,8 +89,8 @@ export default function OverallSummary({ results, onRestart }) {
       </Card>
 
       <div className="flex gap-2">
-        <Button variant="primary" onClick={handleDownload}>
-          <FileDown size={15} /> Download report (.md)
+        <Button variant="primary" onClick={handleDownload} disabled={downloading}>
+          <FileDown size={15} /> {downloading ? "Generating…" : "Download report (Word)"}
         </Button>
         <Button variant="secondary" onClick={onRestart}>
           <RotateCcw size={15} /> Start over

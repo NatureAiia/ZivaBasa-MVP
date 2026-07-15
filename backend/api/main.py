@@ -27,17 +27,18 @@ load_dotenv()  # picks up ANTHROPIC_API_KEY / NVIDIA_API_KEY / CHAT_PROVIDER fro
                 # import time via os.environ.get()
 
 import numpy as np
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.schemas import (
     PredictRequest, PredictResponse, SchemaResponse,
     ExplainResponse, FeatureContribution, HealthResponse,
-    ChatRequest, ChatResponse,
+    ChatRequest, ChatResponse, PredictReportRequest, ChatReportRequest,
 )
 from api.model_registry import registry
 from api import batch as batch_module
 from api import chat as chat_module
+from api import reports as reports_module
 from src import evaluate
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s [%(name)s] %(message)s")
@@ -247,3 +248,34 @@ async def chat(request: ChatRequest):
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Chat provider call failed: {e}")
     return ChatResponse(**result)
+
+
+_DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
+@app.post("/reports/predict")
+async def predict_report(request: PredictReportRequest):
+    try:
+        docx_bytes = reports_module.build_predict_report(request.results)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Report generation failed: {e}")
+    return Response(
+        content=docx_bytes,
+        media_type=_DOCX_MEDIA_TYPE,
+        headers={"Content-Disposition": 'attachment; filename="zivabasa-predict-report.docx"'},
+    )
+
+
+@app.post("/reports/chat")
+async def chat_report(request: ChatReportRequest):
+    try:
+        docx_bytes = reports_module.build_chat_report(
+            [m.model_dump() for m in request.messages], request.tool_calls
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Report generation failed: {e}")
+    return Response(
+        content=docx_bytes,
+        media_type=_DOCX_MEDIA_TYPE,
+        headers={"Content-Disposition": 'attachment; filename="zivabasa-chat-report.docx"'},
+    )
