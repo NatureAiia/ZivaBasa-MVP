@@ -8,7 +8,7 @@ import PredictionResult from "../../components/predict/PredictionResult";
 import ShapLedger from "../../components/predict/ShapLedger";
 import OverallSummary from "../../components/predict/OverallSummary";
 import { usePredictionFlow } from "../../hooks/usePredictionFlow";
-import { TASKS, TASK_LABELS } from "../../lib/api";
+import { TASKS, TASK_LABELS, TASK_SHORT_LABELS } from "../../lib/api";
 import { fadeScale } from "../../lib/motion";
 import { logHistoryEntry } from "../../lib/history";
 
@@ -41,7 +41,7 @@ export default function AdvancedPredict() {
   const isLastTask = TASKS.indexOf(activeTask) === TASKS.length - 1;
   const nextTaskLabel = isLastTask
     ? null
-    : TASK_LABELS[TASKS[TASKS.indexOf(activeTask) + 1]].split(" / ")[0];
+    : TASK_SHORT_LABELS[TASKS[TASKS.indexOf(activeTask) + 1]];
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -67,7 +67,7 @@ export default function AdvancedPredict() {
                 />
               )}
               <span className="relative z-10 flex items-center gap-1.5">
-                {done && <Check size={12} />} {TASK_LABELS[task].split(" / ")[0]}
+                {done && <Check size={12} />} {TASK_SHORT_LABELS[task]}
               </span>
             </button>
           );
@@ -135,7 +135,7 @@ export default function AdvancedPredict() {
                 <h2 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold mb-4">What's Driving This Result</h2>
                 {current?.explain ? (
                   <>
-                    <ShapLedger result={current.explain} />
+                    <ShapLedger result={current.explain} task={activeTask} />
                     <div className="mt-4 pt-4 border-t border-border flex items-center justify-between gap-3">
                       <span className="text-[11px] text-ink-faint">
                         {TASK_LABELS[activeTask]} complete.

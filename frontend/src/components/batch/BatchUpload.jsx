@@ -5,7 +5,7 @@ import clsx from "clsx";
 import Card from "../common/Card";
 import ClarityRing from "../common/ClarityRing";
 import { staggerContainer, fadeUpItem } from "../../lib/motion";
-import { api, TASKS, TASK_LABELS } from "../../lib/api";
+import { api, TASKS, TASK_LABELS, TASK_SHORT_LABELS } from "../../lib/api";
 import { saveBatchResult } from "../../lib/batchStore";
 import { formatPercent } from "../../lib/format";
 
@@ -151,7 +151,7 @@ export default function BatchUpload({ task, onResult }) {
     >
       <FileSpreadsheet size={28} className="text-ink-faint" />
       <div>
-        <p className="text-sm font-medium text-ink">Drop your {TASK_LABELS[task].split(" / ")[0].toLowerCase()} data here</p>
+        <p className="text-sm font-medium text-ink">Drop your {TASK_SHORT_LABELS[task].toLowerCase()} data here</p>
         <p className="text-xs text-ink-muted mt-1">CSV export from your HR system — column names just need to roughly match, we'll match by name</p>
       </div>
       <span className="flex items-center gap-1.5 text-xs text-gold font-medium">

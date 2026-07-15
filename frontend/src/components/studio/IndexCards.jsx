@@ -16,11 +16,7 @@ export default function IndexCards() {
     .filter((c) => c.index);
 
   if (cards.length === 0) {
-    return (
-      <p className="text-[11px] text-ink-faint px-1">
-        Upload data on the Predict tab to populate composite indices here.
-      </p>
-    );
+    return null;
   }
 
   return (

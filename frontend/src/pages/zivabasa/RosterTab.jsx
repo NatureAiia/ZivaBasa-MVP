@@ -212,7 +212,7 @@ export default function RosterTab() {
                             ) : explainCache[row._name]?.error ? (
                               <p className="text-xs text-red">{explainCache[row._name].error}</p>
                             ) : explainCache[row._name] ? (
-                              <ShapLedger result={explainCache[row._name]} />
+                              <ShapLedger result={explainCache[row._name]} task="skill_match" />
                             ) : null}
                           </div>
                         </motion.div>

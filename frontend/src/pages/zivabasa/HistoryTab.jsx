@@ -7,7 +7,7 @@ import { staggerContainer, fadeUpItem } from "../../lib/motion";
 import { getHistory, deleteHistoryEntry } from "../../lib/history";
 import { buildReportMarkdown, downloadReport } from "../../lib/report";
 import { formatPercent, formatRaw } from "../../lib/format";
-import { TASKS, TASK_LABELS } from "../../lib/api";
+import { TASKS, TASK_LABELS, TASK_SHORT_LABELS } from "../../lib/api";
 
 export default function HistoryTab() {
   const [history, setHistory] = useState(getHistory());
@@ -45,7 +45,7 @@ export default function HistoryTab() {
                       const value = isClass ? formatPercent(r.predict.probability) : formatRaw(r.predict.raw_output);
                       return (
                         <div key={task} className="text-xs">
-                          <span className="text-ink-faint">{TASK_LABELS[task].split(" / ")[0]}: </span>
+                          <span className="text-ink-faint">{TASK_SHORT_LABELS[task]}: </span>
                           <span className="font-mono text-ink">{value}</span>
                         </div>
                       );

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { getAllBatchResults } from "../../lib/batchStore";
-import { TASKS, TASK_LABELS } from "../../lib/api";
+import { TASKS, TASK_LABELS, TASK_SHORT_LABELS } from "../../lib/api";
 
 /*
   Interaction Explorer — a real scatter plot of any two numeric features against each other
@@ -31,11 +31,7 @@ export default function InteractionExplorer() {
   const [yKey, setYKey] = useState(features[0]);
 
   if (availableTasks.length === 0) {
-    return (
-      <p className="text-[11px] text-ink-faint px-1">
-        Upload data on the Predict tab to explore feature interactions here.
-      </p>
-    );
+    return null;
   }
 
   const rows = result?.rows || [];
@@ -65,7 +61,7 @@ export default function InteractionExplorer() {
                 task === t ? "bg-gold/10 border-gold/30 text-gold" : "border-border text-ink-faint hover:text-ink"
               }`}
             >
-              {TASK_LABELS[t].split(" / ")[0]}
+              {TASK_SHORT_LABELS[t]}
             </button>
           ))}
       </div>

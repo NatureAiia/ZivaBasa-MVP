@@ -9,8 +9,9 @@ import ChatTab from "./pages/zivabasa/ChatTab";
 import PredictTab from "./pages/zivabasa/PredictTab";
 import HistoryTab from "./pages/zivabasa/HistoryTab";
 import RosterTab from "./pages/zivabasa/RosterTab";
+import { MODELS } from "./components/layout/Sidebar";
 
-const OTHER_MODELS = ["ziva-bank", "ziva-dataops", "ziva-business", "ziva-upskill"];
+const OTHER_MODELS = MODELS.filter((m) => !m.live).map((m) => m.slug);
 
 export default function App() {
   return (

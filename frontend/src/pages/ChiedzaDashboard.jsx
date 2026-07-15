@@ -7,17 +7,10 @@ import CorporateKPIGrid from "../components/dashboard/CorporateKPIGrid";
 import MeshTextHover from "../components/effects/MeshTextHover";
 import ShinyPill from "../components/effects/ShinyPill";
 import Typewriter from "../components/effects/Typewriter";
+import { MODELS } from "../components/layout/Sidebar";
 import { COST_CATEGORIES } from "../lib/costModel";
 import { getCostEntries } from "../lib/costStore";
 import { staggerContainer, fadeUpItem } from "../lib/motion";
-
-const MODELS = [
-  { slug: "zivabasa", name: "ZivaBasa", tagline: "Workforce transformation intelligence", live: true },
-  { slug: "ziva-bank", name: "ZivaBank", tagline: "Financial risk modeling", live: false },
-  { slug: "ziva-dataops", name: "ZivaDataOps", tagline: "Data pipeline health & operations", live: false },
-  { slug: "ziva-business", name: "ZivaBusiness", tagline: "Business intelligence & forecasting", live: false },
-  { slug: "ziva-upskill", name: "ZivaUpskill", tagline: "Learning & upskilling pathways", live: false },
-];
 
 const costEntries = getCostEntries();
 const categoryTotals = COST_CATEGORIES.map((cat) => ({

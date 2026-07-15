@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import clsx from "clsx";
 import BatchUpload from "../../components/batch/BatchUpload";
 import ShinyPill from "../../components/effects/ShinyPill";
-import { TASKS, TASK_LABELS } from "../../lib/api";
+import { TASKS, TASK_LABELS, TASK_SHORT_LABELS } from "../../lib/api";
 import { staggerContainer, fadeUpItem } from "../../lib/motion";
 
 export default function SimplePredict() {
@@ -47,7 +47,7 @@ export default function SimplePredict() {
                   transition={{ type: "spring", stiffness: 400, damping: 32 }}
                 />
               )}
-              <span className="relative z-10">{TASK_LABELS[t].split(" / ")[0]}</span>
+              <span className="relative z-10">{TASK_SHORT_LABELS[t]}</span>
             </button>
           ))}
         </motion.div>

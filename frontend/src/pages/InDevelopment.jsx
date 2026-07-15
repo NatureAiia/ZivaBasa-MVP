@@ -3,17 +3,11 @@ import { HardHat, ArrowLeft } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import ClarityRing from "../components/common/ClarityRing";
 import Button from "../components/common/Button";
-
-const NAMES = {
-  "ziva-bank": "ZivaBank",
-  "ziva-dataops": "ZivaDataOps",
-  "ziva-business": "ZivaBusiness",
-  "ziva-upskill": "ZivaUpskill",
-};
+import { MODELS } from "../components/layout/Sidebar";
 
 export default function InDevelopment() {
   const { slug } = useParams();
-  const name = NAMES[slug] || "This model";
+  const name = MODELS.find((m) => m.slug === slug)?.name || "This module";
 
   return (
     <div className="flex-1 flex items-center justify-center p-8">
@@ -30,9 +24,9 @@ export default function InDevelopment() {
         <div>
           <h1 className="font-display text-xl font-semibold text-ink">{name} is still in development</h1>
           <p className="mt-2 text-sm text-ink-muted leading-relaxed">
-            This model hasn't been wired up yet. ZivaBasa is the only fully functional model on
-            ChiedzaAI right now — everything else in the sidebar is a placeholder for what's coming
-            next.
+            This module hasn't been built yet. ZivaBasa is the only fully working module on
+            ChiedzaAI right now — everything else in the sidebar is a placeholder for what's
+            coming next.
           </p>
         </div>
         <Link to="/models/zivabasa">

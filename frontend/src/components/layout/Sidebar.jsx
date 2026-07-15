@@ -9,12 +9,11 @@ import ClarityRing from "../common/ClarityRing";
 import ThemeToggle from "./ThemeToggle";
 import ShinyPill from "../effects/ShinyPill";
 
-const MODELS = [
+export const MODELS = [
   { slug: "zivabasa", name: "ZivaBasa", tagline: "Workforce intelligence", live: true },
-  { slug: "ziva-bank", name: "ZivaBank", tagline: "Financial risk", live: false },
-  { slug: "ziva-dataops", name: "ZivaDataOps", tagline: "Data operations", live: false },
+  { slug: "ziva-dzidzo", name: "ZivaDzidzo", tagline: "Learning & skills growth", live: false },
   { slug: "ziva-business", name: "ZivaBusiness", tagline: "Business intelligence", live: false },
-  { slug: "ziva-upskill", name: "ZivaUpskill", tagline: "Learning & growth", live: false },
+  { slug: "ziva-upfumi", name: "ZivaUpfumi", tagline: "Financial intelligence", live: false },
 ];
 
 function NavItem({ to, icon: Icon, label, collapsed, end, onNavigate }) {

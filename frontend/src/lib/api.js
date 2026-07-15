@@ -81,8 +81,24 @@ export const api = {
 
 export const TASKS = ["employment", "skills", "productivity", "skill_match"];
 export const TASK_LABELS = {
-  employment: "Employment / Automation Risk",
-  skills: "Skills / Attrition",
-  productivity: "Productivity / AI Adoption",
-  skill_match: "Skill Match / Redeployment",
+  employment: "Job & Automation Risk",
+  skills: "Employee Turnover Risk",
+  productivity: "AI Impact on Productivity",
+  skill_match: "Job and Skill Matching",
+};
+// Short form for compact UI (tabs, pills, badges) — TASK_LABELS above is full-length for
+// headers/descriptions. Previously both jobs were done by one slash-joined string
+// ("Employment / Automation Risk") and callers did .split(" / ")[0] to get the short half;
+// that broke the moment the label stopped having a slash in it, so it's two real maps now.
+export const TASK_SHORT_LABELS = {
+  employment: "Automation Risk",
+  skills: "Turnover Risk",
+  productivity: "AI Productivity",
+  skill_match: "Skill Matching",
+};
+export const TASK_DESCRIPTIONS = {
+  employment: "Which roles are most at risk of being automated.",
+  skills: "Which employees are most likely to leave, and why.",
+  productivity: "How AI adoption is likely to change output per employee.",
+  skill_match: "Which staff are a strong fit for a different role, and why.",
 };
