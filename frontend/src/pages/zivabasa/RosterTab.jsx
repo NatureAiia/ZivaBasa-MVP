@@ -9,6 +9,8 @@ import EmptyState from "../../components/common/EmptyState";
 import ShapLedger from "../../components/predict/ShapLedger";
 import { staggerContainer, fadeUpItem, fadeScale } from "../../lib/motion";
 import { getBatchResult } from "../../lib/batchStore";
+import { getAssignments } from "../../lib/assignmentStore";
+import { SKILL_LABELS } from "../../lib/skillMatchClient";
 import { api } from "../../lib/api";
 import { formatPercent } from "../../lib/format";
 
@@ -27,9 +29,11 @@ export default function RosterTab() {
   const [explainCache, setExplainCache] = useState({});
   const [explaining, setExplaining] = useState(null);
   const [schema, setSchema] = useState(null);
+  const [approvedAssignments, setApprovedAssignments] = useState([]);
 
   useEffect(() => {
     setBatch(getBatchResult("skill_match"));
+    setApprovedAssignments(getAssignments().filter((a) => a.status === "approved"));
     api.schema("skill_match").then(setSchema).catch(() => {});
   }, []);
 
@@ -60,13 +64,13 @@ export default function RosterTab() {
     }
   };
 
-  if (!batch) {
+  if (!batch && approvedAssignments.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <EmptyState
           icon={Shuffle}
           title="No redeployment data yet"
-          description='Run a "skill_match" batch upload from Predict → Upload & Analyze to populate coverage and redeployment candidates here.'
+          description='Run a "skill_match" batch upload from Predict → Upload & Analyze, or approve a redeployment in My Organization, to populate this page.'
           action={
             <Link
               to="predict"
@@ -80,9 +84,6 @@ export default function RosterTab() {
     );
   }
 
-  const { aggregate, n_rows, by_segment } = batch;
-  const visible = candidates.slice(0, visibleCount);
-
   return (
     <div className="flex-1 overflow-y-auto">
       <motion.div
@@ -91,7 +92,42 @@ export default function RosterTab() {
         animate="show"
         className="p-6 max-w-5xl mx-auto w-full flex flex-col gap-5"
       >
-        {/* Coverage summary */}
+        {/* From My Organization — approved redeployment decisions, independent of batch data */}
+        {approvedAssignments.length > 0 && (
+          <Card animated={false} className="flex flex-col gap-3">
+            <div>
+              <h2 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold">
+                From My Organization
+              </h2>
+              <p className="text-xs text-ink-faint mt-1">
+                Redeployments you've already approved — what to move, and why.
+              </p>
+            </div>
+            <div className="flex flex-col divide-y divide-border">
+              {approvedAssignments.map((a) => (
+                <div key={a.id} className="py-3 first:pt-0 last:pb-0">
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-ink font-medium">{a.fromRole}</span>
+                    <span className="text-ink-faint">→</span>
+                    <span className="text-teal font-medium">{a.toRole}</span>
+                    <Badge tone="teal">{(a.cosineSimilarityScore * 100).toFixed(0)}% match</Badge>
+                  </div>
+                  {a.missingSkills?.length > 0 && (
+                    <p className="text-[11px] text-ink-faint mt-1">
+                      Needs training on: {a.missingSkills.map((s) => SKILL_LABELS[s] || s).join(", ")}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {batch && (() => {
+          const { aggregate, n_rows, by_segment } = batch;
+          const visible = candidates.slice(0, visibleCount);
+          return (
+            <>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card variants={fadeUpItem} className="flex items-center gap-4">
             <ClarityRing mode="confidence" value={aggregate.positive_rate} size={52} color="teal" />
@@ -236,10 +272,13 @@ export default function RosterTab() {
           )}
         </Card>
 
-        <p className="text-[11px] text-ink-faint leading-relaxed">
-          Redeployment fit is a model output on whatever roster/skills data you uploaded — a
-          starting shortlist for HR review, not an automatic reassignment decision.
-        </p>
+              <p className="text-[11px] text-ink-faint leading-relaxed">
+                Redeployment fit is a model output on whatever roster/skills data you uploaded — a
+                starting shortlist for HR review, not an automatic reassignment decision.
+              </p>
+            </>
+          );
+        })()}
       </motion.div>
     </div>
   );

@@ -8,6 +8,7 @@ import ClarityRing from "../../components/common/ClarityRing";
 import CorporateKPIGrid from "../../components/dashboard/CorporateKPIGrid";
 import DepartmentBreakdown from "../../components/dashboard/DepartmentBreakdown";
 import ChatUsageSummary from "../../components/dashboard/ChatUsageSummary";
+import FutureSkillsTable from "../../components/dashboard/FutureSkillsTable";
 import Typewriter from "../../components/effects/Typewriter";
 import ShinyPill from "../../components/effects/ShinyPill";
 import { staggerContainer, fadeUpItem } from "../../lib/motion";
@@ -91,6 +92,10 @@ export default function DashboardTab() {
         <motion.div variants={fadeUpItem}>
           <h2 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold mb-3">Corporate summary</h2>
           <CorporateKPIGrid />
+        </motion.div>
+
+        <motion.div variants={fadeUpItem}>
+          <FutureSkillsTable />
         </motion.div>
 
         <motion.div variants={fadeUpItem}>

@@ -9,6 +9,7 @@ import ChatTab from "./pages/zivabasa/ChatTab";
 import PredictTab from "./pages/zivabasa/PredictTab";
 import HistoryTab from "./pages/zivabasa/HistoryTab";
 import RosterTab from "./pages/zivabasa/RosterTab";
+import MyOrganizationTab from "./pages/zivabasa/MyOrganizationTab";
 import { MODELS } from "./components/layout/Sidebar";
 
 const OTHER_MODELS = MODELS.filter((m) => !m.live).map((m) => m.slug);
@@ -26,6 +27,7 @@ export default function App() {
           <Route path="predict" element={<PredictTab />} />
           <Route path="history" element={<HistoryTab />} />
           <Route path="roster" element={<RosterTab />} />
+          <Route path="my-organization" element={<MyOrganizationTab />} />
         </Route>
 
         {OTHER_MODELS.map((slug) => (
