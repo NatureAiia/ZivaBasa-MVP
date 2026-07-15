@@ -8,6 +8,7 @@ import { sendPuterChat, PUTER_MODELS } from "../../lib/puter";
 import { logUsage } from "../../lib/usageStore";
 import { estimateCostUsd } from "../../lib/chatPricing";
 import { downloadBlob } from "../../lib/report";
+import { getChatSession, saveChatSession, clearChatSession } from "../../lib/chatSessionStore";
 import ClarityRing from "../common/ClarityRing";
 
 const SUGGESTIONS = [
@@ -48,8 +49,9 @@ export default function ChatPane() {
   const [backendModels, setBackendModels] = useState([]);
   const [selection, setSelection] = useState({ mode: "puter", id: "anthropic/claude-sonnet-5" });
   const [menuOpen, setMenuOpen] = useState(false);
-  const [messages, setMessages] = useState([WELCOME_MESSAGE]);
-  const [toolCallLog, setToolCallLog] = useState([]); // for the Chat report's "predictions made" section
+  const initialSession = getChatSession();
+  const [messages, setMessages] = useState(initialSession.messages.length ? initialSession.messages : [WELCOME_MESSAGE]);
+  const [toolCallLog, setToolCallLog] = useState(initialSession.toolCallLog); // for the Chat report's "predictions made" section
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [downloadingReport, setDownloadingReport] = useState(false);
@@ -68,6 +70,10 @@ export default function ChatPane() {
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, sending]);
+
+  useEffect(() => {
+    saveChatSession(messages, toolCallLog);
+  }, [messages, toolCallLog]);
 
   const selectedLabel = () => {
     if (selection.mode === "backend") {
@@ -124,6 +130,7 @@ export default function ChatPane() {
     setMessages([WELCOME_MESSAGE]);
     setToolCallLog([]);
     setInput("");
+    clearChatSession();
   };
 
   const downloadChatReport = async () => {

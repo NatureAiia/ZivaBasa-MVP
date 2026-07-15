@@ -74,6 +74,24 @@ def _feature_label(name: str) -> str:
     return FEATURE_LABELS.get(name, name)
 
 
+def _add_table(doc: Document, headers: list[str], rows: list[list[str]]):
+    """A real Word table — header row bold with light shading, borders via the built-in
+    'Light Grid Accent 1' style rather than hand-rolling OOXML borders."""
+    table = doc.add_table(rows=1, cols=len(headers))
+    table.style = "Light Grid Accent 1"
+    hdr_cells = table.rows[0].cells
+    for i, h in enumerate(headers):
+        hdr_cells[i].text = h
+        for p in hdr_cells[i].paragraphs:
+            for run in p.runs:
+                run.bold = True
+    for row in rows:
+        cells = table.add_row().cells
+        for i, val in enumerate(row):
+            cells[i].text = str(val)
+    return table
+
+
 def _add_title(doc: Document, text: str, subtitle: Optional[str] = None):
     heading = doc.add_heading(text, level=0)
     heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
@@ -156,6 +174,17 @@ def build_predict_report(results: dict) -> bytes:
     if chart_rows:
         doc.add_heading("At a glance", level=1)
         doc.add_picture(_predictions_bar_chart(chart_rows), width=Inches(5.5))
+        doc.add_paragraph()
+        _add_table(
+            doc,
+            ["Prediction", "Result", "Score"],
+            [
+                [r["label"], "Flagged" if r["kind"] == "classification" and r["value"] >= 0.5 else
+                 ("Not flagged" if r["kind"] == "classification" else "Standardized score"),
+                 f"{r['value'] * 100:.1f}%" if r["kind"] == "classification" else f"{r['value']:.3f}"]
+                for r in chart_rows
+            ],
+        )
 
     for task, r in results.items():
         label = TASK_LABELS.get(task, task)
@@ -185,6 +214,15 @@ def build_predict_report(results: dict) -> bytes:
             doc.add_paragraph(
                 "Teal bars pushed the result up, red bars pushed it down — a longer bar means "
                 "a bigger effect on this specific prediction."
+            )
+            doc.add_paragraph()
+            _add_table(
+                doc,
+                ["Factor", "Effect"],
+                [
+                    [_feature_label(c["feature"]), f"{'+' if c['shap_value'] >= 0 else ''}{c['shap_value']:.3f}"]
+                    for c in explain["top_contributions"][:6]
+                ],
             )
 
     _add_disclaimer(
@@ -239,6 +277,17 @@ def build_chat_report(messages: list[dict], tool_calls: list[dict]) -> bytes:
                 rows.append({"label": label, "value": res.get("raw_output", 0), "kind": "regression"})
         if rows:
             doc.add_picture(_predictions_bar_chart(rows), width=Inches(5.5))
+            doc.add_paragraph()
+            _add_table(
+                doc,
+                ["Prediction", "Result", "Score"],
+                [
+                    [r["label"], "Flagged" if r["kind"] == "classification" and r["value"] >= 0.5 else
+                     ("Not flagged" if r["kind"] == "classification" else "Standardized score"),
+                     f"{r['value'] * 100:.1f}%" if r["kind"] == "classification" else f"{r['value']:.3f}"]
+                    for r in rows
+                ],
+            )
 
     doc.add_heading("Conversation", level=1)
     for m in messages:

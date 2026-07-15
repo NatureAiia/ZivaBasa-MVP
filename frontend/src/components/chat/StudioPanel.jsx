@@ -1,10 +1,11 @@
-import { FileDown, ChevronRight } from "lucide-react";
+import { FileDown, ChevronRight, MessageSquareText } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import clsx from "clsx";
 import { getHistory } from "../../lib/history";
 import { downloadBlob } from "../../lib/report";
 import { getAllBatchResults } from "../../lib/batchStore";
+import { getChatSession } from "../../lib/chatSessionStore";
 import { api } from "../../lib/api";
 import IndexCards from "../studio/IndexCards";
 import InteractionExplorer from "../studio/InteractionExplorer";
@@ -42,18 +43,34 @@ export default function StudioPanel() {
   const hasIndexData = Object.values(batches).some(Boolean);
   const hasInteractionData = Object.values(batches).some((b) => b?.rows?.length > 0);
   const hasRosterData = !!batches.skill_match;
-  const [downloading, setDownloading] = useState(false);
+  const chatSession = getChatSession();
+  const hasChatData = chatSession.messages.length > 0;
+  const [downloadingPredict, setDownloadingPredict] = useState(false);
+  const [downloadingChat, setDownloadingChat] = useState(false);
 
-  const handleGenerateReport = async () => {
+  const handleGeneratePredictReport = async () => {
     if (!latest) return;
-    setDownloading(true);
+    setDownloadingPredict(true);
     try {
       const blob = await api.predictReport(latest.results);
       downloadBlob(`zivabasa-predict-report-${Date.now()}.docx`, blob);
     } catch (e) {
       alert(`Couldn't generate report: ${e.message}`);
     } finally {
-      setDownloading(false);
+      setDownloadingPredict(false);
+    }
+  };
+
+  const handleGenerateChatReport = async () => {
+    if (!hasChatData) return;
+    setDownloadingChat(true);
+    try {
+      const blob = await api.chatReport(chatSession.messages, chatSession.toolCallLog);
+      downloadBlob(`zivabasa-chat-report-${Date.now()}.docx`, blob);
+    } catch (e) {
+      alert(`Couldn't generate report: ${e.message}`);
+    } finally {
+      setDownloadingChat(false);
     }
   };
 
@@ -62,18 +79,30 @@ export default function StudioPanel() {
       <h3 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold">Studio</h3>
 
       <StudioBlock
-        title="Predict report (Word)"
-        description={latest ? "Turns your latest prediction into a clean, shareable .docx with charts." : "Run a prediction first, then come back here."}
-        active={!!latest}
+        title="Reports (Word)"
+        description="Clean, shareable .docx reports with charts and tables — no raw data dumps."
+        active={!!latest || hasChatData}
       >
-        <button
-          onClick={handleGenerateReport}
-          disabled={!latest || downloading}
-          className="flex items-center gap-2 rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-left text-xs text-ink hover:bg-gold/15 transition-colors disabled:opacity-40 disabled:pointer-events-none w-fit"
-        >
-          <FileDown size={14} className="text-gold shrink-0" />
-          <span className="font-medium">{downloading ? "Generating…" : "Download Word report"}</span>
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleGeneratePredictReport}
+            disabled={!latest || downloadingPredict}
+            className="flex items-center gap-1.5 rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-left text-xs text-ink hover:bg-gold/15 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+            title={latest ? "Download your latest prediction as a Word report" : "Run a prediction first"}
+          >
+            <FileDown size={14} className="text-gold shrink-0" />
+            <span className="font-medium">{downloadingPredict ? "Generating…" : "Predict report"}</span>
+          </button>
+          <button
+            onClick={handleGenerateChatReport}
+            disabled={!hasChatData || downloadingChat}
+            className="flex items-center gap-1.5 rounded-lg border border-teal/30 bg-teal/10 px-3 py-2 text-left text-xs text-ink hover:bg-teal/15 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+            title={hasChatData ? "Download this conversation as a Word report" : "Send a chat message first"}
+          >
+            <MessageSquareText size={14} className="text-teal shrink-0" />
+            <span className="font-medium">{downloadingChat ? "Generating…" : "Chat report"}</span>
+          </button>
+        </div>
       </StudioBlock>
 
       <Link to="roster" className="block">
