@@ -181,7 +181,7 @@ def explain(task: str, request: PredictRequest, top_k: int = 10):
 # the task's own required features (both employment and skills already require a salary-like
 # field as a model input, so no extra column is needed from the upload beyond the model's own
 # required features).
-_VALUE_COLUMN = {"employment": "avg_salary_usd", "skills": "MonthlyIncome"}
+_VALUE_COLUMN = {"employment": "avg_salary_usd", "skills": "MonthlyIncome", "skill_match": "avg_salary_usd"}
 
 
 @app.post("/predict/batch/{task}")

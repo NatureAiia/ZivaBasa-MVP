@@ -204,6 +204,28 @@ def add_ratio_index_features(df: Optional[pd.DataFrame], task_name: str) -> Opti
             "Min-max normalized AI adoption level, 0-1 scale.",
         )
 
+    if task_name == "skill_match" and {"current_skills", "required_skills"}.issubset(df.columns):
+        from . import skill_matching
+        df = skill_matching.add_skill_match_features(df)
+        _log_feature(
+            "cosine_similarity_score", "index", "skill_match",
+            ["current_skills", "required_skills"],
+            "Cosine similarity between the staff member's current skill-tag vector and the "
+            "target role's required skill-tag vector, ported from FFIMS SWS's "
+            "matchDriversToTask()/cosineSimilarity() (originally TypeScript, frontend-only).",
+        )
+        _log_feature(
+            "skill_overlap_count", "index", "skill_match",
+            ["current_skills", "required_skills"],
+            "Count of required skills the staff member already has.",
+        )
+        _log_feature(
+            "missing_skill_count", "index", "skill_match",
+            ["current_skills", "required_skills"],
+            "Count of required skills the staff member does not yet have — the direct input "
+            "to a 'what training closes this gap' recommendation.",
+        )
+
     return df
 
 
@@ -232,6 +254,15 @@ def add_interaction_features(df: Optional[pd.DataFrame], task_name: str) -> Opti
             ["automation_exposure_index", "skill_complexity_score"],
             "Automation exposure weighted by skill complexity — higher skill complexity may "
             "offset raw automation exposure (harder to fully automate complex skill sets).",
+        )
+
+    if task_name == "skill_match" and {"skill_overlap_count", "recent_training_hours"}.issubset(df.columns):
+        df["overlap_x_training"] = df["skill_overlap_count"] * df["recent_training_hours"]
+        _log_feature(
+            "overlap_x_training", "interaction", "skill_match",
+            ["skill_overlap_count", "recent_training_hours"],
+            "Existing skill overlap weighted by recent training investment — proxy for how "
+            "quickly a partial match is likely to close the remaining gap.",
         )
 
     return df
@@ -330,6 +361,16 @@ def define_target(df: Optional[pd.DataFrame], task_name: str) -> Optional[pd.Dat
         _log_feature(
             "target_ai_adoption", "target", "productivity", ["ai_adoption_index"],
             "Regression target — normalized AI adoption level.",
+        )
+
+    if task_name == "skill_match" and "cosine_similarity_score" in df.columns:
+        threshold = df["cosine_similarity_score"].quantile(0.75)
+        df["target_good_redeployment_match"] = (df["cosine_similarity_score"] > threshold).astype(int)
+        _log_feature(
+            "target_good_redeployment_match", "target", "skill_match",
+            ["cosine_similarity_score"],
+            f"1 if cosine_similarity_score above 75th percentile ({threshold:.3f}) — same "
+            "quantile-threshold pattern as employment's target_high_automation_risk.",
         )
 
     return df

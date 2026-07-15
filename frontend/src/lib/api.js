@@ -79,10 +79,10 @@ export const api = {
     }),
 };
 
-export const TASKS = ["employment", "skills", "productivity"];
+export const TASKS = ["employment", "skills", "productivity", "skill_match"];
 export const TASK_LABELS = {
   employment: "Employment / Automation Risk",
   skills: "Skills / Attrition",
   productivity: "Productivity / AI Adoption",
+  skill_match: "Skill Match / Redeployment",
 };
-export const NEXT_TASK_LABEL = { employment: "Skills", skills: "Productivity" };

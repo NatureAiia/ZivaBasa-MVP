@@ -32,11 +32,13 @@ LABEL_CANDIDATES = {
     "employment": ["job_role", "role", "title"],
     "skills": ["JobRole", "jobrole", "job_role", "EmployeeNumber"],
     "productivity": ["job_role", "job_id", "role"],
+    "skill_match": ["staff_id", "target_role", "current_role"],
 }
 SEGMENT_CANDIDATES = {
     "employment": ["industry", "department", "Department"],
     "skills": ["Department", "department"],
     "productivity": ["industry", "country"],
+    "skill_match": ["target_department", "department"],
 }
 
 

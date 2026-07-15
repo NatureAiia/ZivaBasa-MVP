@@ -141,14 +141,93 @@ export const FIELD_META = {
     min: 0, max: 100, step: 1,
     group: "Core",
   },
+
+  // ---- Skill Match / Redeployment ------------------------------------------
+  seniority_years: {
+    label: "Staff Seniority",
+    tooltip: "Years this staff member has been with the bank.",
+    type: "slider",
+    min: 0, max: 35, step: 0.5, unit: "yrs",
+    group: "Staff Profile",
+  },
+  recent_training_hours: {
+    label: "Recent Training Hours",
+    tooltip: "Formal training hours completed in the last 12 months.",
+    type: "slider",
+    min: 0, max: 80, step: 1, unit: "hrs",
+    group: "Staff Profile",
+  },
+  recent_ot_hours: {
+    label: "Recent Overtime Hours",
+    tooltip: "Overtime hours worked recently — lower values, with higher seniority, rank higher in fairness-based redeployment ordering.",
+    type: "slider",
+    min: 0, max: 40, step: 1, unit: "hrs",
+    group: "Redeployment Match",
+  },
+  skill_overlap_count: {
+    label: "Matching Skills",
+    tooltip: "How many of the target role's required skills this staff member already has.",
+    type: "slider",
+    min: 0, max: 15, step: 1,
+    group: "Redeployment Match",
+  },
+  missing_skill_count: {
+    label: "Skill Gaps",
+    tooltip: "How many of the target role's required skills this staff member still needs.",
+    type: "slider",
+    min: 0, max: 15, step: 1,
+    group: "Redeployment Match",
+  },
+  overlap_x_training: {
+    label: "Overlap × Training Interaction",
+    derived: true,
+    compute: (v) => (v.skill_overlap_count ?? 0) * (v.recent_training_hours ?? 0),
+    explain: "Auto-calculated: existing skill overlap weighted by recent training investment — no separate input needed.",
+  },
+};
+
+// performance_rating and avg_salary_usd are shared raw column names across multiple tasks
+// (skills' PerformanceRating/MonthlyIncome are differently-cased and don't collide, but
+// skill_match's synthetic fixture reuses these exact lowercase names) with different scales
+// and meanings per task — a single flat FIELD_META entry can't serve both correctly, so
+// task-scoped overrides win over the flat dict. Add here, not above, if a future task
+// introduces another same-named-different-meaning column.
+export const FIELD_META_OVERRIDES = {
+  skill_match: {
+    performance_rating: {
+      label: "Performance Rating",
+      tooltip: "Most recent formal performance review rating.",
+      type: "select",
+      group: "Staff Profile",
+      options: [
+        { value: 1, label: "1 — Needs Improvement" },
+        { value: 2, label: "2 — Meets Expectations" },
+        { value: 3, label: "3 — Exceeds Expectations" },
+        { value: 4, label: "4 — Outstanding" },
+        { value: 5, label: "5 — Exceptional" },
+      ],
+    },
+    avg_salary_usd: {
+      label: "Current Monthly Salary",
+      tooltip: "Staff member's current gross monthly salary, in USD.",
+      type: "currency",
+      min: 150, max: 3000, step: 50,
+      group: "Staff Profile",
+    },
+  },
 };
 
 export const GROUP_ORDER = {
   employment: ["Role Economics", "AI Exposure", "Skill Requirements"],
   skills: ["Demographics", "Engagement", "Development"],
   productivity: ["Core"],
+  skill_match: ["Staff Profile", "Redeployment Match"],
 };
 
-export function metaFor(name) {
-  return FIELD_META[name] || { label: name, tooltip: "", type: "number", min: 0, max: 100, step: 1, group: "Other" };
+export function metaFor(name, task) {
+  const override = task && FIELD_META_OVERRIDES[task]?.[name];
+  return (
+    override ||
+    FIELD_META[name] || { label: name, tooltip: "", type: "number", min: 0, max: 100, step: 1, group: "Other" }
+  );
 }

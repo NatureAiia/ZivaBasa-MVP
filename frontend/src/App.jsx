@@ -8,6 +8,7 @@ import DashboardTab from "./pages/zivabasa/DashboardTab";
 import ChatTab from "./pages/zivabasa/ChatTab";
 import PredictTab from "./pages/zivabasa/PredictTab";
 import HistoryTab from "./pages/zivabasa/HistoryTab";
+import RosterTab from "./pages/zivabasa/RosterTab";
 
 const OTHER_MODELS = ["ziva-bank", "ziva-dataops", "ziva-business", "ziva-upskill"];
 
@@ -23,6 +24,7 @@ export default function App() {
           <Route path="chat" element={<ChatTab />} />
           <Route path="predict" element={<PredictTab />} />
           <Route path="history" element={<HistoryTab />} />
+          <Route path="roster" element={<RosterTab />} />
         </Route>
 
         {OTHER_MODELS.map((slug) => (

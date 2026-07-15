@@ -4,6 +4,8 @@
   corporate dashboard's big numbers: upload a CSV once per task, the resulting aggregate
   sticks around until the next upload.
 */
+import { TASKS } from "./api";
+
 const KEY_PREFIX = "zivabasa-batch:";
 
 export function saveBatchResult(task, result) {
@@ -20,11 +22,7 @@ export function getBatchResult(task) {
 }
 
 export function getAllBatchResults() {
-  return {
-    employment: getBatchResult("employment"),
-    skills: getBatchResult("skills"),
-    productivity: getBatchResult("productivity"),
-  };
+  return Object.fromEntries(TASKS.map((t) => [t, getBatchResult(t)]));
 }
 
 export function clearBatchResult(task) {

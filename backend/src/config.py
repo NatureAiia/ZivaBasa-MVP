@@ -95,6 +95,29 @@ TASK_CONFIGS: Dict[str, TaskConfig] = {
         drop_cols=["target_ai_adoption", "ai_adoption_level", "ai_adoption_index"],
         loss_weight=1.0,
     ),
+    "skill_match": TaskConfig(
+        name="skill_match",
+        raw_filename="bank_skill_matching.csv",
+        target="target_good_redeployment_match",
+        task_type="classification",
+        # Synthetic banking-sector fixture (Shift Intelligence integration) — see
+        # scripts/generate_skill_match_fixture.py and src/skill_matching.py for provenance.
+        # current_skills/required_skills are free-text skill-tag lists; they're consumed into
+        # numeric cosine_similarity_score / skill_overlap_count / missing_skill_count by
+        # add_skill_match_features() in features.py and dropped before modeling, same as any
+        # other raw_cols entry that only exists to feed a derived feature.
+        raw_cols=["department", "current_role", "target_department", "target_role",
+                  "current_skills", "required_skills", "seniority_years",
+                  "recent_training_hours", "performance_rating", "avg_salary_usd",
+                  "recent_ot_hours"],
+        # cosine_similarity_score is dropped too, not just the target — same leakage logic as
+        # employment's automation_risk_score: target_good_redeployment_match is a direct
+        # quantile threshold of cosine_similarity_score, so leaving it in the modeling matrix
+        # would let the model trivially memorize the threshold instead of learning from the
+        # underlying staff/role features.
+        drop_cols=["target_good_redeployment_match", "cosine_similarity_score"],
+        loss_weight=1.0,
+    ),
 }
 
 TASK_NAMES = list(TASK_CONFIGS.keys())

@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Users, TrendingDown, TrendingUp, Upload, GraduationCap } from "lucide-react";
+import { Users, TrendingDown, TrendingUp, Upload, Shuffle } from "lucide-react";
 import { Link } from "react-router-dom";
 import Card from "../common/Card";
 import Badge from "../common/Badge";
@@ -20,11 +20,11 @@ function EmptyKPICard({ icon: Icon, title }) {
 }
 
 export default function CorporateKPIGrid() {
-  const { employment, skills, productivity } = getAllBatchResults();
+  const { employment, skills, productivity, skill_match: skillMatch } = getAllBatchResults();
 
   return (
     <motion.div variants={staggerContainer} initial="hidden" animate="show" className="flex flex-col gap-4">
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {employment ? (
           <Card variants={fadeUpItem} className="flex flex-col gap-2">
             <TrendingDown size={16} className="text-red" />
@@ -73,25 +73,34 @@ export default function CorporateKPIGrid() {
         ) : (
           <EmptyKPICard icon={TrendingUp} title="Productivity signal" />
         )}
-      </div>
 
-      <Card animated={false} className="flex items-center gap-3 border-dashed opacity-70">
-        <GraduationCap size={16} className="text-ink-faint shrink-0" />
-        <div className="flex-1">
-          <span className="text-xs font-medium text-ink">Skills gap recommendations</span>
-          <p className="text-[11px] text-ink-faint">
-            Not built yet — this needs a recommendation engine mapping risk + current skills to
-            specific training paths (roadmap Day 10). Right now you get attrition risk, not
-            what to do about it.
-          </p>
-        </div>
-        <Badge tone="neutral">Coming soon</Badge>
-      </Card>
+        {skillMatch ? (
+          <Card variants={fadeUpItem} className="flex flex-col gap-2">
+            <Shuffle size={16} className="text-teal" />
+            <span className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold">Redeployment matches</span>
+            <span className="font-mono text-3xl font-semibold text-ink">{skillMatch.aggregate.positive_count}</span>
+            <span className="text-xs text-ink-muted">
+              {formatPercent(skillMatch.aggregate.positive_rate)} of {skillMatch.n_rows} staff-to-role pairs are strong matches
+            </span>
+            {skillMatch.aggregate.value_at_risk != null && (
+              <Badge tone="teal" className="w-fit mt-1">
+                ~${skillMatch.aggregate.value_at_risk.toLocaleString(undefined, { maximumFractionDigits: 0 })} redeployable payroll
+              </Badge>
+            )}
+            <Link to="roster" className="text-[11px] text-gold hover:brightness-110 mt-1">
+              View candidates →
+            </Link>
+          </Card>
+        ) : (
+          <EmptyKPICard icon={Shuffle} title="Redeployment matches" />
+        )}
+      </div>
 
       <p className="text-[11px] text-ink-faint leading-relaxed">
         These are model outputs on whatever you upload, scaled by dollar values already present
         in your data (e.g. salary/income columns) — not verified real-world financial figures.
-        No model here predicts "jobs created" — only automation/attrition risk on what you upload.
+        No model here predicts "jobs created" — only automation/attrition/redeployment-fit risk
+        on what you upload.
       </p>
     </motion.div>
   );

@@ -8,7 +8,7 @@ import PredictionResult from "../../components/predict/PredictionResult";
 import ShapLedger from "../../components/predict/ShapLedger";
 import OverallSummary from "../../components/predict/OverallSummary";
 import { usePredictionFlow } from "../../hooks/usePredictionFlow";
-import { TASKS, TASK_LABELS, NEXT_TASK_LABEL } from "../../lib/api";
+import { TASKS, TASK_LABELS } from "../../lib/api";
 import { fadeScale } from "../../lib/motion";
 import { logHistoryEntry } from "../../lib/history";
 
@@ -38,6 +38,10 @@ export default function AdvancedPredict() {
     const idx = TASKS.indexOf(activeTask);
     setActiveTask(idx === TASKS.length - 1 ? "summary" : TASKS[idx + 1]);
   };
+  const isLastTask = TASKS.indexOf(activeTask) === TASKS.length - 1;
+  const nextTaskLabel = isLastTask
+    ? null
+    : TASK_LABELS[TASKS[TASKS.indexOf(activeTask) + 1]].split(" / ")[0];
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -140,7 +144,7 @@ export default function AdvancedPredict() {
                         onClick={goNext}
                         className="flex items-center gap-1.5 text-xs font-medium text-gold hover:brightness-110 transition-all"
                       >
-                        {activeTask === "productivity" ? "View overall summary" : `Continue to ${NEXT_TASK_LABEL[activeTask]}`}
+                        {isLastTask ? "View overall summary" : `Continue to ${nextTaskLabel}`}
                         <ArrowRight size={13} />
                       </button>
                     </div>

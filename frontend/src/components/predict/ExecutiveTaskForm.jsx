@@ -51,7 +51,7 @@ export default function ExecutiveTaskForm({ task, schema, initialValues, onPredi
     if (!schema) return;
     const next = {};
     schema.feature_names.forEach((name, i) => {
-      const meta = metaFor(name);
+      const meta = metaFor(name, task);
       next[name] = meta.derived ? undefined : (initialValues?.[i] ?? meta.min ?? 0);
     });
     setValues(next);
@@ -70,15 +70,15 @@ export default function ExecutiveTaskForm({ task, schema, initialValues, onPredi
 
   const buildOrderedValues = () =>
     schema.feature_names.map((name) => {
-      const meta = metaFor(name);
+      const meta = metaFor(name, task);
       if (meta.derived) return meta.compute(values);
       return values[name] ?? 0;
     });
 
-  const visibleNames = schema.feature_names.filter((n) => !metaFor(n).derived);
-  const derivedNames = schema.feature_names.filter((n) => metaFor(n).derived);
-  const groups = (GROUP_ORDER[task] || []).filter((g) => visibleNames.some((n) => metaFor(n).group === g));
-  const ungrouped = visibleNames.filter((n) => !groups.includes(metaFor(n).group));
+  const visibleNames = schema.feature_names.filter((n) => !metaFor(n, task).derived);
+  const derivedNames = schema.feature_names.filter((n) => metaFor(n, task).derived);
+  const groups = (GROUP_ORDER[task] || []).filter((g) => visibleNames.some((n) => metaFor(n, task).group === g));
+  const ungrouped = visibleNames.filter((n) => !groups.includes(metaFor(n, task).group));
 
   return (
     <div className="flex flex-col gap-5">
@@ -87,9 +87,9 @@ export default function ExecutiveTaskForm({ task, schema, initialValues, onPredi
           <motion.div key={group} variants={fadeUpItem} className="flex flex-col gap-3">
             <h3 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold">{group}</h3>
             {visibleNames
-              .filter((n) => (metaFor(n).group || "Other") === group)
+              .filter((n) => (metaFor(n, task).group || "Other") === group)
               .map((name) => {
-                const meta = metaFor(name);
+                const meta = metaFor(name, task);
                 return (
                   <div key={name} className="flex flex-col gap-1.5">
                     <label className="flex items-center gap-1.5 text-xs font-medium text-ink" title={meta.tooltip}>
@@ -106,7 +106,7 @@ export default function ExecutiveTaskForm({ task, schema, initialValues, onPredi
         {derivedNames.length > 0 && (
           <motion.div variants={fadeUpItem} className="flex flex-col gap-1.5 rounded-xl border border-dashed border-border px-3 py-2.5">
             <span className="text-[11px] text-ink-faint">
-              {derivedNames.map((n) => metaFor(n).label).join(" & ")} calculated automatically from the fields above — no separate input needed.
+              {derivedNames.map((n) => metaFor(n, task).label).join(" & ")} calculated automatically from the fields above — no separate input needed.
             </span>
           </motion.div>
         )}
