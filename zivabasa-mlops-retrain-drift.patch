@@ -1,3 +1,74 @@
+diff --git a/.github/workflows/scheduled-retrain.yml b/.github/workflows/scheduled-retrain.yml
+new file mode 100644
+index 0000000..92328cb
+--- /dev/null
++++ b/.github/workflows/scheduled-retrain.yml
+@@ -0,0 +1,65 @@
++# Scheduled retraining + drift-baseline refresh for the ZivaBasa 4-task pipeline.
++#
++# WHAT THIS DOES AND DOESN'T DO, HONESTLY: this reruns backend/scripts/retrain_and_promote.py
++# against whatever CSVs currently live in backend/data/raw/ inside the repo. It is NOT wired
++# to any live data warehouse or production traffic — this project doesn't have one yet. What
++# it buys you: if you refresh those CSVs (a new Kaggle export, real data later), the next
++# scheduled run picks it up automatically and gates promotion on the metrics comparison in
++# retrain_and_promote.py, instead of someone remembering to retrain by hand. It also refreshes
++# the drift baselines every promoted run, so batch-upload drift checks (see src/drift.py)
++# stay meaningful over time rather than comparing against a snapshot from months ago.
++#
++# On promotion, the job commits the updated models/ + data/processed/ + drift_baselines back
++# to the branch and uploads the run's retrain report as a build artifact either way (promoted
++# or not) so a blocked promotion is visible in the Actions tab, not just a silent no-op.
++name: Scheduled retrain
++
++on:
++  schedule:
++    # Weekly, Monday 03:00 UTC — arbitrary but deliberate: off-hours, and frequent enough to
++    # catch a refreshed dataset without retraining on every trivial repo change.
++    - cron: "0 3 * * 1"
++  workflow_dispatch: {}  # manual trigger from the Actions tab, e.g. right after refreshing data/raw/
++
++jobs:
++  retrain:
++    runs-on: ubuntu-latest
++    defaults:
++      run:
++        working-directory: backend
++    steps:
++      - uses: actions/checkout@v4
++
++      - uses: actions/setup-python@v5
++        with:
++          python-version: "3.12"
++
++      - name: Install backend dependencies
++        run: pip install -r requirements.txt
++
++      - name: Run retrain-and-promote
++        id: retrain
++        run: python scripts/retrain_and_promote.py
++        continue-on-error: true  # a blocked (non-promoted) run is a normal, expected outcome —
++                                  # the job should still upload the report and commit nothing,
++                                  # not go red for a working gate doing its job.
++
++      - name: Upload retrain report
++        uses: actions/upload-artifact@v4
++        with:
++          name: retrain-report
++          path: backend/models/retrain_reports/*.json
++
++      - name: Commit promoted models, if any
++        run: |
++          git config user.name "zivabasa-mlops-bot"
++          git config user.email "actions@github.com"
++          git add models/ data/processed/
++          git diff --cached --quiet || git commit -m "chore(mlops): scheduled retrain promotion [skip ci]"
++          git diff --cached --quiet || git push
++
++      - name: Fail the job if the gate blocked promotion
++        if: steps.retrain.outcome == 'failure'
++        run: |
++          echo "Retrain ran but did NOT promote — see the retrain-report artifact for gate_reasons."
++          exit 1
 diff --git a/README.md b/README.md
 index 43d15f7..97ad6fb 100644
 --- a/README.md
@@ -41,21 +112,84 @@ index 43d15f7..97ad6fb 100644
  `backend/data/processed/` produced by the previous one — do not skip 02 (feature engineering)
  before running 03 or 04.
 diff --git a/backend/api/main.py b/backend/api/main.py
-index cb54786..e1e868b 100644
+index cb54786..4da8a29 100644
 --- a/backend/api/main.py
 +++ b/backend/api/main.py
-@@ -39,6 +39,7 @@ from api.model_registry import registry
+@@ -19,6 +19,7 @@ meant to prove the trained multi-task model + SHAP pipeline can actually be serv
+ from __future__ import annotations
+ 
+ import logging
++import os
+ from contextlib import asynccontextmanager
+ 
+ from dotenv import load_dotenv
+@@ -39,7 +40,10 @@ from api.model_registry import registry
  from api import batch as batch_module
  from api import chat as chat_module
  from api import reports as reports_module
 +from api import org_extract as org_extract_module
  from src import evaluate
++from src import config as src_config
++from src import drift as drift_module
  
  logging.basicConfig(level=logging.INFO, format="%(levelname)s [%(name)s] %(message)s")
-@@ -250,6 +251,37 @@ async def chat(request: ChatRequest):
+ logger = logging.getLogger(__name__)
+@@ -217,6 +221,24 @@ async def predict_batch(task: str, file: UploadFile = File(...)):
+         artifacts.task_type, parsed["label_col"],
+     )
+ 
++    # Drift check — how different is THIS upload from what the currently-live model was
++    # trained on? See src/drift.py for why PSI and why this is the one place it's checked
++    # (batch upload is the only place external data enters the running system today).
++    # Compared in the SAME standardized (scaled) feature space the baseline was built in —
++    # features.run_pipeline() scales-and-persists training data before it's saved, so
++    # splits["X_train"] (what the baseline is built from) is already z-scored, not raw. Using
++    # X_scaled here (not parsed["feature_matrix"], which is still in raw upload units) keeps
++    # both sides of the comparison in the same units; comparing raw vs. scaled would report
++    # enormous spurious "drift" on every upload regardless of any real distribution shift.
++    # Baseline may not exist yet if the live models predate this feature or haven't gone
++    # through scripts/retrain_and_promote.py — absence is reported honestly, not silently.
++    baseline_path = os.path.join(src_config.MODELS_DIR, "drift_baselines", f"{task}_baseline.json")
++    baseline = drift_module.load_baseline(baseline_path)
++    if baseline is not None:
++        drift_report = drift_module.compute_drift_report(baseline, X_scaled, artifacts.feature_names)
++    else:
++        drift_report = {"available": False, "reason": "No drift baseline saved for this task yet — run scripts/retrain_and_promote.py at least once."}
++
+     return {
+         "task": task,
+         "task_type": artifacts.task_type,
+@@ -229,6 +251,7 @@ async def predict_batch(task: str, file: UploadFile = File(...)):
+         "by_segment": by_segment,
+         "top_rows": top_risk,
+         "rows": rows,
++        "drift": drift_report,
+     }
+ 
+ 
+@@ -250,6 +273,56 @@ async def chat(request: ChatRequest):
      return ChatResponse(**result)
  
  
++@app.get("/mlops/status")
++async def mlops_status():
++    reports_dir = os.path.join(src_config.MODELS_DIR, "retrain_reports")
++    latest_report = None
++    if os.path.isdir(reports_dir):
++        report_files = sorted(os.listdir(reports_dir))
++        if report_files:
++            import json
++            with open(os.path.join(reports_dir, report_files[-1])) as f:
++                latest_report = json.load(f)
++
++    baselines_dir = os.path.join(src_config.MODELS_DIR, "drift_baselines")
++    baselines_present = []
++    if os.path.isdir(baselines_dir):
++        baselines_present = [f.replace("_baseline.json", "") for f in os.listdir(baselines_dir) if f.endswith("_baseline.json")]
++
++    return {"latest_retrain_report": latest_report, "drift_baselines_available_for": baselines_present}
++
++
 +@app.get("/organization/extract/providers")
 +async def org_extract_providers():
 +    return {"providers": org_extract_module.available_vision_providers()}
@@ -270,6 +404,404 @@ index 0000000..0b1fdd0
 +            warnings.append(f'"{r["title"]}" reports to "{r["reports_to"]}", which wasn\'t extracted as its own role.')
 +
 +    return {"provider": resolved, "roles": roles, "warnings": warnings}
+diff --git a/backend/requirements.txt b/backend/requirements.txt
+index 27c973e..6d82486 100644
+--- a/backend/requirements.txt
++++ b/backend/requirements.txt
+@@ -44,4 +44,7 @@ python-multipart==0.0.9  # required by FastAPI's UploadFile/File() — used by t
+                           # upload endpoint (/predict/batch/{task})
+ httpx==0.27.0             # async HTTP client used by api/chat.py to call Anthropic/NVIDIA
+ 
+-heyputer/puter.js
++# NOTE: Puter.js (the free/keyless DeepSeek chat option) is a frontend-only <script> include
++# (https://js.puter.com/v2/) — not a Python package, and was previously an invalid line here
++# ("heyputer/puter.js") that broke `pip install -r requirements.txt` outright. See
++# frontend/src/lib/puter.js for the actual integration.
+diff --git a/backend/scripts/retrain_and_promote.py b/backend/scripts/retrain_and_promote.py
+new file mode 100644
+index 0000000..e31847b
+--- /dev/null
++++ b/backend/scripts/retrain_and_promote.py
+@@ -0,0 +1,161 @@
++"""
++retrain_and_promote.py — scheduled retraining with a quality gate, for the ZivaBasa 4-task
++pipeline (employment/skills/productivity/skill_match).
++
++WHAT THIS ACTUALLY DOES, HONESTLY: this MVP has no live production data feed — the "raw" data
++is a fixed set of Kaggle/synthetic CSVs checked into data/raw/. So "scheduled retraining" here
++means: re-run the full feature + training pipeline against whatever is currently in data/raw/
++(so if you *do* refresh those files — a new Kaggle export, real bank data later — this is the
++mechanism that picks it up), on a schedule (see .github/workflows/scheduled-retrain.yml),
++gated so a worse model never silently replaces a better one already live. This is NOT
++continuous learning from live traffic; nothing here claims that.
++
++SAFETY DESIGN — why a subprocess and a candidate directory, not just "retrain in place":
++Training writes directly into config.MODELS_DIR / config.PROCESSED_DIR as a side effect
++(scale_numeric() saves the scaler as it fits it, trainer.save() writes model weights) — there
++is no in-memory-only training mode in this codebase. Retraining in place would mean the live,
++currently-serving models are being overwritten *while still serving requests*, before anyone
++has checked whether the new model is actually better. Instead:
++  1. Copy data/raw/ into an isolated candidate project root.
++  2. Run retrain_worker.py as a SEPARATE PROCESS with ZIVABASA_PROJECT_ROOT pointed at that
++     candidate root (config.py resolves every path from that env var at import time) — so the
++     candidate run cannot touch the live models/scalers no matter what it does.
++  3. Compare the candidate's metrics.json against the live models/metrics.json.
++  4. Only if every task clears its regression-tolerance gate: back up the live models/ dir,
++     then move (not copy) the candidate's models/ and data/processed/ into place. Atomic-ish —
++     a filesystem move, not a slow per-file overwrite the API could read mid-write.
++  5. Otherwise: leave the live model exactly as it was, exit non-zero (fails a CI job loudly
++     instead of silently shipping a regression).
++
++Run from backend/: `python scripts/retrain_and_promote.py`
++Env: ZIVABASA_FAST_TRAIN=1 for a quick CI/demo run (fewer epochs) — see the worker's use of
++config.MODEL_CONFIG; for a real scheduled run, leave unset to use the full production config.
++"""
++from __future__ import annotations
++
++import json
++import os
++import shutil
++import subprocess
++import sys
++import time
++
++BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
++sys.path.insert(0, BACKEND_DIR)
++
++from src import config  # noqa: E402  (live project root — default, no env var override here)
++
++PRIMARY_METRIC = {"classification": "roc_auc", "regression": "r2"}
++# Absolute drop tolerated before a task blocks promotion — deliberately conservative (0.02) so
++# small run-to-run variance from a different random split doesn't block a real improvement,
++# but a genuinely worse model still gets caught.
++REGRESSION_TOLERANCE = 0.02
++
++
++def _run_worker(candidate_root: str) -> None:
++    env = os.environ.copy()
++    env["ZIVABASA_PROJECT_ROOT"] = candidate_root
++    worker = os.path.join(BACKEND_DIR, "scripts", "retrain_worker.py")
++    result = subprocess.run([sys.executable, worker], env=env, cwd=BACKEND_DIR)
++    if result.returncode != 0:
++        raise RuntimeError(f"retrain_worker.py failed (exit {result.returncode}) — see output above.")
++
++
++def _load_metrics(models_dir: str) -> dict:
++    path = os.path.join(models_dir, "metrics.json")
++    if not os.path.exists(path):
++        return {}
++    with open(path) as f:
++        return json.load(f)
++
++
++def _gate(old_metrics: dict, new_metrics: dict) -> tuple[bool, list[str]]:
++    """Returns (should_promote, reasons). No old_metrics at all (first-ever run) -> promote
++    automatically, there's nothing to regress against."""
++    if not old_metrics:
++        return True, ["no existing production metrics — first run, promoting unconditionally"]
++
++    reasons = []
++    ok = True
++    for task_name, cfg in config.TASK_CONFIGS.items():
++        metric_key = PRIMARY_METRIC[cfg.task_type]
++        old_val = old_metrics.get(task_name, {}).get(metric_key)
++        new_val = new_metrics.get(task_name, {}).get(metric_key)
++        if old_val is None or new_val is None:
++            reasons.append(f"[{task_name}] missing '{metric_key}' in old or new metrics — treating as a gate failure, not skipping silently.")
++            ok = False
++            continue
++        delta = new_val - old_val
++        verdict = "OK" if delta >= -REGRESSION_TOLERANCE else "REGRESSION"
++        reasons.append(f"[{task_name}] {metric_key}: {old_val:.4f} -> {new_val:.4f} ({delta:+.4f}) [{verdict}]")
++        if verdict == "REGRESSION":
++            ok = False
++    return ok, reasons
++
++
++def main():
++    timestamp = time.strftime("%Y%m%d-%H%M%S")
++    candidate_root = os.path.join(config.PROJECT_ROOT, ".retrain_candidate")
++    if os.path.exists(candidate_root):
++        shutil.rmtree(candidate_root)
++    os.makedirs(candidate_root)
++
++    print(f"[retrain_and_promote] candidate root: {candidate_root}")
++    shutil.copytree(config.RAW_DIR, os.path.join(candidate_root, "data", "raw"))
++
++    print("[retrain_and_promote] running candidate training in an isolated subprocess...")
++    _run_worker(candidate_root)
++
++    candidate_models_dir = os.path.join(candidate_root, "models")
++    new_metrics = _load_metrics(candidate_models_dir)
++    old_metrics = _load_metrics(config.MODELS_DIR)
++
++    should_promote, reasons = _gate(old_metrics, new_metrics)
++    print("[retrain_and_promote] gate results:")
++    for r in reasons:
++        print(f"  {r}")
++
++    report = {
++        "timestamp": timestamp,
++        "promoted": should_promote,
++        "gate_reasons": reasons,
++        "old_metrics": old_metrics,
++        "new_metrics": new_metrics,
++    }
++
++    if should_promote:
++        backup_dir = os.path.join(config.PROJECT_ROOT, f"models_backup_{timestamp}")
++        if os.path.exists(config.MODELS_DIR):
++            print(f"[retrain_and_promote] backing up live models/ -> {os.path.basename(backup_dir)}")
++            shutil.move(config.MODELS_DIR, backup_dir)
++        if os.path.exists(config.PROCESSED_DIR):
++            shutil.rmtree(config.PROCESSED_DIR)
++
++        shutil.move(os.path.join(candidate_root, "models"), config.MODELS_DIR)
++        shutil.move(os.path.join(candidate_root, "data", "processed"), config.PROCESSED_DIR)
++        print("[retrain_and_promote] PROMOTED — new models are now live. Restart the API to load them.")
++
++        # Keep only the most recent backup — this is a rollback safety net, not a full model
++        # registry; unbounded backups would just fill the disk on every scheduled run.
++        for entry in os.listdir(config.PROJECT_ROOT):
++            full = os.path.join(config.PROJECT_ROOT, entry)
++            if entry.startswith("models_backup_") and full != backup_dir and os.path.isdir(full):
++                shutil.rmtree(full)
++    else:
++        print("[retrain_and_promote] NOT PROMOTED — live models are unchanged. See gate_reasons above.")
++
++    shutil.rmtree(candidate_root, ignore_errors=True)
++
++    reports_dir = os.path.join(config.MODELS_DIR, "retrain_reports")
++    os.makedirs(reports_dir, exist_ok=True)
++    report_path = os.path.join(reports_dir, f"{timestamp}.json")
++    with open(report_path, "w") as f:
++        json.dump(report, f, indent=2)
++    print(f"[retrain_and_promote] report written -> {report_path}")
++
++    if not should_promote:
++        sys.exit(1)  # non-zero so a CI cron job actually shows red, not a quiet no-op
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/backend/scripts/retrain_worker.py b/backend/scripts/retrain_worker.py
+new file mode 100644
+index 0000000..6878bcd
+--- /dev/null
++++ b/backend/scripts/retrain_worker.py
+@@ -0,0 +1,65 @@
++"""
++retrain_worker.py — runs entirely inside one isolated project root (set via
++ZIVABASA_PROJECT_ROOT before this is invoked, always as a subprocess — see
++retrain_and_promote.py). Rebuilds features from data/raw, trains the multi-task model,
++evaluates it, and writes metrics.json + drift baselines into that root's models/ dir.
++
++Never called directly against the live project root — always against a candidate copy, so a
++bad run can't touch what's actually being served. See retrain_and_promote.py's docstring for
++the full promotion flow and why this is a separate subprocess rather than a function call.
++"""
++from __future__ import annotations
++
++import json
++import os
++import sys
++
++sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
++
++from src import config, features, evaluate, model as model_module, drift  # noqa: E402
++
++
++def main():
++    task_names = config.TASK_NAMES
++    print(f"[retrain_worker] project root: {config.PROJECT_ROOT}")
++    print(f"[retrain_worker] rebuilding features for: {task_names}")
++    features.run_all_pipelines(save=True)
++
++    data, input_dims, task_types = {}, {}, {}
++    for name in task_names:
++        df = features.load_processed(name)
++        if df is None:
++            raise RuntimeError(f"[{name}] feature pipeline produced no output — check raw data.")
++        splits = evaluate.make_splits(df, name, val_split=True)
++        if splits is None:
++            raise RuntimeError(f"[{name}] could not build train/val/test splits.")
++        data[name] = splits
++        input_dims[name] = splits["input_dim"]
++        task_types[name] = config.TASK_CONFIGS[name].task_type
++
++    trainer = model_module.MultiTaskTrainer(input_dims=input_dims, task_types=task_types, cfg=config.MODEL_CONFIG)
++    trainer.fit(data, mlflow_run=None, verbose=True)
++    trainer.save(config.MULTITASK_MODEL_DIR)
++
++    metrics = {}
++    for name in task_names:
++        splits = data[name]
++        metrics[name] = evaluate.evaluate_task_model(lambda X, n=name: trainer.predict(n, X), splits, name)
++        print(f"[retrain_worker] [{name}] metrics={metrics[name]}")
++
++        # Drift baseline for THIS candidate's training data (already standardized — see
++        # src/drift.py's "UNITS" note) — becomes the new reference every promoted run leaves
++        # behind, so the next retrain's drift report is always "vs. what's actually live," not
++        # a stale snapshot from months ago.
++        baseline = drift.build_baseline(splits["X_train"], splits["feature_names"])
++        baseline_path = os.path.join(config.MODELS_DIR, "drift_baselines", f"{name}_baseline.json")
++        drift.save_baseline(baseline, baseline_path)
++
++    metrics_path = os.path.join(config.MODELS_DIR, "metrics.json")
++    with open(metrics_path, "w") as f:
++        json.dump(metrics, f, indent=2)
++    print(f"[retrain_worker] wrote {metrics_path}")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/backend/src/drift.py b/backend/src/drift.py
+new file mode 100644
+index 0000000..dfc7021
+--- /dev/null
++++ b/backend/src/drift.py
+@@ -0,0 +1,141 @@
++"""
++drift.py — Population Stability Index (PSI) feature-drift detection.
++
++Context: this MVP has no live production traffic yet (Kaggle proxy data, no continuous
++ingestion pipeline), so "drift" here means one concrete, honest thing: how different is a
++CSV someone uploads through Predict -> Upload & Analyze from the distribution the model was
++actually trained on? That's the one place external data enters the running system today. This
++module computes a baseline distribution at training time and compares any later feature matrix
++against it — used by both api/main.py's batch-predict endpoint (drift badge on every batch
++upload) and scripts/retrain_and_promote.py (drift is also checked between old vs. new training
++data, as an early warning that the underlying Kaggle files themselves changed).
++
++UNITS: both the baseline and anything compared against it must be in the same standardized
++(z-scored) feature space the model was actually trained on — features.run_pipeline() scales
++and persists training data before saving it, so the processed data (and therefore
++splits["X_train"], what build_baseline() is called on) is already scaled, not raw. api/main.py
++compares against X_scaled (post artifacts.transform_batch()) for exactly this reason — comparing
++raw upload units against a scaled baseline would report enormous spurious drift on every single
++upload regardless of any real distribution shift, since the two sides would just be on
++different numeric scales to begin with, not because anything actually changed.
++
++PSI, not KS/chi-square: PSI is the industry-standard choice for exactly this ("has a model's
++input population shifted since training") because it gives one comparable number per feature
++and an established, widely-cited threshold scale (below), rather than a p-value that doesn't
++tell you how MUCH something shifted.
++
++Standard thresholds (Population Stability Index, common industry convention):
++    PSI < 0.10              -> no meaningful shift
++    0.10 <= PSI < 0.25       -> moderate shift, worth watching
++    PSI >= 0.25              -> significant shift, treat predictions with real caution
++"""
++from __future__ import annotations
++
++import json
++import os
++from dataclasses import dataclass, asdict
++from typing import Dict, List, Optional
++
++import numpy as np
++
++PSI_MODERATE_THRESHOLD = 0.10
++PSI_HIGH_THRESHOLD = 0.25
++N_BINS = 10
++EPS = 1e-4  # avoids div-by-zero / log(0) when a bin is empty in one distribution
++
++
++@dataclass
++class FeatureBaseline:
++    feature: str
++    bin_edges: List[float]      # N_BINS + 1 edges, from the training distribution's quantiles
++    bin_proportions: List[float]  # reference (training) proportion of rows in each bin
++
++
++def _quantile_bin_edges(values: np.ndarray, n_bins: int = N_BINS) -> np.ndarray:
++    values = values[np.isfinite(values)]
++    if len(values) == 0:
++        return np.array([0.0, 1.0])
++    quantiles = np.linspace(0, 1, n_bins + 1)
++    edges = np.unique(np.quantile(values, quantiles))
++    if len(edges) < 2:  # constant feature — one bin covering everything
++        edges = np.array([edges[0] - 1.0, edges[0] + 1.0]) if len(edges) == 1 else np.array([0.0, 1.0])
++    return edges
++
++
++def _bin_proportions(values: np.ndarray, edges: np.ndarray) -> np.ndarray:
++    values = values[np.isfinite(values)]
++    if len(values) == 0:
++        return np.ones(len(edges) - 1) / (len(edges) - 1)
++    counts, _ = np.histogram(values, bins=edges)
++    return counts / max(counts.sum(), 1)
++
++
++def build_baseline(X: np.ndarray, feature_names: List[str]) -> Dict[str, FeatureBaseline]:
++    """Called once at training time (see scripts/retrain_worker.py) on splits["X_train"] — the
++    processed, already-standardized (z-scored) training feature matrix, same units the model
++    itself trains on and SHAP's background sample uses. Whatever is compared against this
++    baseline later must be scaled the same way first (api/main.py does this via
++    artifacts.transform_batch() before calling compute_drift_report)."""
++    baselines = {}
++    for i, name in enumerate(feature_names):
++        edges = _quantile_bin_edges(X[:, i])
++        props = _bin_proportions(X[:, i], edges)
++        baselines[name] = FeatureBaseline(feature=name, bin_edges=edges.tolist(), bin_proportions=props.tolist())
++    return baselines
++
++
++def save_baseline(baselines: Dict[str, FeatureBaseline], path: str) -> None:
++    os.makedirs(os.path.dirname(path), exist_ok=True)
++    with open(path, "w") as f:
++        json.dump({name: asdict(b) for name, b in baselines.items()}, f, indent=2)
++
++
++def load_baseline(path: str) -> Optional[Dict[str, FeatureBaseline]]:
++    if not os.path.exists(path):
++        return None
++    with open(path) as f:
++        raw = json.load(f)
++    return {name: FeatureBaseline(**b) for name, b in raw.items()}
++
++
++def _psi_for_feature(baseline: FeatureBaseline, new_values: np.ndarray) -> float:
++    edges = np.asarray(baseline.bin_edges)
++    ref_props = np.asarray(baseline.bin_proportions)
++    new_props = _bin_proportions(new_values, edges)
++    ref_props = np.clip(ref_props, EPS, None)
++    new_props = np.clip(new_props, EPS, None)
++    return float(np.sum((new_props - ref_props) * np.log(new_props / ref_props)))
++
++
++def _verdict(psi: float) -> str:
++    if psi >= PSI_HIGH_THRESHOLD:
++        return "high"
++    if psi >= PSI_MODERATE_THRESHOLD:
++        return "moderate"
++    return "none"
++
++
++def compute_drift_report(baselines: Dict[str, FeatureBaseline], X_new: np.ndarray,
++                          feature_names: List[str], top_k: int = 5) -> dict:
++    """X_new must be in the same standardized (scaled) feature space as the baseline — same
++    units/order as feature_names, already run through the task's saved StandardScaler (see
++    api/main.py's use of artifacts.transform_batch() before calling this). Returns per-feature
++    PSI, an overall (mean) score, a verdict, and the top_k most-shifted features so the UI can
++    say *why*, not just *that*."""
++    per_feature = []
++    for i, name in enumerate(feature_names):
++        baseline = baselines.get(name)
++        if baseline is None:
++            continue  # feature wasn't in the training baseline (e.g. schema changed) — skip, don't crash
++        psi = _psi_for_feature(baseline, X_new[:, i])
++        per_feature.append({"feature": name, "psi": round(psi, 4), "verdict": _verdict(psi)})
++
++    per_feature.sort(key=lambda f: f["psi"], reverse=True)
++    overall_psi = float(np.mean([f["psi"] for f in per_feature])) if per_feature else 0.0
++
++    return {
++        "overall_psi": round(overall_psi, 4),
++        "overall_verdict": _verdict(overall_psi),
++        "top_shifted_features": per_feature[:top_k],
++        "n_features_checked": len(per_feature),
++    }
 diff --git a/backend/supabase/schema.sql b/backend/supabase/schema.sql
 new file mode 100644
 index 0000000..212e9f5
@@ -755,7 +1287,7 @@ index 0000000..5696e43
 +  return children;
 +}
 diff --git a/frontend/src/components/batch/BatchUpload.jsx b/frontend/src/components/batch/BatchUpload.jsx
-index 8ab8a1d..bfae1f5 100644
+index 8ab8a1d..f0c39d2 100644
 --- a/frontend/src/components/batch/BatchUpload.jsx
 +++ b/frontend/src/components/batch/BatchUpload.jsx
 @@ -33,8 +33,10 @@ export default function BatchUpload({ task, onResult }) {
@@ -771,6 +1303,35 @@ index 8ab8a1d..bfae1f5 100644
        setState("done");
        onResult?.(res);
      } catch (e) {
+@@ -56,6 +58,28 @@ export default function BatchUpload({ task, onResult }) {
+     const isClass = result.task_type === "classification";
+     return (
+       <motion.div variants={staggerContainer} initial="hidden" animate="show" className="flex flex-col gap-4">
++        {result.drift?.available !== false && result.drift?.overall_verdict !== "none" && (
++          <motion.div
++            variants={fadeUpItem}
++            className={clsx(
++              "flex items-start gap-2 rounded-xl px-3 py-2.5 text-[11px] border",
++              result.drift.overall_verdict === "high"
++                ? "text-red bg-red/10 border-red/25"
++                : "text-gold bg-gold/10 border-gold/25"
++            )}
++          >
++            <AlertTriangle size={13} className="shrink-0 mt-0.5" />
++            <span>
++              {result.drift.overall_verdict === "high" ? "Significant" : "Moderate"} drift from the data this
++              model was trained on (PSI {result.drift.overall_psi}) — most shifted:{" "}
++              {result.drift.top_shifted_features
++                .slice(0, 3)
++                .map((f) => f.feature)
++                .join(", ")}
++              . Predictions are still returned, but treat them with more caution than usual.
++            </span>
++          </motion.div>
++        )}
+         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+           <Card className="flex flex-col gap-1">
+             <span className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold">Rows analyzed</span>
 diff --git a/frontend/src/components/chat/ChatPane.jsx b/frontend/src/components/chat/ChatPane.jsx
 index 5892354..fe94925 100644
 --- a/frontend/src/components/chat/ChatPane.jsx
