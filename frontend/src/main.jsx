@@ -7,6 +7,8 @@ import AuthGate from "./components/auth/AuthGate";
 import App from "./App.jsx";
 import "./index.css";
 
+console.log("Vite Env Check:", import.meta.env.VITE_SUPABASE_URL);
+
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <ThemeProvider>
