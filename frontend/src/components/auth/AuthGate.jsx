@@ -5,6 +5,8 @@ import { useAuth } from "../../lib/authStore";
 import Card from "../common/Card";
 import Button from "../common/Button";
 import ClarityRing from "../common/ClarityRing";
+import ThemeToggle from "../layout/ThemeToggle";
+import GlitterWrap from "./GlitterWrap";
 
 function ConfigMissingScreen() {
   return (
@@ -58,8 +60,14 @@ function LoginForm() {
   };
 
   return (
-    <div className="h-screen flex items-center justify-center bg-bg text-ink px-4">
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+    <div className="relative h-screen flex items-center justify-center bg-bg text-ink px-4 overflow-hidden">
+      <GlitterWrap />
+
+      <div className="absolute top-4 right-4 z-10">
+        <ThemeToggle />
+      </div>
+
+      <motion.div className="relative z-10" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
         <Card className="w-[340px] flex flex-col gap-5" animated={false}>
           <div className="flex items-center gap-2.5">
             <ClarityRing mode="static" size={32} strokeWidth={4} color="gold" />

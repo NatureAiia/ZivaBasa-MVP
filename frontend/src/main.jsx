@@ -7,10 +7,6 @@ import AuthGate from "./components/auth/AuthGate";
 import App from "./App.jsx";
 import "./index.css";
 
-if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
-  // Render this "Supabase not configured" screen
-}
-
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <ThemeProvider>
