@@ -31,10 +31,11 @@ export const COST_CATEGORIES = [
       },
       {
         key: "llm_api_usage",
-        label: "Chat LLM API usage (Anthropic / NVIDIA NIM)",
+        label: "Chat LLM API usage (Anthropic / Gemini / NVIDIA NIM / Groq, incl. image generation)",
         driver:
-          "/chat is metered, pay-per-token — ongoing and usage-scaling, not a one-time cost. " +
-          "Must be covered by whatever the subscription price (§5.2) ends up being.",
+          "/chat is metered, pay-per-token (plus per-image for Gemini image generation) — " +
+          "ongoing and usage-scaling, not a one-time cost. Must be covered by whatever the " +
+          "subscription price (§5.2) ends up being.",
         source: "Proposal §5.3",
       },
     ],

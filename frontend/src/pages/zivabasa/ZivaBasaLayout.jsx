@@ -10,7 +10,6 @@ const TABS = [
   { to: "chat", label: "Chat" },
   { to: "predict", label: "Predict" },
   { to: "my-organization", label: "My Organization" },
-  { to: "roster", label: "Roster" },
   { to: "history", label: "History" },
 ];
 

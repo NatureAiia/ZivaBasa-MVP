@@ -20,6 +20,10 @@ export async function getChatSession() {
   return { messages: data.messages || [], toolCallLog: data.tool_call_log || [] };
 }
 
+// Note: `messages` may include generate_image results (m.images, each a base64 PNG) — those
+// persist to chat_sessions.messages as-is along with everything else. Fine for MVP volumes;
+// revisit (e.g. move image bytes to Storage, keep only a URL here) if sessions with many
+// generated images start bloating the table.
 export async function saveChatSession(messages, toolCallLog) {
   const user_id = await currentUserId();
   if (!user_id) return;

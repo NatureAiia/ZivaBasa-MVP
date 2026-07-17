@@ -69,6 +69,18 @@ class ChatResponse(BaseModel):
     provider: str
     usage: Optional[dict] = None
     tool_calls: Optional[list] = None
+    generated_images: Optional[list] = None  # [{id, mime_type, image_base64}], from the generate_image tool
+
+
+class ImageGenerateRequest(BaseModel):
+    prompt: str = Field(..., description="A clear, detailed description of the image to generate.")
+
+
+class ImageGenerateResponse(BaseModel):
+    provider: str
+    mime_type: str
+    image_base64: str
+    text: Optional[str] = None
 
 
 class PredictReportRequest(BaseModel):

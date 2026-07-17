@@ -121,6 +121,13 @@ export const api = {
     }
     return res.json();
   },
+  imageProviders: () => request("/images/providers"),
+  generateImage: (prompt) =>
+    request("/images/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt }),
+    }),
   predictReport: (results) =>
     requestBlob("/reports/predict", {
       method: "POST",

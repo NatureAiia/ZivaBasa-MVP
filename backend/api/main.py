@@ -23,9 +23,16 @@ import os
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
-load_dotenv()  # picks up ANTHROPIC_API_KEY / NVIDIA_API_KEY / CHAT_PROVIDER from .env if present
-                # -- must run before api.chat is imported, since that module reads them at
-                # import time via os.environ.get()
+# Explicit path, not bare load_dotenv() -- python-dotenv's default lookup walks up from
+# __main__'s own file, or falls back to os.getcwd() when __main__ has no __file__ (e.g. under
+# `uvicorn --reload`, whose worker subprocess re-execs Python with a synthetic entrypoint).
+# Either way it searches *parent* directories, never this one, so it silently never found
+# backend/api/.env -- every key in this file (ANTHROPIC_API_KEY, NVIDIA_API_KEY, GEMINI_API_KEY)
+# was being read as unset. Anchoring to this file's own directory makes it launch-mode-proof.
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+                # picks up ANTHROPIC_API_KEY / NVIDIA_API_KEY / GROQ_API_KEY / GEMINI_API_KEY /
+                # CHAT_PROVIDER from .env if present -- must run before api.chat / api.image_gen
+                # are imported, since those modules read them at import time via os.environ.get()
 
 import numpy as np
 from fastapi import FastAPI, HTTPException, UploadFile, File, Response
@@ -35,12 +42,14 @@ from api.schemas import (
     PredictRequest, PredictResponse, SchemaResponse,
     ExplainResponse, FeatureContribution, HealthResponse,
     ChatRequest, ChatResponse, PredictReportRequest, ChatReportRequest,
+    ImageGenerateRequest, ImageGenerateResponse,
 )
 from api.model_registry import registry
 from api import batch as batch_module
 from api import chat as chat_module
 from api import reports as reports_module
 from api import org_extract as org_extract_module
+from api import image_gen as image_gen_module
 from src import evaluate
 from src import config as src_config
 from src import drift as drift_module
@@ -321,6 +330,22 @@ async def org_extract(file: UploadFile = File(...), provider: str = None):
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Org chart extraction failed: {e}")
     return result
+
+
+@app.get("/images/providers")
+async def image_providers():
+    return {"providers": ["gemini"] if image_gen_module.available() else []}
+
+
+@app.post("/images/generate", response_model=ImageGenerateResponse)
+async def image_generate(request: ImageGenerateRequest):
+    try:
+        result = await image_gen_module.generate_image(request.prompt)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Image generation failed: {e}")
+    return ImageGenerateResponse(provider="gemini", **result)
 
 
 _DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"

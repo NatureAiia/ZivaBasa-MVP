@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Trash2, Sparkles, CheckCircle2, XCircle, Clock, ArrowRight, Network, FileText, X, File as FileIcon } from "lucide-react";
+import { Plus, Trash2, Sparkles, CheckCircle2, XCircle, Clock, ArrowRight, Network, FileText, X, File as FileIcon, Image as ImageIcon, Loader2 } from "lucide-react";
 import Card from "../../components/common/Card";
 import Badge from "../../components/common/Badge";
 import EmptyState from "../../components/common/EmptyState";
 import { staggerContainer, fadeUpItem } from "../../lib/motion";
+import { api } from "../../lib/api";
 import { getOrgNodes, upsertNode, removeNode } from "../../lib/orgStore";
 import { getAssignments, recommendAssignment, decideAssignment } from "../../lib/assignmentStore";
 import { redeploymentTrend, aiOverrideShare } from "../../lib/governanceStats";
@@ -72,12 +73,33 @@ function RedeploymentSparkline({ trend }) {
   );
 }
 
+// Turns the reporting structure into a plain-language description a text-to-image model can
+// work from — depth-first walk so parent/child order in the prompt matches the hierarchy.
+function describeOrgChart(nodes) {
+  const byId = Object.fromEntries(nodes.map((n) => [n.id, n]));
+  const childrenOf = {};
+  nodes.forEach((n) => {
+    const key = byId[n.parentId] ? n.parentId : "__root__";
+    (childrenOf[key] ??= []).push(n);
+  });
+  const lines = [];
+  const walk = (id, depth) => {
+    (childrenOf[id] || []).forEach((n) => {
+      lines.push(`${"  ".repeat(depth)}- ${n.title}${n.department ? ` (${n.department})` : ""}`);
+      walk(n.id, depth + 1);
+    });
+  };
+  walk("__root__", 0);
+  return lines.join("\n");
+}
+
 export default function MyOrganizationTab() {
   const [nodes, setNodes] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [editingId, setEditingId] = useState(null); // null = not editing, "new" = adding, else node id
   const [selectedId, setSelectedId] = useState(null);
   const [referenceFile, setReferenceFile] = useState(null);
+  const [illustration, setIllustration] = useState(null); // { status, mimeType, imageBase64, error }
 
   useEffect(() => {
     getOrgNodes().then(setNodes);
@@ -120,6 +142,19 @@ export default function MyOrganizationTab() {
   };
 
   const decide = async (id, status) => setAssignments(await decideAssignment(id, status));
+
+  const illustrateOrgChart = async () => {
+    setIllustration({ status: "generating" });
+    try {
+      const prompt =
+        "A clean, professional organizational chart diagram, illustrated in a modern flat " +
+        "corporate style, for this reporting structure:\n" + describeOrgChart(nodes);
+      const res = await api.generateImage(prompt);
+      setIllustration({ status: "done", mimeType: res.mime_type, imageBase64: res.image_base64 });
+    } catch (e) {
+      setIllustration({ status: "error", error: e.message });
+    }
+  };
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -204,8 +239,34 @@ export default function MyOrganizationTab() {
           />
         ) : (
           <motion.div variants={fadeUpItem}>
-            <Card animated={false} className="overflow-x-auto">
-              <OrgChart nodes={nodes} onSelect={setSelectedId} selectedId={selectedId} />
+            <Card animated={false} className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div className="overflow-x-auto flex-1">
+                  <OrgChart nodes={nodes} onSelect={setSelectedId} selectedId={selectedId} />
+                </div>
+                <button
+                  onClick={illustrateOrgChart}
+                  disabled={illustration?.status === "generating"}
+                  className="flex items-center gap-1.5 text-[11px] font-medium text-gold hover:brightness-110 disabled:opacity-50 shrink-0 self-start"
+                >
+                  {illustration?.status === "generating" ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <ImageIcon size={12} />
+                  )}
+                  Illustrate with Gemini
+                </button>
+              </div>
+              {illustration?.status === "error" && (
+                <p className="text-[11px] text-red">{illustration.error}</p>
+              )}
+              {illustration?.status === "done" && (
+                <img
+                  src={`data:${illustration.mimeType};base64,${illustration.imageBase64}`}
+                  alt="AI-generated illustration of this organization chart"
+                  className="rounded-lg border border-border max-w-full self-start"
+                />
+              )}
             </Card>
           </motion.div>
         )}

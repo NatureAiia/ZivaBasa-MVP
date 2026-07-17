@@ -11,6 +11,7 @@ import { TASK_SHORT_LABELS } from "../../lib/api";
 // free Puter message apart from a metered backend one at a glance.
 function providerLabel(key) {
   if (key.startsWith("puter:")) return `Puter (${key.split(":")[1]})`;
+  if (key.endsWith(":image")) return `${providerLabel(key.split(":")[0])} (image gen)`;
   return { anthropic: "Claude", nvidia: "NVIDIA NIM", groq: "Groq", gemini: "Gemini" }[key] || key;
 }
 

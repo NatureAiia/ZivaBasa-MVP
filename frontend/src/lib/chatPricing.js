@@ -28,3 +28,19 @@ export function estimateCostUsd(provider, inputTokens = 0, outputTokens = 0) {
   if (!rate) return 0;
   return (inputTokens / 1_000_000) * rate.input + (outputTokens / 1_000_000) * rate.output;
 }
+
+// Image generation (the generate_image chat tool) is priced separately from text — Gemini's
+// image-capable model bills per output-image-token and is NOT covered by the same free tier as
+// text chat, unlike the $0 rows above. ~1290 output tokens per 1024x1024 image at the
+// documented $30/1M output-token rate for image tokens ≈ $0.039/image. Same honesty caveat as
+// the table above: list price as of writing, not verified live, not an invoice — verify at
+// https://ai.google.dev/pricing.
+export const IMAGE_COST_USD = {
+  gemini: { perImage: 0.039, note: "gemini-2.5-flash-image list price, ~1024x1024 — verify at ai.google.dev/pricing." },
+};
+
+export function estimateImageCostUsd(provider, count = 1) {
+  const rate = IMAGE_COST_USD[provider];
+  if (!rate) return 0;
+  return rate.perImage * count;
+}

@@ -30,6 +30,7 @@ from typing import Optional
 
 import httpx
 
+from api import image_gen as image_gen_module
 from api.model_registry import registry
 from src import evaluate
 
@@ -72,10 +73,11 @@ HOW TO HANDLE A QUESTION THAT NEEDS A PREDICTION:
    run the tool rather than declining and explaining the theory instead.
 
 HOW TO WRITE:
-- Talk like a person, not a report generator. Default to plain paragraphs.
-- Do not use markdown headers (##), bold text, or bullet-point lists unless the person is
-  asking for a structured breakdown of 4+ distinct items — a normal conversational answer, even
-  a detailed one, should be flowing prose, not a formatted document.
+- Format like a normal Claude conversation: real markdown (## headers, **bold**, bullet/numbered
+  lists, code blocks) when it genuinely makes a longer or structured answer easier to scan, plain
+  flowing prose for quick conversational answers. Use your judgment the way you normally would —
+  don't force headers onto a two-sentence answer, and don't force prose onto something that's
+  naturally a list or step-by-step explanation.
 - Keep answers as short as the question allows. A yes/no-shaped question gets a short answer,
   not a full structured writeup.
 - If something is genuinely ambiguous or you're missing information, ask one specific
@@ -119,6 +121,21 @@ TOOLS_ANTHROPIC = [
             "required": ["task", "features"],
         },
     },
+    {
+        "name": "generate_image",
+        "description": "Generate an image from a text description (e.g. an org-chart illustration, a "
+                        "diagram, a role icon). Uses Google Gemini's image model regardless of which "
+                        "chat model is currently active, and is only available if GEMINI_API_KEY is "
+                        "configured on the backend. The image is shown to the person directly — you "
+                        "don't need to describe it back to them, just confirm briefly.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "prompt": {"type": "string", "description": "A clear, detailed description of the image to generate."},
+            },
+            "required": ["prompt"],
+        },
+    },
 ]
 
 # Same two tools, OpenAI-style function-calling shape (NVIDIA NIM's and Groq's chat/completions
@@ -138,7 +155,7 @@ TOOLS_GEMINI = [
 ]
 
 
-def _run_tool(name: str, args: dict) -> dict:
+def _run_prediction_tool(name: str, args: dict) -> dict:
     """Executes predict_task / explain_task directly against the in-process model registry —
     no HTTP round-trip to our own API needed, we're already in the same process."""
     task = args.get("task")
@@ -181,6 +198,34 @@ def _run_tool(name: str, args: dict) -> dict:
         return {"task": task, "top_contributions": contributions[:8], "explainer_used": explainer_name}
 
     return {"error": f"Unknown tool '{name}'"}
+
+
+async def _run_tool(name: str, args: dict, generated_images: list) -> dict:
+    """Dispatches to the sync prediction tools or the async image-generation tool. Image bytes
+    are appended to `generated_images` (returned to the frontend directly) rather than put in
+    the result handed back to the model — a base64 PNG in the model's own context would bloat
+    every subsequent turn of the conversation for no benefit, since the model never needs to
+    see the pixels, only that generation succeeded."""
+    if name == "generate_image":
+        prompt = args.get("prompt", "")
+        try:
+            image = await image_gen_module.generate_image(prompt)
+        except RuntimeError as e:
+            return {"error": str(e)}
+        image_id = f"img_{len(generated_images) + 1}"
+        generated_images.append({
+            "id": image_id,
+            "mime_type": image["mime_type"],
+            "image_base64": image["image_base64"],
+            # Always "gemini" today (the only image-gen provider wired up), independent of
+            # whichever chat model/provider is currently active — the frontend needs this to
+            # attribute image-generation cost correctly even when chatting via Anthropic/NVIDIA/Groq.
+            "provider": "gemini",
+            "model": image_gen_module.GEMINI_IMAGE_MODEL,
+        })
+        return {"status": "success", "image_id": image_id, "message": "Image generated and shown to the user."}
+
+    return _run_prediction_tool(name, args)
 
 
 # Single source of truth for what shows up in the frontend's model picker. Order here is also
@@ -248,10 +293,11 @@ def active_provider(requested: Optional[str] = None) -> Optional[str]:
     return None
 
 
-async def chat_anthropic(messages: list[dict]) -> tuple[str, dict, list]:
+async def chat_anthropic(messages: list[dict]) -> tuple[str, dict, list, list]:
     api_messages = list(messages)
     usage = {"input_tokens": 0, "output_tokens": 0}
     tool_log = []
+    generated_images = []
     async with httpx.AsyncClient(timeout=60) as client:
         for _ in range(4):  # bounded tool-use loop
             resp = await client.post(
@@ -280,12 +326,12 @@ async def chat_anthropic(messages: list[dict]) -> tuple[str, dict, list]:
 
             if not tool_uses:
                 text = "".join(b.get("text", "") for b in content if b.get("type") == "text")
-                return text, usage, tool_log
+                return text, usage, tool_log, generated_images
 
             api_messages.append({"role": "assistant", "content": content})
             tool_results = []
             for tu in tool_uses:
-                result = _run_tool(tu["name"], tu.get("input", {}))
+                result = await _run_tool(tu["name"], tu.get("input", {}), generated_images)
                 tool_log.append({"name": tu["name"], "args": tu.get("input", {}), "result": result})
                 tool_results.append({
                     "type": "tool_result",
@@ -293,17 +339,19 @@ async def chat_anthropic(messages: list[dict]) -> tuple[str, dict, list]:
                     "content": json.dumps(result),
                 })
             api_messages.append({"role": "user", "content": tool_results})
-        return "I made several tool calls but couldn't reach a final answer in time — try a more specific question.", usage, tool_log
+        return ("I made several tool calls but couldn't reach a final answer in time — try a more specific question.",
+                usage, tool_log, generated_images)
 
 
 async def _chat_openai_compatible(messages: list[dict], base_url: str, api_key: str, model: str,
-                                   provider_label: str) -> str:
+                                   provider_label: str) -> tuple[str, dict, list, list]:
     """Shared tool-calling loop for any OpenAI-compatible chat/completions endpoint — NVIDIA NIM
     and Groq both implement this contract, so one implementation serves both rather than
     duplicating the same loop with a different base_url."""
     api_messages = [{"role": "system", "content": SYSTEM_PROMPT}] + list(messages)
     usage = {"input_tokens": 0, "output_tokens": 0}
     tool_log = []
+    generated_images = []
     async with httpx.AsyncClient(timeout=60) as client:
         for _ in range(4):
             resp = await client.post(
@@ -326,29 +374,30 @@ async def _chat_openai_compatible(messages: list[dict], base_url: str, api_key: 
             tool_calls = choice.get("tool_calls") or []
 
             if not tool_calls:
-                return choice.get("content", ""), usage, tool_log
+                return choice.get("content", ""), usage, tool_log, generated_images
 
             api_messages.append(choice)
             for tc in tool_calls:
                 args = json.loads(tc["function"]["arguments"])
-                result = _run_tool(tc["function"]["name"], args)
+                result = await _run_tool(tc["function"]["name"], args, generated_images)
                 tool_log.append({"name": tc["function"]["name"], "args": args, "result": result})
                 api_messages.append({
                     "role": "tool",
                     "tool_call_id": tc["id"],
                     "content": json.dumps(result),
                 })
-        return "I made several tool calls but couldn't reach a final answer in time — try a more specific question.", usage, tool_log
+        return ("I made several tool calls but couldn't reach a final answer in time — try a more specific question.",
+                usage, tool_log, generated_images)
 
 
-async def chat_nvidia(messages: list[dict]) -> tuple[str, dict, list]:
+async def chat_nvidia(messages: list[dict]) -> tuple[str, dict, list, list]:
     return await _chat_openai_compatible(
         messages, "https://integrate.api.nvidia.com/v1/chat/completions",
         NVIDIA_API_KEY, NVIDIA_MODEL, "NVIDIA NIM",
     )
 
 
-async def chat_groq(messages: list[dict]) -> tuple[str, dict, list]:
+async def chat_groq(messages: list[dict]) -> tuple[str, dict, list, list]:
     return await _chat_openai_compatible(
         messages, "https://api.groq.com/openai/v1/chat/completions",
         GROQ_API_KEY, GROQ_MODEL, "Groq",
@@ -360,7 +409,7 @@ def _gemini_role(role: str) -> str:
     return "model" if role == "assistant" else "user"
 
 
-async def chat_gemini(messages: list[dict]) -> tuple[str, dict, list]:
+async def chat_gemini(messages: list[dict]) -> tuple[str, dict, list, list]:
     """Gemini's REST API has its own shapes for both messages (contents/parts) and function
     calling (functionCall/functionResponse parts, not a separate tool-role message) — different
     enough from both Anthropic's and the OpenAI-compatible shape that it needs its own loop
@@ -370,6 +419,7 @@ async def chat_gemini(messages: list[dict]) -> tuple[str, dict, list]:
            f"?key={GEMINI_API_KEY}")
     usage = {"input_tokens": 0, "output_tokens": 0}
     tool_log = []
+    generated_images = []
 
     async with httpx.AsyncClient(timeout=60) as client:
         for _ in range(4):
@@ -390,21 +440,23 @@ async def chat_gemini(messages: list[dict]) -> tuple[str, dict, list]:
             usage["output_tokens"] += call_usage.get("candidatesTokenCount", 0)
             candidates = data.get("candidates") or []
             if not candidates:
-                return "No response from Gemini (empty candidates — possibly blocked by safety filters).", usage, tool_log
+                return ("No response from Gemini (empty candidates — possibly blocked by safety filters).",
+                        usage, tool_log, generated_images)
             parts = candidates[0].get("content", {}).get("parts", [])
             function_calls = [p["functionCall"] for p in parts if "functionCall" in p]
 
             if not function_calls:
-                return "".join(p.get("text", "") for p in parts), usage, tool_log
+                return "".join(p.get("text", "") for p in parts), usage, tool_log, generated_images
 
             contents.append({"role": "model", "parts": parts})
             response_parts = []
             for fc in function_calls:
-                result = _run_tool(fc["name"], fc.get("args", {}))
+                result = await _run_tool(fc["name"], fc.get("args", {}), generated_images)
                 tool_log.append({"name": fc["name"], "args": fc.get("args", {}), "result": result})
                 response_parts.append({"functionResponse": {"name": fc["name"], "response": result}})
             contents.append({"role": "user", "parts": response_parts})
-        return "I made several tool calls but couldn't reach a final answer in time — try a more specific question.", usage, tool_log
+        return ("I made several tool calls but couldn't reach a final answer in time — try a more specific question.",
+                usage, tool_log, generated_images)
 
 
 _DISPATCH = {
@@ -427,5 +479,8 @@ async def send_chat(messages: list[dict], provider: Optional[str] = None) -> dic
             "No chat provider configured. Set one of ANTHROPIC_API_KEY, NVIDIA_API_KEY, "
             "GROQ_API_KEY, GEMINI_API_KEY as an environment variable before starting the API."
         )
-    reply, usage, tool_calls = await _DISPATCH[resolved](messages)
-    return {"reply": reply, "provider": resolved, "usage": usage, "tool_calls": tool_calls}
+    reply, usage, tool_calls, generated_images = await _DISPATCH[resolved](messages)
+    return {
+        "reply": reply, "provider": resolved, "usage": usage, "tool_calls": tool_calls,
+        "generated_images": generated_images,
+    }

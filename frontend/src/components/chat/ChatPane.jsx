@@ -6,9 +6,10 @@ import { fadeUpItem } from "../../lib/motion";
 import { api } from "../../lib/api";
 import { sendPuterChat, PUTER_MODELS } from "../../lib/puter";
 import { logUsage } from "../../lib/usageStore";
-import { estimateCostUsd } from "../../lib/chatPricing";
+import { estimateCostUsd, estimateImageCostUsd, PRICING_PER_M_TOKENS } from "../../lib/chatPricing";
 import { getChatSession, saveChatSession, clearChatSession } from "../../lib/chatSessionStore";
 import ClarityRing from "../common/ClarityRing";
+import ChatMarkdown from "./ChatMarkdown";
 
 const SUGGESTIONS = [
   "What's the automation risk for a $45k role with high task repetition?",
@@ -20,7 +21,17 @@ const SUGGESTIONS = [
 const PUTER_SYSTEM = "You are the ZivaBasa workforce intelligence assistant, embedded in ChiedzaAI. " +
   "You do not have live access to the Employment/Skills/Productivity/Skill Match prediction models in this mode " +
   "(that requires one of the 'Backend' models) — answer from general knowledge, and if the person asks for " +
-  "an actual prediction, tell them to switch to a Backend model for that.";
+  "an actual prediction, tell them to switch to a Backend model for that.\n\n" +
+  "HOW TO WRITE:\n" +
+  "- Format like a normal Claude conversation: real markdown (## headers, **bold**, bullet/" +
+  "numbered lists, code blocks) when it genuinely makes a longer or structured answer easier to " +
+  "scan, plain flowing prose for quick conversational answers. Use your judgment the way you " +
+  "normally would — don't force headers onto a two-sentence answer, and don't force prose onto " +
+  "something that's naturally a list or step-by-step explanation.\n" +
+  "- Keep answers as short as the question allows. A yes/no-shaped question gets a short answer, " +
+  "not a full structured writeup.\n" +
+  "- If something is genuinely ambiguous or you're missing information, ask one specific " +
+  "clarifying question and stop — don't guess silently.";
 
 // Puter's models shown with the same {label, description} shape as the backend catalog, so
 // the whole menu (backend models + Puter models) renders from one list instead of two
@@ -35,6 +46,16 @@ const PUTER_OPTION_GROUP = {
     keyPresent: true,
   })),
 };
+
+// Shown next to a backend model's name once it's actually usable (key present), so the cost
+// tradeoff vs. the always-free Puter models is visible before picking one, not just discoverable
+// after the first bill.
+function costLabel(provider) {
+  const rate = PRICING_PER_M_TOKENS[provider];
+  if (!rate) return null;
+  if (rate.input === 0 && rate.output === 0) return "Free";
+  return `$${rate.input}/$${rate.output} per 1M tok`;
+}
 
 const WELCOME_MESSAGE = {
   role: "assistant",
@@ -64,12 +85,11 @@ export default function ChatPane() {
   }, []);
 
   useEffect(() => {
+    // Just populate the catalog — do NOT auto-switch selection to a backend model even if a
+    // key is configured. The free Puter model stays the default; a keyed backend model (with
+    // its per-token cost shown below) is available to pick, not switched to automatically.
     api.chatModels()
-      .then((res) => {
-        setBackendModels(res.models || []);
-        const firstAvailable = (res.models || []).find((m) => m.key_present);
-        if (firstAvailable) setSelection({ mode: "backend", id: firstAvailable.provider });
-      })
+      .then((res) => setBackendModels(res.models || []))
       .catch(() => {}); // backend not reachable yet — Puter still works standalone
   }, []);
 
@@ -99,7 +119,7 @@ export default function ChatPane() {
     setInput("");
     setSending(true);
     try {
-      let replyText, replyProvider;
+      let replyText, replyProvider, replyImages;
       if (selection.mode === "puter") {
         const history = [
           { role: "system", content: PUTER_SYSTEM },
@@ -127,8 +147,25 @@ export default function ChatPane() {
         if (res.tool_calls?.length) {
           setToolCallLog((log) => [...log, ...res.tool_calls]);
         }
+        replyImages = res.generated_images;
+        if (replyImages?.length) {
+          // Image generation is billed separately from the text call it rode in on (it always
+          // goes through Gemini's image model regardless of which chat provider is active), so
+          // it gets its own usage_log entry rather than being folded into the text cost above.
+          const imagesByProvider = {};
+          for (const img of replyImages) (imagesByProvider[img.provider] ??= []).push(img);
+          for (const [imgProvider, imgs] of Object.entries(imagesByProvider)) {
+            logUsage({
+              provider: `${imgProvider}:image`,
+              model: imgs[0].model,
+              inputTokens: 0,
+              outputTokens: 0,
+              costUsd: estimateImageCostUsd(imgProvider, imgs.length),
+            }).catch((e) => console.error("logUsage failed:", e.message));
+          }
+        }
       }
-      setMessages((m) => [...m, { role: "assistant", text: replyText, provider: replyProvider }]);
+      setMessages((m) => [...m, { role: "assistant", text: replyText, provider: replyProvider, images: replyImages }]);
     } catch (e) {
       setMessages((m) => [...m, { role: "assistant", text: `Couldn't get a response: ${e.message}`, isError: true }]);
     } finally {
@@ -184,6 +221,18 @@ export default function ChatPane() {
                         <span className={clsx("text-xs font-medium flex items-center gap-1.5", selection.id === m.provider && selection.mode === "backend" ? "text-gold" : "text-ink")}>
                           {m.label}
                           {!m.key_present && <KeyRound size={10} className="text-ink-faint" />}
+                          {m.key_present && costLabel(m.provider) && (
+                            <span
+                              className={clsx(
+                                "text-[9px] font-normal rounded px-1 py-0.5 border",
+                                costLabel(m.provider) === "Free"
+                                  ? "text-teal border-teal/30 bg-teal/10"
+                                  : "text-ink-faint border-border bg-surface2"
+                              )}
+                            >
+                              {costLabel(m.provider)}
+                            </span>
+                          )}
                         </span>
                         <span className="block text-[10px] text-ink-faint mt-0.5 leading-snug">
                           {m.key_present ? m.description : "Needs an API key added to your backend"}
@@ -243,7 +292,23 @@ export default function ChatPane() {
                   : "self-start bg-surface2 text-ink"
               }`}
             >
-              {m.text}
+              {m.role === "assistant" && !m.isError ? <ChatMarkdown text={m.text} /> : m.text}
+              {m.images?.length > 0 && (
+                <div className="flex flex-col gap-2 mt-2">
+                  {m.images.map((img) => (
+                    <div key={img.id} className="flex flex-col gap-1">
+                      <img
+                        src={`data:${img.mime_type};base64,${img.image_base64}`}
+                        alt="Generated by Gemini"
+                        className="rounded-lg border border-border max-w-full"
+                      />
+                      <span className="text-[10px] text-ink-faint">
+                        Generated by Gemini · ~${estimateImageCostUsd(img.provider, 1).toFixed(3)} estimated
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
               {m.provider && <div className="text-[10px] text-ink-faint mt-1.5">via {m.provider}</div>}
             </motion.div>
           ))}
