@@ -1,4 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
+import Landing from "./pages/Landing";
+import LoginPage from "./pages/LoginPage";
+import AuthGate from "./components/auth/AuthGate";
 import Shell from "./components/layout/Shell";
 import ChiedzaDashboard from "./pages/ChiedzaDashboard";
 import InDevelopment from "./pages/InDevelopment";
@@ -18,7 +21,17 @@ const OTHER_MODELS = MODELS.filter((m) => !m.live).map((m) => m.slug);
 export default function App() {
   return (
     <Routes>
-      <Route element={<Shell />}>
+      <Route path="/" element={<Landing />} />
+      <Route path="/login" element={<LoginPage />} />
+
+      <Route
+        path="/app"
+        element={
+          <AuthGate>
+            <Shell />
+          </AuthGate>
+        }
+      >
         <Route index element={<ChiedzaDashboard />} />
 
         <Route path="models/zivabasa" element={<ZivaBasaLayout />}>
@@ -38,6 +51,8 @@ export default function App() {
         <Route path="cost-monitoring" element={<CostMonitoring />} />
         <Route path="*" element={<InDevelopment />} />
       </Route>
+
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

@@ -43,7 +43,7 @@ export default function ChatUsageSummary() {
           <MessageSquare size={16} className="text-gold" />
           <span className="text-xs font-semibold text-ink">Chat usage & cost this month</span>
         </div>
-        <Link to="/cost-monitoring" className="flex items-center gap-1 text-[11px] text-gold hover:brightness-110">
+        <Link to="/app/cost-monitoring" className="flex items-center gap-1 text-[11px] text-gold hover:brightness-110">
           Full cost model <ArrowUpRight size={11} />
         </Link>
       </div>

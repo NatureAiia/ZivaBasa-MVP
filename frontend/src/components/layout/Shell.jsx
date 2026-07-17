@@ -1,14 +1,22 @@
 import { useState } from "react";
-import { Outlet } from "react-router-dom";
-import { Menu } from "lucide-react";
+import { Outlet, useNavigate } from "react-router-dom";
+import { Menu, LogOut } from "lucide-react";
 import Sidebar from "./Sidebar";
 import GlitterWrap from "../effects/GlitterWrap";
 import ClickEffects from "../effects/ClickEffects";
 import ClarityRing from "../common/ClarityRing";
 import ThemeToggle from "./ThemeToggle";
+import { useAuth } from "../../lib/authStore";
 
 export default function Shell() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/");
+  };
 
   return (
     <div className="flex flex-col md:flex-row h-screen bg-bg text-ink theme-transition relative">
@@ -28,6 +36,14 @@ export default function Shell() {
         </div>
         <div className="flex items-center gap-2">
           <ThemeToggle />
+          <button
+            onClick={handleSignOut}
+            className="text-ink-faint hover:text-red p-1.5"
+            aria-label="Sign out"
+            title="Sign out"
+          >
+            <LogOut size={20} />
+          </button>
           <button
             onClick={() => setMobileOpen(true)}
             className="text-ink-faint hover:text-ink p-1.5"

@@ -117,7 +117,7 @@ export default function ChiedzaDashboard() {
           <h2 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold mb-3">Models</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {MODELS.map((m) => (
-              <Link key={m.slug} to={`/models/${m.slug}`}>
+              <Link key={m.slug} to={`/app/models/${m.slug}`}>
                 <motion.div whileHover={{ y: -3 }} transition={{ type: "spring", stiffness: 300, damping: 24 }}>
                   <Card animated={false} className="flex items-center justify-between gap-3 h-full">
                     <div>

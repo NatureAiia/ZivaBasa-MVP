@@ -29,7 +29,7 @@ export default function InDevelopment() {
             coming next.
           </p>
         </div>
-        <Link to="/models/zivabasa">
+        <Link to="/app/models/zivabasa">
           <Button variant="secondary" className="mt-2">
             <ArrowLeft size={15} /> Go to ZivaBasa
           </Button>

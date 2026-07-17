@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutGrid, Boxes, Wallet, ChevronDown, PanelLeftClose, PanelLeftOpen, X, LogOut,
@@ -48,19 +48,11 @@ function NavItem({ to, icon: Icon, label, collapsed, end, onNavigate }) {
 }
 
 function AccountRow() {
-  const { user, signOut } = useAuth();
+  const { user } = useAuth();
   if (!user) return null;
   return (
-    <div className="px-4 pt-3 flex items-center justify-between gap-2">
-      <span className="text-[11px] text-ink-faint truncate" title={user.email}>{user.email}</span>
-      <button
-        onClick={() => signOut()}
-        className="text-ink-faint hover:text-red shrink-0"
-        aria-label="Sign out"
-        title="Sign out"
-      >
-        <LogOut size={15} />
-      </button>
+    <div className="px-4 pt-3">
+      <span className="text-[11px] text-ink-faint truncate block" title={user.email}>{user.email}</span>
     </div>
   );
 }
@@ -68,6 +60,13 @@ function AccountRow() {
 export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
   const [collapsed, setCollapsed] = useState(false);
   const [modelsOpen, setModelsOpen] = useState(true);
+  const { signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/");
+  };
 
   const content = (
     <motion.aside
@@ -112,7 +111,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-3 py-4 flex flex-col gap-1.5">
-        <NavItem to="/" end icon={LayoutGrid} label="Dashboards" collapsed={collapsed} onNavigate={onCloseMobile} />
+        <NavItem to="/app" end icon={LayoutGrid} label="Dashboards" collapsed={collapsed} onNavigate={onCloseMobile} />
 
         <button
           onClick={() => setModelsOpen((o) => !o)}
@@ -139,7 +138,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
               {MODELS.map((m) => (
                 <NavLink
                   key={m.slug}
-                  to={`/models/${m.slug}`}
+                  to={`/app/models/${m.slug}`}
                   onClick={onCloseMobile}
                   className={({ isActive }) =>
                     clsx(
@@ -160,14 +159,26 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
           )}
         </AnimatePresence>
 
-        <NavItem to="/cost-monitoring" icon={Wallet} label="Cost Monitoring" collapsed={collapsed} onNavigate={onCloseMobile} />
+        <NavItem to="/app/cost-monitoring" icon={Wallet} label="Cost Monitoring" collapsed={collapsed} onNavigate={onCloseMobile} />
       </nav>
 
       {/* Footer */}
       <div className="border-t border-border flex flex-col">
         {!collapsed && <AccountRow />}
         <div className="px-4 py-3 flex items-center justify-between">
-          {!collapsed && <ThemeToggle />}
+          {!collapsed && (
+            <div className="flex items-center gap-2">
+              <ThemeToggle />
+              <button
+                onClick={handleSignOut}
+                className="w-9 h-9 rounded-full border border-border flex items-center justify-center text-ink-faint hover:text-red hover:border-red/40 transition-colors"
+                aria-label="Sign out"
+                title="Sign out"
+              >
+                <LogOut size={16} />
+              </button>
+            </div>
+          )}
           <button
             onClick={() => setCollapsed((c) => !c)}
             className="hidden md:block text-ink-faint hover:text-ink transition-colors"
