@@ -7,7 +7,9 @@ import AuthGate from "./components/auth/AuthGate";
 import App from "./App.jsx";
 import "./index.css";
 
-console.log("Vite Env Check:", import.meta.env.VITE_SUPABASE_URL);
+if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+  // Render this "Supabase not configured" screen
+}
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
