@@ -265,6 +265,37 @@ def add_interaction_features(df: Optional[pd.DataFrame], task_name: str) -> Opti
             "quickly a partial match is likely to close the remaining gap.",
         )
 
+    if task_name == "productivity" and {"ai_adoption_index", "salary_change_percent"}.issubset(df.columns):
+        df["ai_adoption_x_labour_cost_trend"] = df["ai_adoption_index"] * df["salary_change_percent"]
+        _log_feature(
+            "ai_adoption_x_labour_cost_trend", "interaction", "productivity",
+            ["ai_adoption_index", "salary_change_percent"],
+            "AI4I catalogue §2.3 'AI Adoption x Labour Cost'. The real productivity CSV "
+            "(ai_job_replacement_2020_2026_v2.csv) has no absolute labour-cost column, so "
+            "salary_change_percent (% change in salary) is used as the labour-cost-trend proxy "
+            "— same 'closest analogue, honestly labeled' pattern as employment's "
+            "ai_tool_maturity_score/task_repetition_level standing in for a true digital-skill-"
+            "level field. NOT a substitute for a real labour_cost_per_employee column once bank "
+            "data replaces the Kaggle proxy. Dropped from productivity's modeling matrix "
+            "(config.py) — it's a direct multiplicative derivative of ai_adoption_index, which "
+            "IS target_ai_adoption, so it inherits the same leakage employment's "
+            "exposure_x_skill_complexity had to be excluded for.",
+        )
+
+    if task_name == "skill_match" and {"recent_training_hours", "cosine_similarity_score"}.issubset(df.columns):
+        df["training_x_skill_readiness"] = df["recent_training_hours"] * df["cosine_similarity_score"]
+        _log_feature(
+            "training_x_skill_readiness", "interaction", "skill_match",
+            ["recent_training_hours", "cosine_similarity_score"],
+            "AI4I catalogue §2.3 'Training Investment x Skill Readiness' — sharpens "
+            "overlap_x_training by weighting training investment against cosine_similarity_score "
+            "(a continuous fit-quality score) instead of skill_overlap_count (a raw match count), "
+            "so two staff with the same overlap count but different overall fit are no longer "
+            "treated identically. Dropped from skill_match's modeling matrix (config.py) — same "
+            "leakage profile as cosine_similarity_score itself, which target_good_redeployment_"
+            "match is a direct quantile threshold of.",
+        )
+
     return df
 
 

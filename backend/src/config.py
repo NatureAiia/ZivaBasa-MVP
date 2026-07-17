@@ -91,8 +91,20 @@ TASK_CONFIGS: Dict[str, TaskConfig] = {
         raw_filename="future_of_work_ai_2020_2026.csv",
         target="target_ai_adoption",
         task_type="regression",
-        raw_cols=["industry", "ai_adoption_level", "skill_gap_index", "salary_trend"],
-        drop_cols=["target_ai_adoption", "ai_adoption_level", "ai_adoption_index"],
+        # NOTE (found while wiring ai_adoption_x_labour_cost_trend below): raw_cols previously
+        # listed "salary_trend", which does not exist in the real
+        # ai_job_replacement_2020_2026_v2.csv schema — it was being silently dropped by
+        # select_raw's `if c in df.columns` filter (features.py) every run, with only a WARNING
+        # log to show for it. The real column is salary_change_percent (% change in salary,
+        # the actual labour-cost-trend field this dataset provides). Fixed here.
+        raw_cols=["industry", "ai_adoption_level", "skill_gap_index", "salary_change_percent"],
+        # ai_adoption_x_labour_cost_trend is dropped too, not just ai_adoption_index — it's a
+        # direct multiplicative derivative of ai_adoption_index (= target_ai_adoption), so it
+        # inherits the same leakage employment's exposure_x_skill_complexity was excluded for.
+        # Stays in data/processed/ (documented in the feature dictionary) but excluded from the
+        # modeling matrix for THIS task.
+        drop_cols=["target_ai_adoption", "ai_adoption_level", "ai_adoption_index",
+                   "ai_adoption_x_labour_cost_trend"],
         loss_weight=1.0,
     ),
     "skill_match": TaskConfig(
@@ -114,8 +126,11 @@ TASK_CONFIGS: Dict[str, TaskConfig] = {
         # employment's automation_risk_score: target_good_redeployment_match is a direct
         # quantile threshold of cosine_similarity_score, so leaving it in the modeling matrix
         # would let the model trivially memorize the threshold instead of learning from the
-        # underlying staff/role features.
-        drop_cols=["target_good_redeployment_match", "cosine_similarity_score"],
+        # underlying staff/role features. training_x_skill_readiness inherits the same leakage
+        # (it's a multiplicative derivative of cosine_similarity_score) and is dropped for the
+        # same reason.
+        drop_cols=["target_good_redeployment_match", "cosine_similarity_score",
+                   "training_x_skill_readiness"],
         loss_weight=1.0,
     ),
 }

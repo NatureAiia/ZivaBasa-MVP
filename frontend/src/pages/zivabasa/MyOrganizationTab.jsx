@@ -8,6 +8,7 @@ import EmptyState from "../../components/common/EmptyState";
 import { staggerContainer, fadeUpItem } from "../../lib/motion";
 import { getOrgNodes, upsertNode, removeNode } from "../../lib/orgStore";
 import { getAssignments, recommendAssignment, decideAssignment } from "../../lib/assignmentStore";
+import { redeploymentTrend, aiOverrideShare } from "../../lib/governanceStats";
 import { matchScore, SKILL_LABELS } from "../../lib/skillMatchClient";
 import OrgChart from "../../components/organization/OrgChart";
 import RoleEditor from "../../components/organization/RoleEditor";
@@ -27,6 +28,50 @@ function productivityNarrative(overlapCount, missingCount) {
   return `Low skill overlap (${overlapCount}/${total}) — this is a significant retraining investment, not a quick transition. Budget real training time before counting on it.`;
 }
 
+// Hand-rolled inline SVG, same pattern as InteractionExplorer's scatter plot — a real chart
+// of real decided-assignment counts per month, not a chart-library dependency for one shape.
+function RedeploymentSparkline({ trend }) {
+  if (!trend) return null;
+  if (trend.insufficientHistory) {
+    return (
+      <p className="text-[11px] text-ink-faint">
+        {trend.series[0].total} redeployment decision{trend.series[0].total === 1 ? "" : "s"} logged in{" "}
+        {trend.series[0].label} so far — a trend needs at least two months of decisions to show a direction.
+      </p>
+    );
+  }
+
+  const { series, deltaPct } = trend;
+  const W = 220, H = 44, PAD = 4;
+  const maxTotal = Math.max(...series.map((p) => p.total), 1);
+  const stepX = series.length > 1 ? (W - 2 * PAD) / (series.length - 1) : 0;
+  const points = series.map((p, i) => {
+    const x = PAD + i * stepX;
+    const y = H - PAD - (p.total / maxTotal) * (H - 2 * PAD);
+    return [x, y];
+  });
+  const path = points.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+
+  return (
+    <div className="flex items-center gap-3">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-32 h-7 shrink-0">
+        <path d={path} fill="none" stroke="rgb(var(--gold))" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+        {points.map(([x, y], i) => (
+          <circle key={i} cx={x} cy={y} r="1.75" fill="rgb(var(--gold))" />
+        ))}
+      </svg>
+      <p className="text-[11px] text-ink-faint leading-relaxed">
+        {series[series.length - 1].total} decided redeployment{series[series.length - 1].total === 1 ? "" : "s"} in{" "}
+        {series[series.length - 1].label}
+        {deltaPct !== null && (
+          <> — {deltaPct >= 0 ? "up" : "down"} {Math.abs(deltaPct).toFixed(0)}% vs {series[0].label}</>
+        )}
+        .
+      </p>
+    </div>
+  );
+}
+
 export default function MyOrganizationTab() {
   const [nodes, setNodes] = useState([]);
   const [assignments, setAssignments] = useState([]);
@@ -44,6 +89,8 @@ export default function MyOrganizationTab() {
 
   const pendingAssignments = useMemo(() => assignments.filter((a) => a.status === "pending"), [assignments]);
   const decidedAssignments = useMemo(() => assignments.filter((a) => a.status !== "pending"), [assignments]);
+  const trend = useMemo(() => redeploymentTrend(assignments), [assignments]);
+  const governance = useMemo(() => aiOverrideShare(assignments), [assignments]);
 
   const saveNode = async (node) => {
     await upsertNode(node);
@@ -236,9 +283,17 @@ export default function MyOrganizationTab() {
         {(pendingAssignments.length > 0 || decidedAssignments.length > 0) && (
           <motion.div variants={fadeUpItem}>
             <Card animated={false} className="flex flex-col gap-3">
-              <h2 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold">
-                Redeployment decisions
-              </h2>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <h2 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold">
+                  Redeployment decisions
+                </h2>
+                {governance && (
+                  <Badge tone={governance.share >= 0.5 ? "red" : governance.share >= 0.25 ? "gold" : "teal"}>
+                    {(governance.share * 100).toFixed(0)}% AI overrides · {governance.rejected}/{governance.decided}
+                  </Badge>
+                )}
+              </div>
+              {trend && <RedeploymentSparkline trend={trend} />}
               <AnimatePresence initial={false}>
                 {pendingAssignments.map((a) => (
                   <motion.div

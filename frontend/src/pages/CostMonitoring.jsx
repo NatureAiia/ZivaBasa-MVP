@@ -9,14 +9,18 @@ import { getCostEntries, setCostEntry, clearCostEntries } from "../lib/costStore
 import { downloadCostReport } from "../lib/costReport";
 import { computeCostTotals, AUTO_TRACKED_ITEM_KEY } from "../lib/costCompute";
 import { usageSummary } from "../lib/usageStore";
+import { getAssignments } from "../lib/assignmentStore";
+import { aiOverrideShare } from "../lib/governanceStats";
 
 export default function CostMonitoring() {
   const [entries, setEntries] = useState({});
   const [llmUsage, setLlmUsage] = useState({ totalMessages: 0, totalCostUsd: 0, byProvider: {} });
+  const [governance, setGovernance] = useState(null);
 
   useEffect(() => {
     getCostEntries().then(setEntries);
     usageSummary(true).then(setLlmUsage);
+    getAssignments().then((a) => setGovernance(aiOverrideShare(a)));
   }, []);
 
   const updateItem = async (itemKey, field, value) => {
@@ -136,6 +140,22 @@ export default function CostMonitoring() {
                   </span>
                 </div>
                 <p className="text-xs text-ink-faint mb-4">{cat.description}</p>
+
+                {cat.key === "other" && governance && (
+                  <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-gold/25 bg-gold/5 px-3 py-2.5">
+                    <Zap size={13} className="text-gold shrink-0 mt-0.5" />
+                    <p className="text-[11px] text-ink-muted leading-relaxed">
+                      <strong className="text-ink">
+                        {(governance.share * 100).toFixed(0)}% of AI-recommended redeployments have been
+                        overridden by a human
+                      </strong>{" "}
+                      ({governance.rejected} of {governance.decided} decided, My Organization tab) —
+                      AI4I catalogue §2.1 "AI Overrides as a Share of AI Decisions." A live governance
+                      signal, not a cost figure — factor a high override rate into how much human-review
+                      time to budget under Legal / data-protection review and Security engineering below.
+                    </p>
+                  </div>
+                )}
 
                 <div className="flex flex-col gap-4">
                   {cat.items.map((item) => {

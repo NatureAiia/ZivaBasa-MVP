@@ -35,6 +35,14 @@ export const INDEX_DEFINITIONS = {
     invert: true, // lower skill gap = higher productivity index
     description: "Inverse of skill gap, min-max normalized across this upload (smaller gap = higher index).",
   },
+  skill_match: {
+    key: "digital_skills_gap_index",
+    label: "Digital Skills Gap Index",
+    source: "AI4I feature catalogue §2.1",
+    inputs: ["missing_skill_count"],
+    invert: false, // more missing required skills = bigger gap = higher index
+    description: "Count of required skills not yet held, min-max normalized across this upload (0-100, relative to this population — higher = bigger gap).",
+  },
 };
 
 function minMaxNormalize(values) {

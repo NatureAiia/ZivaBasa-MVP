@@ -40,17 +40,41 @@ df_skills = pd.DataFrame({
 })
 
 # --- Synthetic "productivity" raw data ---
+# NOTE: previously used "salary_trend", which never existed in the real
+# ai_job_replacement_2020_2026_v2.csv schema (config.py's raw_cols had the same bug — see the
+# fix there). Renamed to salary_change_percent to match the real column and actually exercise
+# the ai_adoption_x_labour_cost_trend interaction feature end to end, not silently skip it.
 df_productivity = pd.DataFrame({
     "industry": rng.choice(["Banking", "Retail", "Tech"], N),
     "ai_adoption_level": rng.uniform(0, 1, N),
     "skill_gap_index": rng.uniform(0, 1, N),
-    "salary_trend": rng.normal(0.02, 0.01, N),
+    "salary_change_percent": rng.normal(0.1, 10.0, N),  # matches real column's ~N(0.1, 10) range
+})
+
+# --- Synthetic "skill_match" raw data (bank redeployment-matching-like) ---
+# Previously absent from this smoke test entirely — only employment/skills/productivity were
+# exercised, so skill_match's pipeline (including skill_matching.add_skill_match_features(),
+# overlap_x_training, and the new training_x_skill_readiness) had no integration coverage here.
+SKILL_TAGS = ["python", "sql", "excel", "compliance", "customer_service", "credit_risk", "data_analysis"]
+df_skill_match = pd.DataFrame({
+    "department": rng.choice(["Retail Banking", "Operations", "Risk"], N),
+    "current_role": rng.choice(["Teller", "Analyst", "Officer"], N),
+    "target_department": rng.choice(["Digital Banking", "Risk"], N),
+    "target_role": rng.choice(["Digital Associate", "Risk Analyst"], N),
+    "current_skills": [", ".join(rng.choice(SKILL_TAGS, rng.randint(1, 4), replace=False)) for _ in range(N)],
+    "required_skills": [", ".join(rng.choice(SKILL_TAGS, rng.randint(1, 4), replace=False)) for _ in range(N)],
+    "seniority_years": rng.uniform(0, 20, N),
+    "recent_training_hours": rng.uniform(0, 40, N),
+    "performance_rating": rng.randint(1, 5, N),
+    "avg_salary_usd": rng.normal(35000, 8000, N),
+    "recent_ot_hours": rng.uniform(0, 20, N),
 })
 
 os.makedirs(config.RAW_DIR, exist_ok=True)
 df_employment.to_parquet(os.path.join(config.RAW_DIR, "employment_checked.parquet"), index=False)
 df_skills.to_parquet(os.path.join(config.RAW_DIR, "skills_checked.parquet"), index=False)
 df_productivity.to_parquet(os.path.join(config.RAW_DIR, "productivity_checked.parquet"), index=False)
+df_skill_match.to_parquet(os.path.join(config.RAW_DIR, "skill_match_checked.parquet"), index=False)
 print("Synthetic raw checkpoints written.\n")
 
 # --- 1. Feature engineering (all three task heads) ---
