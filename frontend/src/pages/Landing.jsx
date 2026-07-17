@@ -28,7 +28,10 @@ const LANDING_CSS = `
   --land-font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   --land-font-mono: 'IBM Plex Mono', monospace;
   --land-container: 1180px;
+  --land-header-h: 76px;
 
+  position: relative;
+  z-index: 0;
   background: var(--land-bg);
   color: var(--land-ink);
   font-family: var(--land-font-body);
@@ -58,6 +61,19 @@ const LANDING_CSS = `
 .landing-page img, .landing-page svg{ display:block; max-width:100%; }
 .landing-page a{ color: inherit; text-decoration: none; }
 .landing-page :focus-visible{ outline: 2px solid var(--land-gold); outline-offset: 3px; }
+.landing-page [id]{ scroll-margin-top: var(--land-header-h); }
+
+/* Ambient starfield behind the whole page, not just the hero — fixed to the viewport so it
+   stays put while content scrolls over it. .landing-page establishes its own stacking context
+   (position:relative + z-index:0 above) so this negative z-index sits below every section's own
+   content but above .landing-page's own background fill, instead of vanishing behind it. */
+.landing-page .landing-glitter-bg{
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.3;
+  pointer-events: none;
+}
 
 .landing-page .wrap{
   width: 100%;
@@ -85,9 +101,15 @@ const LANDING_CSS = `
 }
 
 /* ---------- NAV ---------- */
+/* position:fixed (not sticky) — sticky positioning gets broken by overflow-x:hidden on
+   .landing-page (setting only overflow-x forces overflow-y to compute to auto too, which turns
+   .landing-page into its own scroll-container ancestor and detaches sticky from the real
+   viewport). Fixed escapes that entirely since it isn't contained by ordinary overflow. */
 .landing-page header{
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
+  right: 0;
   z-index: 50;
   background: color-mix(in srgb, var(--land-bg) 82%, transparent);
   backdrop-filter: blur(10px);
@@ -147,21 +169,20 @@ const LANDING_CSS = `
 .landing-page .hamburger{
   display: flex;
   flex-direction: column;
+  align-items: center;
   justify-content: center;
   gap: 5px;
   width: 32px;
   height: 32px;
+  flex-shrink: 0;
   background: none;
   border: none;
   cursor: pointer;
 }
-.landing-page .hamburger span{ display:block; height: 1.5px; background: var(--land-ink); transition: all .25s ease; }
-.landing-page .hamburger span:nth-child(1){ width: 22px; }
-.landing-page .hamburger span:nth-child(2){ width: 16px; margin-left: auto; }
-.landing-page .hamburger span:nth-child(3){ width: 22px; }
-.landing-page .hamburger.open span:nth-child(1){ transform: translateY(6.5px) rotate(45deg); width: 22px; }
+.landing-page .hamburger span{ display:block; width: 20px; height: 1.5px; background: var(--land-ink); transition: transform .25s ease, opacity .25s ease; }
+.landing-page .hamburger.open span:nth-child(1){ transform: translateY(6.5px) rotate(45deg); }
 .landing-page .hamburger.open span:nth-child(2){ opacity: 0; }
-.landing-page .hamburger.open span:nth-child(3){ transform: translateY(-6.5px) rotate(-45deg); width: 22px; }
+.landing-page .hamburger.open span:nth-child(3){ transform: translateY(-6.5px) rotate(-45deg); }
 
 .landing-page .mobile-menu{ max-height: 0; overflow: hidden; transition: max-height .3s ease; border-bottom: 1px solid transparent; }
 .landing-page .mobile-menu.open{ max-height: 420px; border-bottom: 1px solid var(--land-hairline); }
@@ -184,7 +205,6 @@ const LANDING_CSS = `
   pointer-events: none;
   animation: landingPulse 7s ease-in-out infinite;
 }
-.landing-page .hero-glitter{ position: absolute; inset: 0; pointer-events: none; opacity: 0.65; }
 @keyframes landingPulse{
   0%, 100% { opacity: 0.75; transform: translateX(-50%) scale(1); }
   50% { opacity: 1; transform: translateX(-50%) scale(1.05); }
@@ -217,6 +237,8 @@ const LANDING_CSS = `
 }
 .landing-page .hero-stat .num{ font-family: var(--land-font-display); font-size: 1.5rem; color: var(--land-gold); }
 .landing-page .hero-stat .label{ font-size: 0.8rem; color: var(--land-ink-muted); margin-top: 2px; }
+
+.landing-page main{ display: block; padding-top: var(--land-header-h); }
 
 /* ---------- SECTION SHARED ---------- */
 .landing-page section{ padding: 64px 0; position: relative; }
@@ -508,6 +530,24 @@ export default function Landing() {
     <div className="landing-page">
       <style>{LANDING_CSS}</style>
 
+      <div className="landing-glitter-bg" aria-hidden="true">
+        <GlitterWrap
+          particleCount={180}
+          color1="#F3EEE3"
+          color2="#E7A23A"
+          color3="#C24A2B"
+          speed={1.2}
+          density={55}
+          starSize={4}
+          focalDepth={9}
+          turbulence={0.5}
+          brightness={42}
+          glitterIntensity={2.2}
+          trailAmount={95}
+          reverse={false}
+        />
+      </div>
+
       <header>
         <nav className="wrap nav">
           <a href="#top" className="brand">
@@ -523,8 +563,8 @@ export default function Landing() {
 
           <div className="nav-actions">
             <ThemeToggle />
-            <Link to="/login" className="btn btn-ghost">Sign in</Link>
-            <Link to="/login?mode=signup" className="btn btn-solid">Create account</Link>
+            <Link to="/login" className="btn btn-solid">Sign in</Link>
+            <Link to="/login?mode=signup" className="btn btn-ghost">Create account</Link>
             <button
               className={`hamburger${mobileOpen ? " open" : ""}`}
               aria-label="Toggle menu"
@@ -543,8 +583,8 @@ export default function Landing() {
               <a key={l.href} href={l.href}>{l.label}</a>
             ))}
             <div className="mm-actions">
-              <Link to="/login" className="btn btn-ghost btn-block">Sign in</Link>
-              <Link to="/login?mode=signup" className="btn btn-solid btn-block">Create account</Link>
+              <Link to="/login" className="btn btn-solid btn-block">Sign in</Link>
+              <Link to="/login?mode=signup" className="btn btn-ghost btn-block">Create account</Link>
             </div>
             <div className="mm-theme">
               <ThemeToggle />
@@ -557,23 +597,6 @@ export default function Landing() {
         {/* HERO */}
         <section className="hero">
           <div className="hero-glow" aria-hidden="true"></div>
-          <div className="hero-glitter" aria-hidden="true">
-            <GlitterWrap
-              particleCount={160}
-              color1="#F3EEE3"
-              color2="#E7A23A"
-              color3="#C24A2B"
-              speed={1.4}
-              density={55}
-              starSize={4}
-              focalDepth={9}
-              turbulence={0.6}
-              brightness={42}
-              glitterIntensity={2.5}
-              trailAmount={94}
-              reverse={false}
-            />
-          </div>
           <svg className="hero-burst" aria-hidden="true" viewBox="0 0 400 400" fill="none">
             <g stroke="#E7A23A" strokeLinecap="round">
               <line x1="200" y1="200" x2="200" y2="40" strokeWidth="1" opacity="0.5" />
@@ -611,8 +634,8 @@ export default function Landing() {
               with ZivaBasa, for Zimbabwe&rsquo;s banking workforce.
             </p>
             <div className="hero-ctas">
-              <Link to="/login?mode=signup" className="btn btn-solid">Create account</Link>
-              <Link to="/login" className="btn btn-ghost">Sign in</Link>
+              <Link to="/login" className="btn btn-solid">Sign in</Link>
+              <Link to="/login?mode=signup" className="btn btn-ghost">Create account</Link>
             </div>
             <p className="hero-note">INPUTS · DEEP LEARNING · EXPLAINABLE AI · WORKFORCE OUTPUTS — a four-layer, policy-ready model</p>
 

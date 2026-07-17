@@ -1,0 +1,372 @@
+diff --git a/backend/src/config.py b/backend/src/config.py
+index 0b0ad5c..06f700b 100644
+--- a/backend/src/config.py
++++ b/backend/src/config.py
+@@ -91,8 +91,20 @@ TASK_CONFIGS: Dict[str, TaskConfig] = {
+         raw_filename="future_of_work_ai_2020_2026.csv",
+         target="target_ai_adoption",
+         task_type="regression",
+-        raw_cols=["industry", "ai_adoption_level", "skill_gap_index", "salary_trend"],
+-        drop_cols=["target_ai_adoption", "ai_adoption_level", "ai_adoption_index"],
++        # NOTE (found while wiring ai_adoption_x_labour_cost_trend below): raw_cols previously
++        # listed "salary_trend", which does not exist in the real
++        # ai_job_replacement_2020_2026_v2.csv schema — it was being silently dropped by
++        # select_raw's `if c in df.columns` filter (features.py) every run, with only a WARNING
++        # log to show for it. The real column is salary_change_percent (% change in salary,
++        # the actual labour-cost-trend field this dataset provides). Fixed here.
++        raw_cols=["industry", "ai_adoption_level", "skill_gap_index", "salary_change_percent"],
++        # ai_adoption_x_labour_cost_trend is dropped too, not just ai_adoption_index — it's a
++        # direct multiplicative derivative of ai_adoption_index (= target_ai_adoption), so it
++        # inherits the same leakage employment's exposure_x_skill_complexity was excluded for.
++        # Stays in data/processed/ (documented in the feature dictionary) but excluded from the
++        # modeling matrix for THIS task.
++        drop_cols=["target_ai_adoption", "ai_adoption_level", "ai_adoption_index",
++                   "ai_adoption_x_labour_cost_trend"],
+         loss_weight=1.0,
+     ),
+     "skill_match": TaskConfig(
+@@ -114,8 +126,11 @@ TASK_CONFIGS: Dict[str, TaskConfig] = {
+         # employment's automation_risk_score: target_good_redeployment_match is a direct
+         # quantile threshold of cosine_similarity_score, so leaving it in the modeling matrix
+         # would let the model trivially memorize the threshold instead of learning from the
+-        # underlying staff/role features.
+-        drop_cols=["target_good_redeployment_match", "cosine_similarity_score"],
++        # underlying staff/role features. training_x_skill_readiness inherits the same leakage
++        # (it's a multiplicative derivative of cosine_similarity_score) and is dropped for the
++        # same reason.
++        drop_cols=["target_good_redeployment_match", "cosine_similarity_score",
++                   "training_x_skill_readiness"],
+         loss_weight=1.0,
+     ),
+ }
+diff --git a/backend/src/features.py b/backend/src/features.py
+index a157b82..d0e1d92 100644
+--- a/backend/src/features.py
++++ b/backend/src/features.py
+@@ -265,6 +265,37 @@ def add_interaction_features(df: Optional[pd.DataFrame], task_name: str) -> Opti
+             "quickly a partial match is likely to close the remaining gap.",
+         )
+ 
++    if task_name == "productivity" and {"ai_adoption_index", "salary_change_percent"}.issubset(df.columns):
++        df["ai_adoption_x_labour_cost_trend"] = df["ai_adoption_index"] * df["salary_change_percent"]
++        _log_feature(
++            "ai_adoption_x_labour_cost_trend", "interaction", "productivity",
++            ["ai_adoption_index", "salary_change_percent"],
++            "AI4I catalogue §2.3 'AI Adoption x Labour Cost'. The real productivity CSV "
++            "(ai_job_replacement_2020_2026_v2.csv) has no absolute labour-cost column, so "
++            "salary_change_percent (% change in salary) is used as the labour-cost-trend proxy "
++            "— same 'closest analogue, honestly labeled' pattern as employment's "
++            "ai_tool_maturity_score/task_repetition_level standing in for a true digital-skill-"
++            "level field. NOT a substitute for a real labour_cost_per_employee column once bank "
++            "data replaces the Kaggle proxy. Dropped from productivity's modeling matrix "
++            "(config.py) — it's a direct multiplicative derivative of ai_adoption_index, which "
++            "IS target_ai_adoption, so it inherits the same leakage employment's "
++            "exposure_x_skill_complexity had to be excluded for.",
++        )
++
++    if task_name == "skill_match" and {"recent_training_hours", "cosine_similarity_score"}.issubset(df.columns):
++        df["training_x_skill_readiness"] = df["recent_training_hours"] * df["cosine_similarity_score"]
++        _log_feature(
++            "training_x_skill_readiness", "interaction", "skill_match",
++            ["recent_training_hours", "cosine_similarity_score"],
++            "AI4I catalogue §2.3 'Training Investment x Skill Readiness' — sharpens "
++            "overlap_x_training by weighting training investment against cosine_similarity_score "
++            "(a continuous fit-quality score) instead of skill_overlap_count (a raw match count), "
++            "so two staff with the same overlap count but different overall fit are no longer "
++            "treated identically. Dropped from skill_match's modeling matrix (config.py) — same "
++            "leakage profile as cosine_similarity_score itself, which target_good_redeployment_"
++            "match is a direct quantile threshold of.",
++        )
++
+     return df
+ 
+ 
+diff --git a/backend/tests/smoke_test.py b/backend/tests/smoke_test.py
+index cec88d7..5ac46ed 100644
+--- a/backend/tests/smoke_test.py
++++ b/backend/tests/smoke_test.py
+@@ -40,17 +40,41 @@ df_skills = pd.DataFrame({
+ })
+ 
+ # --- Synthetic "productivity" raw data ---
++# NOTE: previously used "salary_trend", which never existed in the real
++# ai_job_replacement_2020_2026_v2.csv schema (config.py's raw_cols had the same bug — see the
++# fix there). Renamed to salary_change_percent to match the real column and actually exercise
++# the ai_adoption_x_labour_cost_trend interaction feature end to end, not silently skip it.
+ df_productivity = pd.DataFrame({
+     "industry": rng.choice(["Banking", "Retail", "Tech"], N),
+     "ai_adoption_level": rng.uniform(0, 1, N),
+     "skill_gap_index": rng.uniform(0, 1, N),
+-    "salary_trend": rng.normal(0.02, 0.01, N),
++    "salary_change_percent": rng.normal(0.1, 10.0, N),  # matches real column's ~N(0.1, 10) range
++})
++
++# --- Synthetic "skill_match" raw data (bank redeployment-matching-like) ---
++# Previously absent from this smoke test entirely — only employment/skills/productivity were
++# exercised, so skill_match's pipeline (including skill_matching.add_skill_match_features(),
++# overlap_x_training, and the new training_x_skill_readiness) had no integration coverage here.
++SKILL_TAGS = ["python", "sql", "excel", "compliance", "customer_service", "credit_risk", "data_analysis"]
++df_skill_match = pd.DataFrame({
++    "department": rng.choice(["Retail Banking", "Operations", "Risk"], N),
++    "current_role": rng.choice(["Teller", "Analyst", "Officer"], N),
++    "target_department": rng.choice(["Digital Banking", "Risk"], N),
++    "target_role": rng.choice(["Digital Associate", "Risk Analyst"], N),
++    "current_skills": [", ".join(rng.choice(SKILL_TAGS, rng.randint(1, 4), replace=False)) for _ in range(N)],
++    "required_skills": [", ".join(rng.choice(SKILL_TAGS, rng.randint(1, 4), replace=False)) for _ in range(N)],
++    "seniority_years": rng.uniform(0, 20, N),
++    "recent_training_hours": rng.uniform(0, 40, N),
++    "performance_rating": rng.randint(1, 5, N),
++    "avg_salary_usd": rng.normal(35000, 8000, N),
++    "recent_ot_hours": rng.uniform(0, 20, N),
+ })
+ 
+ os.makedirs(config.RAW_DIR, exist_ok=True)
+ df_employment.to_parquet(os.path.join(config.RAW_DIR, "employment_checked.parquet"), index=False)
+ df_skills.to_parquet(os.path.join(config.RAW_DIR, "skills_checked.parquet"), index=False)
+ df_productivity.to_parquet(os.path.join(config.RAW_DIR, "productivity_checked.parquet"), index=False)
++df_skill_match.to_parquet(os.path.join(config.RAW_DIR, "skill_match_checked.parquet"), index=False)
+ print("Synthetic raw checkpoints written.\n")
+ 
+ # --- 1. Feature engineering (all three task heads) ---
+diff --git a/frontend/src/lib/governanceStats.js b/frontend/src/lib/governanceStats.js
+new file mode 100644
+index 0000000..079edb8
+--- /dev/null
++++ b/frontend/src/lib/governanceStats.js
+@@ -0,0 +1,78 @@
++/*
++  Governance stats — computed from real, already-logged data: the assignments table's
++  approval workflow (recommend -> approve/reject, see assignmentStore.js / backend/supabase/
++  schema.sql), including its recommended_at/decided_at timestamps.
++
++  Same "no fabricated numbers" rule Cost Monitoring and indices.js already follow: if there
++  isn't enough real history yet, these return null (or an insufficientHistory flag) and the
++  caller says so in the UI, rather than inventing a trend line or a rate from zero decisions.
++
++  Implements two items from the AI4I feature catalogue that ZivaBasa can actually compute
++  today, from data the app itself already produces (as opposed to the 5 engineered features
++  in src/features.py, which need real bank operational data ZivaBasa doesn't have yet):
++
++    - "Workforce Redeployment Trend" (§2.2 Temporal Features) — decided redeployments per
++      period, turning My Organization's point-in-time approval log into a trend over time.
++    - "AI Overrides as a Share of AI Decisions" (§2.1 Index/Composite Features) — a
++      recommendAssignment() call is the AI decision; a human marking it "rejected" is the
++      override. Share = rejected / all decided.
++*/
++
++function monthKey(iso) {
++  const d = new Date(iso);
++  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
++}
++
++function monthLabel(key) {
++  const [y, m] = key.split("-").map(Number);
++  return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: "short", year: "2-digit" });
++}
++
++/**
++ * Buckets decided assignments (approved/rejected) by month using decided_at.
++ * Returns null if there are no decided assignments at all yet.
++ */
++export function redeploymentTrend(assignments = []) {
++  const decided = assignments.filter((a) => a.status !== "pending" && a.decidedAt);
++  if (decided.length === 0) return null;
++
++  const byMonth = {};
++  for (const a of decided) {
++    const key = monthKey(a.decidedAt);
++    byMonth[key] = byMonth[key] || { approved: 0, rejected: 0 };
++    byMonth[key][a.status === "approved" ? "approved" : "rejected"] += 1;
++  }
++  const keys = Object.keys(byMonth).sort();
++  const series = keys.map((key) => ({
++    key,
++    label: monthLabel(key),
++    approved: byMonth[key].approved,
++    rejected: byMonth[key].rejected,
++    total: byMonth[key].approved + byMonth[key].rejected,
++  }));
++
++  // A "trend" needs at least two distinct periods to mean anything — with one period this
++  // is just a count, not a direction. Flag it rather than compute a fake delta.
++  if (series.length < 2) {
++    return { series, deltaPct: null, insufficientHistory: true };
++  }
++
++  const first = series[0].total;
++  const last = series[series.length - 1].total;
++  const deltaPct = first > 0 ? ((last - first) / first) * 100 : null;
++
++  return { series, deltaPct, insufficientHistory: false };
++}
++
++/**
++ * AI Overrides as a Share of AI Decisions: recommendAssignment() is the AI-generated
++ * decision; a human marking it "rejected" is the override. Returns null until at least one
++ * assignment has actually been decided (approved or rejected) — a 0% rate from zero
++ * decisions would be indistinguishable from "no overrides" and is misleading either way.
++ */
++export function aiOverrideShare(assignments = []) {
++  const decided = assignments.filter((a) => a.status === "approved" || a.status === "rejected");
++  if (decided.length === 0) return null;
++  const rejected = decided.filter((a) => a.status === "rejected").length;
++  return { rejected, decided: decided.length, share: rejected / decided.length };
++}
+diff --git a/frontend/src/lib/indices.js b/frontend/src/lib/indices.js
+index 85805e3..a268f8e 100644
+--- a/frontend/src/lib/indices.js
++++ b/frontend/src/lib/indices.js
+@@ -35,6 +35,14 @@ export const INDEX_DEFINITIONS = {
+     invert: true, // lower skill gap = higher productivity index
+     description: "Inverse of skill gap, min-max normalized across this upload (smaller gap = higher index).",
+   },
++  skill_match: {
++    key: "digital_skills_gap_index",
++    label: "Digital Skills Gap Index",
++    source: "AI4I feature catalogue §2.1",
++    inputs: ["missing_skill_count"],
++    invert: false, // more missing required skills = bigger gap = higher index
++    description: "Count of required skills not yet held, min-max normalized across this upload (0-100, relative to this population — higher = bigger gap).",
++  },
+ };
+ 
+ function minMaxNormalize(values) {
+diff --git a/frontend/src/pages/CostMonitoring.jsx b/frontend/src/pages/CostMonitoring.jsx
+index 928727f..cd58810 100644
+--- a/frontend/src/pages/CostMonitoring.jsx
++++ b/frontend/src/pages/CostMonitoring.jsx
+@@ -9,14 +9,18 @@ import { getCostEntries, setCostEntry, clearCostEntries } from "../lib/costStore
+ import { downloadCostReport } from "../lib/costReport";
+ import { computeCostTotals, AUTO_TRACKED_ITEM_KEY } from "../lib/costCompute";
+ import { usageSummary } from "../lib/usageStore";
++import { getAssignments } from "../lib/assignmentStore";
++import { aiOverrideShare } from "../lib/governanceStats";
+ 
+ export default function CostMonitoring() {
+   const [entries, setEntries] = useState({});
+   const [llmUsage, setLlmUsage] = useState({ totalMessages: 0, totalCostUsd: 0, byProvider: {} });
++  const [governance, setGovernance] = useState(null);
+ 
+   useEffect(() => {
+     getCostEntries().then(setEntries);
+     usageSummary(true).then(setLlmUsage);
++    getAssignments().then((a) => setGovernance(aiOverrideShare(a)));
+   }, []);
+ 
+   const updateItem = async (itemKey, field, value) => {
+@@ -137,6 +141,22 @@ export default function CostMonitoring() {
+                 </div>
+                 <p className="text-xs text-ink-faint mb-4">{cat.description}</p>
+ 
++                {cat.key === "other" && governance && (
++                  <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-gold/25 bg-gold/5 px-3 py-2.5">
++                    <Zap size={13} className="text-gold shrink-0 mt-0.5" />
++                    <p className="text-[11px] text-ink-muted leading-relaxed">
++                      <strong className="text-ink">
++                        {(governance.share * 100).toFixed(0)}% of AI-recommended redeployments have been
++                        overridden by a human
++                      </strong>{" "}
++                      ({governance.rejected} of {governance.decided} decided, My Organization tab) —
++                      AI4I catalogue §2.1 "AI Overrides as a Share of AI Decisions." A live governance
++                      signal, not a cost figure — factor a high override rate into how much human-review
++                      time to budget under Legal / data-protection review and Security engineering below.
++                    </p>
++                  </div>
++                )}
++
+                 <div className="flex flex-col gap-4">
+                   {cat.items.map((item) => {
+                     const entry = entries[item.key] || {};
+diff --git a/frontend/src/pages/zivabasa/MyOrganizationTab.jsx b/frontend/src/pages/zivabasa/MyOrganizationTab.jsx
+index 7ae90a4..7ab6494 100644
+--- a/frontend/src/pages/zivabasa/MyOrganizationTab.jsx
++++ b/frontend/src/pages/zivabasa/MyOrganizationTab.jsx
+@@ -8,6 +8,7 @@ import EmptyState from "../../components/common/EmptyState";
+ import { staggerContainer, fadeUpItem } from "../../lib/motion";
+ import { getOrgNodes, upsertNode, removeNode } from "../../lib/orgStore";
+ import { getAssignments, recommendAssignment, decideAssignment } from "../../lib/assignmentStore";
++import { redeploymentTrend, aiOverrideShare } from "../../lib/governanceStats";
+ import { matchScore, SKILL_LABELS } from "../../lib/skillMatchClient";
+ import OrgChart from "../../components/organization/OrgChart";
+ import RoleEditor from "../../components/organization/RoleEditor";
+@@ -27,6 +28,50 @@ function productivityNarrative(overlapCount, missingCount) {
+   return `Low skill overlap (${overlapCount}/${total}) — this is a significant retraining investment, not a quick transition. Budget real training time before counting on it.`;
+ }
+ 
++// Hand-rolled inline SVG, same pattern as InteractionExplorer's scatter plot — a real chart
++// of real decided-assignment counts per month, not a chart-library dependency for one shape.
++function RedeploymentSparkline({ trend }) {
++  if (!trend) return null;
++  if (trend.insufficientHistory) {
++    return (
++      <p className="text-[11px] text-ink-faint">
++        {trend.series[0].total} redeployment decision{trend.series[0].total === 1 ? "" : "s"} logged in{" "}
++        {trend.series[0].label} so far — a trend needs at least two months of decisions to show a direction.
++      </p>
++    );
++  }
++
++  const { series, deltaPct } = trend;
++  const W = 220, H = 44, PAD = 4;
++  const maxTotal = Math.max(...series.map((p) => p.total), 1);
++  const stepX = series.length > 1 ? (W - 2 * PAD) / (series.length - 1) : 0;
++  const points = series.map((p, i) => {
++    const x = PAD + i * stepX;
++    const y = H - PAD - (p.total / maxTotal) * (H - 2 * PAD);
++    return [x, y];
++  });
++  const path = points.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
++
++  return (
++    <div className="flex items-center gap-3">
++      <svg viewBox={`0 0 ${W} ${H}`} className="w-32 h-7 shrink-0">
++        <path d={path} fill="none" stroke="rgb(var(--gold))" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
++        {points.map(([x, y], i) => (
++          <circle key={i} cx={x} cy={y} r="1.75" fill="rgb(var(--gold))" />
++        ))}
++      </svg>
++      <p className="text-[11px] text-ink-faint leading-relaxed">
++        {series[series.length - 1].total} decided redeployment{series[series.length - 1].total === 1 ? "" : "s"} in{" "}
++        {series[series.length - 1].label}
++        {deltaPct !== null && (
++          <> — {deltaPct >= 0 ? "up" : "down"} {Math.abs(deltaPct).toFixed(0)}% vs {series[0].label}</>
++        )}
++        .
++      </p>
++    </div>
++  );
++}
++
+ export default function MyOrganizationTab() {
+   const [nodes, setNodes] = useState([]);
+   const [assignments, setAssignments] = useState([]);
+@@ -44,6 +89,8 @@ export default function MyOrganizationTab() {
+ 
+   const pendingAssignments = useMemo(() => assignments.filter((a) => a.status === "pending"), [assignments]);
+   const decidedAssignments = useMemo(() => assignments.filter((a) => a.status !== "pending"), [assignments]);
++  const trend = useMemo(() => redeploymentTrend(assignments), [assignments]);
++  const governance = useMemo(() => aiOverrideShare(assignments), [assignments]);
+ 
+   const saveNode = async (node) => {
+     await upsertNode(node);
+@@ -236,9 +283,17 @@ export default function MyOrganizationTab() {
+         {(pendingAssignments.length > 0 || decidedAssignments.length > 0) && (
+           <motion.div variants={fadeUpItem}>
+             <Card animated={false} className="flex flex-col gap-3">
+-              <h2 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold">
+-                Redeployment decisions
+-              </h2>
++              <div className="flex items-center justify-between flex-wrap gap-2">
++                <h2 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold">
++                  Redeployment decisions
++                </h2>
++                {governance && (
++                  <Badge tone={governance.share >= 0.5 ? "red" : governance.share >= 0.25 ? "gold" : "teal"}>
++                    {(governance.share * 100).toFixed(0)}% AI overrides · {governance.rejected}/{governance.decided}
++                  </Badge>
++                )}
++              </div>
++              {trend && <RedeploymentSparkline trend={trend} />}
+               <AnimatePresence initial={false}>
+                 {pendingAssignments.map((a) => (
+                   <motion.div
