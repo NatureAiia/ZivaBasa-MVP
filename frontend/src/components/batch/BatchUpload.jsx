@@ -33,8 +33,10 @@ export default function BatchUpload({ task, onResult }) {
     try {
       const res = await api.predictBatch(task, file);
       setResult(res);
-      saveBatchResult(task, res);
-      addSource({ name: file.name, kind: "csv", size: file.size, task, rowCount: res.n_rows });
+      await Promise.all([
+        saveBatchResult(task, res),
+        addSource({ name: file.name, kind: "csv", size: file.size, task, rowCount: res.n_rows }),
+      ]);
       setState("done");
       onResult?.(res);
     } catch (e) {
@@ -56,6 +58,28 @@ export default function BatchUpload({ task, onResult }) {
     const isClass = result.task_type === "classification";
     return (
       <motion.div variants={staggerContainer} initial="hidden" animate="show" className="flex flex-col gap-4">
+        {result.drift?.available !== false && result.drift?.overall_verdict !== "none" && (
+          <motion.div
+            variants={fadeUpItem}
+            className={clsx(
+              "flex items-start gap-2 rounded-xl px-3 py-2.5 text-[11px] border",
+              result.drift.overall_verdict === "high"
+                ? "text-red bg-red/10 border-red/25"
+                : "text-gold bg-gold/10 border-gold/25"
+            )}
+          >
+            <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+            <span>
+              {result.drift.overall_verdict === "high" ? "Significant" : "Moderate"} drift from the data this
+              model was trained on (PSI {result.drift.overall_psi}) — most shifted:{" "}
+              {result.drift.top_shifted_features
+                .slice(0, 3)
+                .map((f) => f.feature)
+                .join(", ")}
+              . Predictions are still returned, but treat them with more caution than usual.
+            </span>
+          </motion.div>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card className="flex flex-col gap-1">
             <span className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold">Rows analyzed</span>

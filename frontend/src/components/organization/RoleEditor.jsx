@@ -54,7 +54,7 @@ export default function RoleEditor({ node, otherNodes, onSave, onCancel }) {
         <button type="button" onClick={onCancel} className="text-ink-faint hover:text-ink"><X size={14} /></button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <label className="flex flex-col gap-1">
           <span className="text-[11px] text-ink-faint">Job title</span>
           <input value={form.title} onChange={(e) => set("title", e.target.value)} placeholder="e.g. Branch Officer"

@@ -8,14 +8,18 @@ const TABS = [
   { to: "chat", label: "Chat" },
   { to: "predict", label: "Predict" },
   { to: "my-organization", label: "My Organization" },
+  { to: "roster", label: "Roster" },
   { to: "history", label: "History" },
 ];
 
 export default function ZivaBasaLayout() {
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <header className="h-16 shrink-0 border-b border-border flex items-center justify-between px-6">
-        <div className="flex items-center gap-2 text-sm">
+      {/* Below lg: breadcrumb stacks above a horizontally-scrollable tab strip, so all 6 tabs
+          stay reachable and legible instead of being squeezed or clipped. At lg+ (persistent
+          sidebar + roomy content area) everything fits comfortably in one row. */}
+      <header className="shrink-0 border-b border-border flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2.5 lg:gap-0 px-4 sm:px-6 py-3 lg:h-16 lg:py-0">
+        <div className="flex items-center gap-2 text-sm shrink-0">
           <span className="text-ink-faint">ChiedzaAI</span>
           <span className="text-ink-faint">/</span>
           <div className="flex items-center gap-2">
@@ -24,13 +28,19 @@ export default function ZivaBasaLayout() {
           </div>
         </div>
 
-        <nav className="flex items-center gap-1 bg-surface2 rounded-xl p-1">
+        <nav
+          className="flex items-center gap-1 bg-surface2 rounded-xl p-1 overflow-x-auto max-w-full [&::-webkit-scrollbar]:hidden"
+          style={{ scrollbarWidth: "none" }}
+        >
           {TABS.map((tab) => (
             <NavLink
               key={tab.to}
               to={tab.to}
               className={({ isActive }) =>
-                clsx("relative px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors", isActive ? "text-bg" : "text-ink-muted hover:text-ink")
+                clsx(
+                  "relative shrink-0 whitespace-nowrap px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                  isActive ? "text-bg" : "text-ink-muted hover:text-ink"
+                )
               }
             >
               {({ isActive }) => (

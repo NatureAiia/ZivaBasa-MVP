@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { AlertTriangle, FileDown, RotateCcw, Wallet, Zap } from "lucide-react";
 import Card from "../components/common/Card";
@@ -11,27 +11,32 @@ import { computeCostTotals, AUTO_TRACKED_ITEM_KEY } from "../lib/costCompute";
 import { usageSummary } from "../lib/usageStore";
 
 export default function CostMonitoring() {
-  const [entries, setEntries] = useState(getCostEntries());
+  const [entries, setEntries] = useState({});
+  const [llmUsage, setLlmUsage] = useState({ totalMessages: 0, totalCostUsd: 0, byProvider: {} });
 
-  const updateItem = (itemKey, field, value) => {
+  useEffect(() => {
+    getCostEntries().then(setEntries);
+    usageSummary(true).then(setLlmUsage);
+  }, []);
+
+  const updateItem = async (itemKey, field, value) => {
     const current = entries[itemKey] || {};
     const next = { ...current, [field]: value };
-    setEntries(setCostEntry(itemKey, next));
+    setEntries(await setCostEntry(itemKey, next));
   };
 
   const categoryRefs = useRef({});
   const { categoryTotals, grandTotal, enteredCount, totalItems, autoLlmCostUsd } = useMemo(
-    () => computeCostTotals(entries),
-    [entries]
+    () => computeCostTotals(entries, llmUsage.totalCostUsd),
+    [entries, llmUsage]
   );
-  const llmUsage = useMemo(() => usageSummary(true), [entries]);
 
   const scrollToCategory = (key) => {
     categoryRefs.current[key]?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  const reset = () => {
-    clearCostEntries();
+  const reset = async () => {
+    await clearCostEntries();
     setEntries({});
   };
 

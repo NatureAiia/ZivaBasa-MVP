@@ -1,26 +1,36 @@
 /*
-  Client-side storage for user-entered cost figures — same localStorage-only pattern as
-  history.js and batchStore.js (no backend table for this yet either). Each item stores
-  {monthlyUsd, note}; nothing here is pre-filled with a number, per the proposal's explicit
-  instruction not to fabricate a total.
+  Cost-monitoring manual entries — now backed by Postgres (cost_entries table) instead of
+  localStorage. Each item stores {monthlyUsd, note} keyed by itemKey; nothing is pre-filled
+  with a number, per the original design instruction not to fabricate a total.
 */
-const KEY = "zivabasa-cost-model";
+import { supabase } from "./supabaseClient";
 
-export function getCostEntries() {
-  try {
-    return JSON.parse(localStorage.getItem(KEY) || "{}");
-  } catch {
+export async function getCostEntries() {
+  const { data, error } = await supabase.from("cost_entries").select("item_key, monthly_usd, note");
+  if (error) {
+    console.error("getCostEntries failed:", error.message);
     return {};
   }
+  return Object.fromEntries(
+    data.map((r) => [r.item_key, { monthlyUsd: r.monthly_usd, note: r.note }])
+  );
 }
 
-export function setCostEntry(itemKey, entry) {
-  const all = getCostEntries();
-  all[itemKey] = entry;
-  localStorage.setItem(KEY, JSON.stringify(all));
-  return all;
+export async function setCostEntry(itemKey, entry) {
+  const { error } = await supabase.from("cost_entries").upsert(
+    {
+      item_key: itemKey,
+      monthly_usd: entry.monthlyUsd ?? null,
+      note: entry.note ?? null,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id,item_key" }
+  );
+  if (error) throw error;
+  return getCostEntries();
 }
 
-export function clearCostEntries() {
-  localStorage.setItem(KEY, "{}");
+export async function clearCostEntries() {
+  const { error } = await supabase.from("cost_entries").delete().neq("item_key", "");
+  if (error) throw error;
 }

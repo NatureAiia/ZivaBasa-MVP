@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Trash2, FileDown, History as HistoryIcon } from "lucide-react";
 import Card from "../../components/common/Card";
@@ -10,10 +10,14 @@ import { formatPercent, formatRaw } from "../../lib/format";
 import { TASKS, TASK_LABELS, TASK_SHORT_LABELS, api } from "../../lib/api";
 
 export default function HistoryTab() {
-  const [history, setHistory] = useState(getHistory());
+  const [history, setHistory] = useState([]);
   const [downloadingId, setDownloadingId] = useState(null);
 
-  const remove = (id) => setHistory(deleteHistoryEntry(id));
+  useEffect(() => {
+    getHistory().then(setHistory);
+  }, []);
+
+  const remove = async (id) => setHistory(await deleteHistoryEntry(id));
   const download = async (entry) => {
     setDownloadingId(entry.id);
     try {

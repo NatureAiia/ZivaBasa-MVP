@@ -24,13 +24,14 @@ const ALLOWED_KINDS = new Set(["svg", "image", "pdf", "docx"]);
 export default function OrgStructureUpload({ onAttach }) {
   const inputRef = useRef(null);
 
-  const handleFile = (f) => {
+  const handleFile = async (f) => {
     if (!f) return;
     const kind = kindOf(f);
     if (!ALLOWED_KINDS.has(kind)) return;
     const url = URL.createObjectURL(f);
-    addSource({ name: f.name, kind: kind === "docx" ? "text" : kind, size: f.size });
-    onAttach?.({ name: f.name, size: f.size, kind, url });
+    addSource({ name: f.name, kind: kind === "docx" ? "text" : kind, size: f.size })
+      .catch((e) => console.error("addSource failed:", e.message));
+    onAttach?.({ name: f.name, size: f.size, kind, url, file: f });
     inputRef.current.value = ""; // allow re-selecting the same filename later
   };
 

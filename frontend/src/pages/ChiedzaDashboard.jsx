@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ArrowUpRight } from "lucide-react";
@@ -9,19 +10,31 @@ import ShinyPill from "../components/effects/ShinyPill";
 import Typewriter from "../components/effects/Typewriter";
 import { MODELS } from "../components/layout/Sidebar";
 import { computeCostTotals } from "../lib/costCompute";
+import { getCostEntries } from "../lib/costStore";
+import { usageSummary } from "../lib/usageStore";
 import { staggerContainer, fadeUpItem } from "../lib/motion";
 
-const { categoryTotals, grandTotal, enteredCount, totalItems } = computeCostTotals();
-const costGroups = [
+const COST_GROUP_DEFS = [
   { key: "model", label: "Model", categoryKeys: ["model"] },
   { key: "licence-maintenance", label: "Licence & Maintenance", categoryKeys: ["licence", "maintenance"] },
   { key: "human-other", label: "Human & Other Costs", categoryKeys: ["human", "other"] },
-].map((group) => ({
-  ...group,
-  total: categoryTotals.filter(({ cat }) => group.categoryKeys.includes(cat.key)).reduce((sum, item) => sum + item.total, 0),
-}));
+];
 
 export default function ChiedzaDashboard() {
+  const [totals, setTotals] = useState({ categoryTotals: [], grandTotal: 0, enteredCount: 0, totalItems: 0 });
+
+  useEffect(() => {
+    Promise.all([getCostEntries(), usageSummary(true)]).then(([entries, usage]) => {
+      setTotals(computeCostTotals(entries, usage.totalCostUsd));
+    });
+  }, []);
+
+  const { categoryTotals, grandTotal, enteredCount, totalItems } = totals;
+  const costGroups = COST_GROUP_DEFS.map((group) => ({
+    ...group,
+    total: categoryTotals.filter(({ cat }) => group.categoryKeys.includes(cat.key)).reduce((sum, item) => sum + item.total, 0),
+  }));
+
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="p-8 max-w-5xl mx-auto w-full">

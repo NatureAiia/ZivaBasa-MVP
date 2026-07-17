@@ -1,49 +1,75 @@
 /*
-  Assignment store — the approval-workflow audit trail borrowed from FFIMS SWS's
-  duty-assignment concept (checked against the real FFIMS v3.6 codebase: driver + date range +
-  assignedBy + purpose + status, a genuine history of who was assigned where and why). This is
-  the piece ZivaBasa's Roster page didn't have before: a redeployment recommendation isn't just
-  shown and forgotten, it becomes a record someone approved or rejected, kept even after the
-  underlying prediction data changes.
+  Assignment store — now backed by Postgres (assignments table, see
+  backend/supabase/schema.sql) instead of localStorage. Same approval-workflow audit trail
+  concept as before (recommend -> approve/reject -> tracked decision); same exported
+  function names, now async.
 
   A record: { id, roleId, roleTitle, fromRole, toRole, cosineSimilarityScore, missingSkills,
               status: "pending" | "approved" | "rejected", decidedAt, note, recommendedAt }
 */
-const KEY = "zivabasa-org-assignments";
+import { supabase } from "./supabaseClient";
 
-export function getAssignments() {
-  try {
-    return JSON.parse(localStorage.getItem(KEY) || "[]");
-  } catch {
+function fromRow(row) {
+  return {
+    id: row.id,
+    roleId: row.role_id,
+    roleTitle: row.role_title,
+    fromRole: row.from_role,
+    toRole: row.to_role,
+    cosineSimilarityScore: row.cosine_similarity_score,
+    missingSkills: row.missing_skills || [],
+    status: row.status,
+    note: row.note,
+    recommendedAt: row.recommended_at,
+    decidedAt: row.decided_at,
+  };
+}
+
+export async function getAssignments() {
+  const { data, error } = await supabase
+    .from("assignments")
+    .select("*")
+    .order("recommended_at", { ascending: false });
+  if (error) {
+    console.error("getAssignments failed:", error.message);
     return [];
   }
+  return data.map(fromRow);
 }
 
-function write(records) {
-  localStorage.setItem(KEY, JSON.stringify(records));
-  return records;
+export async function recommendAssignment(record) {
+  // Relies on the assignments_role_target_uniq constraint (user_id, role_id, to_role) —
+  // upsert with ignoreDuplicates is the same "don't spam a new row for the same
+  // role -> target pair" behavior the old localStorage version implemented by hand.
+  const { error } = await supabase
+    .from("assignments")
+    .upsert(
+      {
+        role_id: record.roleId,
+        role_title: record.roleTitle,
+        from_role: record.fromRole,
+        to_role: record.toRole,
+        cosine_similarity_score: record.cosineSimilarityScore,
+        missing_skills: record.missingSkills || [],
+        status: "pending",
+      },
+      { onConflict: "user_id,role_id,to_role", ignoreDuplicates: true }
+    )
+    .select();
+  if (error) throw error;
+  return getAssignments();
 }
 
-export function recommendAssignment(record) {
-  const records = getAssignments();
-  // Don't duplicate an existing pending/decided recommendation for the same role -> target
-  // pair — re-running the analysis on an unchanged org chart shouldn't spam new rows.
-  const existing = records.find((r) => r.roleId === record.roleId && r.toRole === record.toRole);
-  if (existing) return records;
-  const next = [
-    { ...record, id: `asg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, status: "pending", recommendedAt: new Date().toISOString() },
-    ...records,
-  ];
-  return write(next);
+export async function decideAssignment(id, status, note = "") {
+  const { error } = await supabase
+    .from("assignments")
+    .update({ status, note, decided_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+  return getAssignments();
 }
 
-export function decideAssignment(id, status, note = "") {
-  const records = getAssignments().map((r) =>
-    r.id === id ? { ...r, status, note, decidedAt: new Date().toISOString() } : r
-  );
-  return write(records);
-}
-
-export function clearAssignments() {
-  write([]);
+export async function clearAssignments() {
+  const { error } = await supabase.from("assignments").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  if (error) throw error;
 }

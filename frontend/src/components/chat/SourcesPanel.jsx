@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Upload, FileText, Image, File, Table2, X } from "lucide-react";
 import { fadeUpItem } from "../../lib/motion";
@@ -15,19 +15,23 @@ function kindOf(file) {
 }
 
 export default function SourcesPanel() {
-  const [sources, setSources] = useState(getSources);
+  const [sources, setSources] = useState([]);
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef(null);
 
-  const addFiles = (fileList) => {
-    let next = sources;
+  useEffect(() => {
+    getSources().then(setSources);
+  }, []);
+
+  const addFiles = async (fileList) => {
+    let next;
     for (const f of Array.from(fileList)) {
-      next = addSource({ name: f.name, kind: kindOf(f), size: f.size });
+      next = await addSource({ name: f.name, kind: kindOf(f), size: f.size });
     }
-    setSources(next);
+    if (next) setSources(next);
   };
 
-  const remove = (id) => setSources(removeSource(id));
+  const remove = async (id) => setSources(await removeSource(id));
 
   return (
     <div className="p-4 flex flex-col gap-3 h-full overflow-y-auto">

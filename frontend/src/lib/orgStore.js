@@ -1,47 +1,74 @@
 /*
-  Org structure store — persisted (localStorage, same pattern as the rest of this app). A node
-  is one role in the organization: who it reports to, what skills the person in it has today,
-  and (optionally) what future role/skills it's expected to move toward. This is the input to
-  both the org chart render and the job-relevance / skill-match analysis in My Organization.
-*/
-const KEY = "zivabasa-org-structure";
+  Org structure store — now backed by Postgres (org_nodes table, see
+  backend/supabase/schema.sql) instead of localStorage, so a reporting structure built in
+  My Organization survives across devices/browsers and isn't lost if the browser's storage
+  is cleared. Same exported function names/shapes as the old localStorage version — call
+  sites just need `await`.
 
-// node: { id, title, department, parentId (null = top of chart), currentSkills: [],
-//         targetRole: "" | string, targetSkills: [], seniorityYears, headcount }
-export function getOrgNodes() {
-  try {
-    return JSON.parse(localStorage.getItem(KEY) || "[]");
-  } catch {
+  node: { id, title, department, parentId (null = top of chart), currentSkills: [],
+          targetRole: "" | string, targetSkills: [], seniorityYears, headcount }
+*/
+import { supabase } from "./supabaseClient";
+
+function fromRow(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    department: row.department,
+    parentId: row.parent_id,
+    currentSkills: row.current_skills || [],
+    targetRole: row.target_role,
+    targetSkills: row.target_skills || [],
+    seniorityYears: row.seniority_years,
+    headcount: row.headcount,
+  };
+}
+
+function toRow(node) {
+  return {
+    ...(node.id ? { id: node.id } : {}),
+    title: node.title,
+    department: node.department,
+    parent_id: node.parentId ?? null,
+    current_skills: node.currentSkills || [],
+    target_role: node.targetRole || null,
+    target_skills: node.targetSkills || [],
+    seniority_years: node.seniorityYears ?? null,
+    headcount: node.headcount ?? 1,
+  };
+}
+
+export async function getOrgNodes() {
+  const { data, error } = await supabase.from("org_nodes").select("*").order("created_at");
+  if (error) {
+    console.error("getOrgNodes failed:", error.message);
     return [];
   }
+  return data.map(fromRow);
 }
 
-function write(nodes) {
-  localStorage.setItem(KEY, JSON.stringify(nodes));
-  return nodes;
+export async function upsertNode(node) {
+  const { data, error } = await supabase
+    .from("org_nodes")
+    .upsert(toRow(node))
+    .select()
+    .single();
+  if (error) throw error;
+  return fromRow(data);
 }
 
-export function upsertNode(node) {
-  const nodes = getOrgNodes();
-  const id = node.id || `role-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-  const idx = nodes.findIndex((n) => n.id === id);
-  const next = { ...node, id };
-  if (idx >= 0) nodes[idx] = next;
-  else nodes.push(next);
-  return write(nodes);
+export async function removeNode(id) {
+  // Re-parent any children of the removed node to its own parent first, rather than
+  // orphaning a whole subtree — matches how removing a manager in a real org chart should
+  // behave. Two round-trips (fetch parent, then re-parent + delete) since Postgres can't
+  // read-then-write a self-referencing FK in one statement here.
+  const { data: removed } = await supabase.from("org_nodes").select("parent_id").eq("id", id).single();
+  await supabase.from("org_nodes").update({ parent_id: removed?.parent_id ?? null }).eq("parent_id", id);
+  const { error } = await supabase.from("org_nodes").delete().eq("id", id);
+  if (error) throw error;
 }
 
-export function removeNode(id) {
-  // Re-parent any children of the removed node to its own parent, rather than orphaning a
-  // whole subtree — matches how removing a manager in a real org chart should behave.
-  const nodes = getOrgNodes();
-  const removed = nodes.find((n) => n.id === id);
-  const next = nodes
-    .filter((n) => n.id !== id)
-    .map((n) => (n.parentId === id ? { ...n, parentId: removed?.parentId ?? null } : n));
-  return write(next);
-}
-
-export function clearOrgNodes() {
-  write([]);
+export async function clearOrgNodes() {
+  const { error } = await supabase.from("org_nodes").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  if (error) throw error;
 }

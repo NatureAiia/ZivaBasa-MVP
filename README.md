@@ -42,9 +42,14 @@ served through a real API and dashboard, before real Zimbabwean banking-sector d
   and skills-gap *recommendations* (as opposed to attrition risk) aren't built yet.
 - **Chat tab** — real, wired to the backend's `/chat` endpoint, which can call the actual
   `predict_task`/`explain_task` tools. Requires `ANTHROPIC_API_KEY` or `NVIDIA_API_KEY` on the backend.
-- **History** — real, but client-side only (`localStorage`) — no backend persistence yet.
+- **History** — real, backed by Postgres (see Section 8) — syncs across devices/sessions once
+  signed in, no longer tied to one browser.
 - **Report generation** — real, exports a `.md` summary from a completed advanced-mode run (not PDF yet).
-- **No auth, no database** yet. Everything runs against in-memory models + browser-local state.
+- **Auth + database** — real as of this session. Supabase Auth (email/password) gates the app;
+  every user-generated record (org chart, roster decisions, batch results, sources, chat usage,
+  cost entries, chat session, predict history) is Postgres-backed with Row Level Security, not
+  browser-local state. Model serving (FastAPI: predict/explain/schema/batch/chat/reports) is
+  still in-memory and stateless — see Section 8 for setup.
 
 See `backend/README.md` and `frontend/README.md` for the full, current, module-level detail — this
 root file is the map, those are the ground truth for each half of the stack.
@@ -189,6 +194,20 @@ By default the app talks to `http://localhost:8000`. Override with a `frontend/.
 ```
 VITE_API_BASE=http://localhost:8000
 ```
+
+**Backend persistence + auth (Supabase):** as of this session, every user-generated record
+(org chart, roster/approval decisions, batch results, sources, chat usage log, cost entries,
+chat session, predict history) is stored in Postgres via Supabase instead of localStorage, and
+the app requires signing in. Setup:
+1. Create a free project at [supabase.com](https://supabase.com).
+2. In the SQL Editor, run `backend/supabase/schema.sql` once (tables + Row Level Security).
+3. Copy `frontend/.env.example` to `frontend/.env` and fill in your project's URL + anon key
+   (Project Settings → API).
+4. `npm run dev` — you'll land on a sign-up/sign-in screen before anything else loads.
+
+FastAPI itself is unchanged and stores nothing — see `backend/supabase/schema.sql` for the
+architecture note on why CRUD goes through Supabase directly (client SDK + RLS) rather than
+through a second REST layer in FastAPI.
 
 Run notebooks in order (01 → 06) if retraining models. Each notebook reads from
 `backend/data/processed/` produced by the previous one — do not skip 02 (feature engineering)

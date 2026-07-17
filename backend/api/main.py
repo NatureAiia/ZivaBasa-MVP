@@ -19,6 +19,7 @@ meant to prove the trained multi-task model + SHAP pipeline can actually be serv
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
@@ -39,7 +40,10 @@ from api.model_registry import registry
 from api import batch as batch_module
 from api import chat as chat_module
 from api import reports as reports_module
+from api import org_extract as org_extract_module
 from src import evaluate
+from src import config as src_config
+from src import drift as drift_module
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s [%(name)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -217,6 +221,24 @@ async def predict_batch(task: str, file: UploadFile = File(...)):
         artifacts.task_type, parsed["label_col"],
     )
 
+    # Drift check — how different is THIS upload from what the currently-live model was
+    # trained on? See src/drift.py for why PSI and why this is the one place it's checked
+    # (batch upload is the only place external data enters the running system today).
+    # Compared in the SAME standardized (scaled) feature space the baseline was built in —
+    # features.run_pipeline() scales-and-persists training data before it's saved, so
+    # splits["X_train"] (what the baseline is built from) is already z-scored, not raw. Using
+    # X_scaled here (not parsed["feature_matrix"], which is still in raw upload units) keeps
+    # both sides of the comparison in the same units; comparing raw vs. scaled would report
+    # enormous spurious "drift" on every upload regardless of any real distribution shift.
+    # Baseline may not exist yet if the live models predate this feature or haven't gone
+    # through scripts/retrain_and_promote.py — absence is reported honestly, not silently.
+    baseline_path = os.path.join(src_config.MODELS_DIR, "drift_baselines", f"{task}_baseline.json")
+    baseline = drift_module.load_baseline(baseline_path)
+    if baseline is not None:
+        drift_report = drift_module.compute_drift_report(baseline, X_scaled, artifacts.feature_names)
+    else:
+        drift_report = {"available": False, "reason": "No drift baseline saved for this task yet — run scripts/retrain_and_promote.py at least once."}
+
     return {
         "task": task,
         "task_type": artifacts.task_type,
@@ -229,6 +251,7 @@ async def predict_batch(task: str, file: UploadFile = File(...)):
         "by_segment": by_segment,
         "top_rows": top_risk,
         "rows": rows,
+        "drift": drift_report,
     }
 
 
@@ -248,6 +271,56 @@ async def chat(request: ChatRequest):
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Chat provider call failed: {e}")
     return ChatResponse(**result)
+
+
+@app.get("/mlops/status")
+async def mlops_status():
+    reports_dir = os.path.join(src_config.MODELS_DIR, "retrain_reports")
+    latest_report = None
+    if os.path.isdir(reports_dir):
+        report_files = sorted(os.listdir(reports_dir))
+        if report_files:
+            import json
+            with open(os.path.join(reports_dir, report_files[-1])) as f:
+                latest_report = json.load(f)
+
+    baselines_dir = os.path.join(src_config.MODELS_DIR, "drift_baselines")
+    baselines_present = []
+    if os.path.isdir(baselines_dir):
+        baselines_present = [f.replace("_baseline.json", "") for f in os.listdir(baselines_dir) if f.endswith("_baseline.json")]
+
+    return {"latest_retrain_report": latest_report, "drift_baselines_available_for": baselines_present}
+
+
+@app.get("/organization/extract/providers")
+async def org_extract_providers():
+    return {"providers": org_extract_module.available_vision_providers()}
+
+
+_ORG_EXTRACT_MEDIA_TYPES = {
+    "image/png": "image/png", "image/jpeg": "image/jpeg", "image/jpg": "image/jpeg",
+    "image/webp": "image/webp", "application/pdf": "application/pdf",
+}
+
+
+@app.post("/organization/extract")
+async def org_extract(file: UploadFile = File(...), provider: str = None):
+    media_type = _ORG_EXTRACT_MEDIA_TYPES.get(file.content_type)
+    if media_type is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unsupported file type '{file.content_type}' for auto-extraction. "
+                   f"Supported: PNG, JPEG, WEBP images, or PDF. (SVG/Word references can still "
+                   f"be attached manually, just not auto-parsed.)",
+        )
+    file_bytes = await file.read()
+    try:
+        result = await org_extract_module.extract_org_chart(file_bytes, media_type, provider)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Org chart extraction failed: {e}")
+    return result
 
 
 _DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"

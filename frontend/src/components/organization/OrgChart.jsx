@@ -50,7 +50,13 @@ export default function OrgChart({ nodes, onSelect, selectedId }) {
   const maxY = Math.max(...positioned.map((p) => p.y), 0) + NODE_H;
 
   return (
-    <svg viewBox={`0 0 ${maxX + 20} ${maxY + 20}`} className="w-full" style={{ minHeight: Math.min(maxY + 20, 420) }}>
+    <svg
+      viewBox={`0 0 ${maxX + 20} ${maxY + 20}`}
+      width={maxX + 20}
+      height={maxY + 20}
+      className="shrink-0"
+      style={{ minWidth: Math.min(maxX + 20, 320) }}
+    >
       {/* Connector lines, drawn first so nodes sit on top */}
       {positioned.map((p) =>
         (childrenOf[p.id] || []).map((childRaw) => {

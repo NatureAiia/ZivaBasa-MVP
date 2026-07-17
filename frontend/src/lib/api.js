@@ -99,6 +99,28 @@ export const api = {
       body: JSON.stringify({ messages, provider }),
     }),
   chatModels: () => request("/chat/models"),
+  orgExtractProviders: () => request("/organization/extract/providers"),
+  extractOrgChart: async (file, provider = null) => {
+    const form = new FormData();
+    form.append("file", file);
+    const base = getBase();
+    const qs = provider ? `?provider=${encodeURIComponent(provider)}` : "";
+    let res;
+    try {
+      res = await fetch(`${base}/organization/extract${qs}`, { method: "POST", body: form });
+    } catch (e) {
+      throw new Error(`Could not reach API at ${base}. Is uvicorn running? (${e.message})`);
+    }
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        const body = await res.json();
+        detail = body.detail || JSON.stringify(body);
+      } catch (_) {}
+      throw new Error(`${res.status}: ${detail}`);
+    }
+    return res.json();
+  },
   predictReport: (results) =>
     requestBlob("/reports/predict", {
       method: "POST",

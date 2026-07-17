@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Building2 } from "lucide-react";
 import Card from "../common/Card";
 import { getAllBatchResults } from "../../lib/batchStore";
@@ -5,7 +6,10 @@ import { formatPercent } from "../../lib/format";
 import { TASK_LABELS } from "../../lib/api";
 
 export default function DepartmentBreakdown() {
-  const results = getAllBatchResults();
+  const [results, setResults] = useState({});
+  useEffect(() => {
+    getAllBatchResults().then(setResults);
+  }, []);
   const withSegments = Object.entries(results).filter(([, r]) => r?.by_segment?.length);
 
   if (withSegments.length === 0) return null;

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import ClarityRing from "../common/ClarityRing";
 import { staggerContainer, fadeUpItem } from "../../lib/motion";
@@ -6,7 +7,10 @@ import { computeIndex, INDEX_DEFINITIONS } from "../../lib/indices";
 import { TASK_LABELS } from "../../lib/api";
 
 export default function IndexCards() {
-  const results = getAllBatchResults();
+  const [results, setResults] = useState({});
+  useEffect(() => {
+    getAllBatchResults().then(setResults);
+  }, []);
   const cards = Object.keys(INDEX_DEFINITIONS)
     .map((task) => {
       const rows = results[task]?.rows;

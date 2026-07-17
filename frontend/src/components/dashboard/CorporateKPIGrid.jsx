@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Users, TrendingDown, TrendingUp, Upload, Shuffle } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -20,7 +21,11 @@ function EmptyKPICard({ icon: Icon, title }) {
 }
 
 export default function CorporateKPIGrid() {
-  const { employment, skills, productivity, skill_match: skillMatch } = getAllBatchResults();
+  const [batches, setBatches] = useState({});
+  useEffect(() => {
+    getAllBatchResults().then(setBatches);
+  }, []);
+  const { employment, skills, productivity, skill_match: skillMatch } = batches;
 
   return (
     <motion.div variants={staggerContainer} initial="hidden" animate="show" className="flex flex-col gap-4">

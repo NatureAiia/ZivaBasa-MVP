@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Trash2, Sparkles, CheckCircle2, XCircle, Clock, ArrowRight, Network, FileText, X, File as FileIcon } from "lucide-react";
@@ -12,6 +12,7 @@ import { matchScore, SKILL_LABELS } from "../../lib/skillMatchClient";
 import OrgChart from "../../components/organization/OrgChart";
 import RoleEditor from "../../components/organization/RoleEditor";
 import OrgStructureUpload from "../../components/organization/OrgStructureUpload";
+import OrgExtractPanel from "../../components/organization/OrgExtractPanel";
 
 function productivityNarrative(overlapCount, missingCount) {
   const total = overlapCount + missingCount;
@@ -27,11 +28,16 @@ function productivityNarrative(overlapCount, missingCount) {
 }
 
 export default function MyOrganizationTab() {
-  const [nodes, setNodes] = useState(getOrgNodes);
-  const [assignments, setAssignments] = useState(getAssignments);
+  const [nodes, setNodes] = useState([]);
+  const [assignments, setAssignments] = useState([]);
   const [editingId, setEditingId] = useState(null); // null = not editing, "new" = adding, else node id
   const [selectedId, setSelectedId] = useState(null);
   const [referenceFile, setReferenceFile] = useState(null);
+
+  useEffect(() => {
+    getOrgNodes().then(setNodes);
+    getAssignments().then(setAssignments);
+  }, []);
 
   const selected = nodes.find((n) => n.id === selectedId);
   const editingNode = editingId && editingId !== "new" ? nodes.find((n) => n.id === editingId) : null;
@@ -39,21 +45,23 @@ export default function MyOrganizationTab() {
   const pendingAssignments = useMemo(() => assignments.filter((a) => a.status === "pending"), [assignments]);
   const decidedAssignments = useMemo(() => assignments.filter((a) => a.status !== "pending"), [assignments]);
 
-  const saveNode = (node) => {
-    setNodes(upsertNode(node));
+  const saveNode = async (node) => {
+    await upsertNode(node);
+    setNodes(await getOrgNodes());
     setEditingId(null);
   };
-  const deleteNode = (id) => {
-    setNodes(removeNode(id));
+  const deleteNode = async (id) => {
+    await removeNode(id);
+    setNodes(await getOrgNodes());
     if (selectedId === id) setSelectedId(null);
   };
 
   const gap = selected?.targetRole ? matchScore(selected.currentSkills, selected.targetSkills) : null;
 
-  const recommend = () => {
+  const recommend = async () => {
     if (!selected || !gap) return;
     setAssignments(
-      recommendAssignment({
+      await recommendAssignment({
         roleId: selected.id,
         roleTitle: selected.title,
         fromRole: selected.title,
@@ -64,7 +72,7 @@ export default function MyOrganizationTab() {
     );
   };
 
-  const decide = (id, status) => setAssignments(decideAssignment(id, status));
+  const decide = async (id, status) => setAssignments(await decideAssignment(id, status));
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -103,7 +111,11 @@ export default function MyOrganizationTab() {
               )}
               <div className="flex-1 min-w-0">
                 <span className="text-xs text-ink truncate block">{referenceFile.name}</span>
-                <span className="text-[10px] text-ink-faint">Attached as a reference — not read automatically, add roles manually below</span>
+                <span className="text-[10px] text-ink-faint">
+                  {referenceFile.kind === "image" || referenceFile.kind === "pdf"
+                    ? "Attached as a reference — extract roles below, or add them manually"
+                    : "Attached as a reference — not auto-readable for this file type, add roles manually below"}
+                </span>
               </div>
               <button onClick={() => setReferenceFile(null)} className="text-ink-faint hover:text-red shrink-0" aria-label="Remove reference file">
                 <X size={14} />
@@ -116,6 +128,12 @@ export default function MyOrganizationTab() {
               <a href={referenceFile.url} target="_blank" rel="noreferrer" className="text-[11px] text-gold hover:underline self-start">
                 Open PDF in a new tab →
               </a>
+            )}
+            {(referenceFile.kind === "image" || referenceFile.kind === "pdf") && referenceFile.file && (
+              <OrgExtractPanel
+                file={referenceFile.file}
+                onImported={() => getOrgNodes().then(setNodes)}
+              />
             )}
           </motion.div>
         )}

@@ -11,14 +11,13 @@
   most of these categories can't be automated at all).
 */
 import { COST_CATEGORIES } from "./costModel";
-import { getCostEntries } from "./costStore";
-import { usageSummary } from "./usageStore";
 
 export const AUTO_TRACKED_ITEM_KEY = "llm_api_usage";
 
-export function computeCostTotals(entries = getCostEntries()) {
-  const autoLlmCostUsd = usageSummary(true).totalCostUsd;
-
+// Pure function now — entries and autoLlmCostUsd must be fetched by the caller first (both
+// costStore and usageStore are Supabase-backed and async, so they can no longer be read
+// synchronously as default params here).
+export function computeCostTotals(entries = {}, autoLlmCostUsd = 0) {
   const categoryTotals = COST_CATEGORIES.map((cat) => {
     const total = cat.items.reduce((sum, item) => {
       if (item.key === AUTO_TRACKED_ITEM_KEY) return sum + autoLlmCostUsd;

@@ -48,12 +48,20 @@ export default function ChatPane() {
   const [backendModels, setBackendModels] = useState([]);
   const [selection, setSelection] = useState({ mode: "puter", id: "anthropic/claude-sonnet-5" });
   const [menuOpen, setMenuOpen] = useState(false);
-  const initialSession = getChatSession();
-  const [messages, setMessages] = useState(initialSession.messages.length ? initialSession.messages : [WELCOME_MESSAGE]);
-  const [toolCallLog, setToolCallLog] = useState(initialSession.toolCallLog); // for the Chat report's "predictions made" section
+  const [messages, setMessages] = useState([WELCOME_MESSAGE]);
+  const [toolCallLog, setToolCallLog] = useState([]); // for the Chat report's "predictions made" section
+  const [sessionLoaded, setSessionLoaded] = useState(false);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const endRef = useRef(null);
+
+  useEffect(() => {
+    getChatSession().then((session) => {
+      if (session.messages.length) setMessages(session.messages);
+      setToolCallLog(session.toolCallLog);
+      setSessionLoaded(true);
+    });
+  }, []);
 
   useEffect(() => {
     api.chatModels()
@@ -70,8 +78,11 @@ export default function ChatPane() {
   }, [messages, sending]);
 
   useEffect(() => {
-    saveChatSession(messages, toolCallLog);
-  }, [messages, toolCallLog]);
+    // Only persist once the initial load has completed — otherwise the [WELCOME_MESSAGE]
+    // default would overwrite a real saved session before it's had a chance to load.
+    if (!sessionLoaded) return;
+    saveChatSession(messages, toolCallLog).catch((e) => console.error("saveChatSession failed:", e.message));
+  }, [messages, toolCallLog, sessionLoaded]);
 
   const selectedLabel = () => {
     if (selection.mode === "backend") {
@@ -98,7 +109,8 @@ export default function ChatPane() {
         replyProvider = `puter:${selection.id}`;
         // Genuinely free — no token accounting available from Puter's response, but still
         // logged so the usage summary reflects real message volume, not just backend calls.
-        logUsage({ provider: replyProvider, model: selection.id, inputTokens: 0, outputTokens: 0, costUsd: 0 });
+        logUsage({ provider: replyProvider, model: selection.id, inputTokens: 0, outputTokens: 0, costUsd: 0 })
+          .catch((e) => console.error("logUsage failed:", e.message));
       } else {
         const res = await api.chat(nextMessages.map((m) => ({ role: m.role, content: m.text })), selection.id);
         replyText = res.reply;
@@ -111,7 +123,7 @@ export default function ChatPane() {
           inputTokens,
           outputTokens,
           costUsd: estimateCostUsd(replyProvider, inputTokens, outputTokens),
-        });
+        }).catch((e) => console.error("logUsage failed:", e.message));
         if (res.tool_calls?.length) {
           setToolCallLog((log) => [...log, ...res.tool_calls]);
         }
@@ -128,7 +140,7 @@ export default function ChatPane() {
     setMessages([WELCOME_MESSAGE]);
     setToolCallLog([]);
     setInput("");
-    clearChatSession();
+    clearChatSession().catch((e) => console.error("clearChatSession failed:", e.message));
   };
 
   return (

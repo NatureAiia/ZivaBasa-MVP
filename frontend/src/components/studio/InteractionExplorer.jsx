@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { getAllBatchResults } from "../../lib/batchStore";
 import { TASKS, TASK_LABELS, TASK_SHORT_LABELS } from "../../lib/api";
@@ -21,14 +21,26 @@ function featureNamesFor(result) {
 }
 
 export default function InteractionExplorer() {
-  const results = getAllBatchResults();
-  const availableTasks = taskWithRows(results);
+  const [results, setResults] = useState({});
+  const [task, setTask] = useState(null);
+  const [xKey, setXKey] = useState(null);
+  const [yKey, setYKey] = useState(null);
 
-  const [task, setTask] = useState(availableTasks[0] || "employment");
-  const result = results[task];
+  useEffect(() => {
+    getAllBatchResults().then((r) => {
+      setResults(r);
+      const available = taskWithRows(r);
+      const firstTask = available[0] || "employment";
+      setTask(firstTask);
+      const features = featureNamesFor(r[firstTask]);
+      setXKey(features[1] || features[0]);
+      setYKey(features[0]);
+    });
+  }, []);
+
+  const availableTasks = taskWithRows(results);
+  const result = task ? results[task] : null;
   const features = useMemo(() => featureNamesFor(result), [result]);
-  const [xKey, setXKey] = useState(features[1] || features[0]);
-  const [yKey, setYKey] = useState(features[0]);
 
   if (availableTasks.length === 0) {
     return null;

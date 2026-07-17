@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { MessageSquare, ArrowUpRight } from "lucide-react";
 import Card from "../common/Card";
@@ -14,7 +15,11 @@ function providerLabel(key) {
 }
 
 export default function ChatUsageSummary() {
-  const summary = usageSummary(true); // this calendar month
+  const [summary, setSummary] = useState({ totalMessages: 0, totalCostUsd: 0, byProvider: {} });
+
+  useEffect(() => {
+    usageSummary(true).then(setSummary); // this calendar month
+  }, []);
 
   if (summary.totalMessages === 0) {
     return (

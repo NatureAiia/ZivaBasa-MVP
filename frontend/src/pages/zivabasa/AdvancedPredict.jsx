@@ -22,7 +22,7 @@ export default function AdvancedPredict() {
   }, [activeTask, schemas, loadSchema]);
 
   useEffect(() => {
-    if (allComplete) logHistoryEntry(results);
+    if (allComplete) logHistoryEntry(results).catch((e) => console.error("logHistoryEntry failed:", e.message));
   }, [allComplete]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const schema = schemas[activeTask];

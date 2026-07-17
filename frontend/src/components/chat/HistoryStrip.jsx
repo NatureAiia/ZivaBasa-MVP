@@ -1,10 +1,15 @@
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Clock } from "lucide-react";
 import { getHistory } from "../../lib/history";
 import { formatPercent, formatRaw } from "../../lib/format";
 
 export default function HistoryStrip() {
-  const history = getHistory().slice(0, 12);
+  const [history, setHistory] = useState([]);
+
+  useEffect(() => {
+    getHistory().then((h) => setHistory(h.slice(0, 12)));
+  }, []);
 
   return (
     <div className="border-t border-border px-4 py-3 flex items-center gap-3 overflow-x-auto bg-surface">

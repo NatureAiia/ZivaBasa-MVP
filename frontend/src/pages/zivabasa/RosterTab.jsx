@@ -32,8 +32,8 @@ export default function RosterTab() {
   const [approvedAssignments, setApprovedAssignments] = useState([]);
 
   useEffect(() => {
-    setBatch(getBatchResult("skill_match"));
-    setApprovedAssignments(getAssignments().filter((a) => a.status === "approved"));
+    getBatchResult("skill_match").then(setBatch);
+    getAssignments().then((all) => setApprovedAssignments(all.filter((a) => a.status === "approved")));
     api.schema("skill_match").then(setSchema).catch(() => {});
   }, []);
 

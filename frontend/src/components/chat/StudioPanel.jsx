@@ -1,5 +1,5 @@
 import { FileDown, ChevronRight, MessageSquareText } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import clsx from "clsx";
 import { getHistory } from "../../lib/history";
@@ -37,13 +37,20 @@ function StudioBlock({ title, description, active, children }) {
 }
 
 export default function StudioPanel() {
-  const history = getHistory();
+  const [history, setHistory] = useState([]);
+  const [batches, setBatches] = useState({});
+  const [chatSession, setChatSession] = useState({ messages: [], toolCallLog: [] });
+
+  useEffect(() => {
+    getHistory().then(setHistory);
+    getAllBatchResults().then(setBatches);
+    getChatSession().then(setChatSession);
+  }, []);
+
   const latest = history[0];
-  const batches = getAllBatchResults();
   const hasIndexData = Object.values(batches).some(Boolean);
   const hasInteractionData = Object.values(batches).some((b) => b?.rows?.length > 0);
   const hasRosterData = !!batches.skill_match;
-  const chatSession = getChatSession();
   const hasChatData = chatSession.messages.length > 0;
   const [downloadingPredict, setDownloadingPredict] = useState(false);
   const [downloadingChat, setDownloadingChat] = useState(false);

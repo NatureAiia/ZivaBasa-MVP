@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { TrendingUp } from "lucide-react";
 import Card from "../common/Card";
@@ -15,14 +15,20 @@ function impactTone(overlapCount, missingCount) {
 }
 
 export default function FutureSkillsTable() {
+  const [orgNodes, setOrgNodes] = useState([]);
+
+  useEffect(() => {
+    getOrgNodes().then(setOrgNodes);
+  }, []);
+
   const rows = useMemo(() => {
-    return getOrgNodes()
+    return orgNodes
       .filter((n) => n.targetRole)
       .map((n) => {
         const gap = matchScore(n.currentSkills, n.targetSkills);
         return { ...n, gap };
       });
-  }, []);
+  }, [orgNodes]);
 
   if (rows.length === 0) {
     return (

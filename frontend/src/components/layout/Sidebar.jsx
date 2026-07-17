@@ -2,12 +2,13 @@ import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  LayoutGrid, Boxes, Wallet, ChevronDown, PanelLeftClose, PanelLeftOpen, X,
+  LayoutGrid, Boxes, Wallet, ChevronDown, PanelLeftClose, PanelLeftOpen, X, LogOut,
 } from "lucide-react";
 import clsx from "clsx";
 import ClarityRing from "../common/ClarityRing";
 import ThemeToggle from "./ThemeToggle";
 import ShinyPill from "../effects/ShinyPill";
+import { useAuth } from "../../lib/authStore";
 
 export const MODELS = [
   { slug: "zivabasa", name: "ZivaBasa", tagline: "Workforce intelligence", live: true },
@@ -43,6 +44,24 @@ function NavItem({ to, icon: Icon, label, collapsed, end, onNavigate }) {
         </>
       )}
     </NavLink>
+  );
+}
+
+function AccountRow() {
+  const { user, signOut } = useAuth();
+  if (!user) return null;
+  return (
+    <div className="px-4 pt-3 flex items-center justify-between gap-2">
+      <span className="text-[11px] text-ink-faint truncate" title={user.email}>{user.email}</span>
+      <button
+        onClick={() => signOut()}
+        className="text-ink-faint hover:text-red shrink-0"
+        aria-label="Sign out"
+        title="Sign out"
+      >
+        <LogOut size={15} />
+      </button>
+    </div>
   );
 }
 
@@ -145,15 +164,18 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
       </nav>
 
       {/* Footer */}
-      <div className="border-t border-border px-4 py-3 flex items-center justify-between">
-        {!collapsed && <ThemeToggle />}
-        <button
-          onClick={() => setCollapsed((c) => !c)}
-          className="hidden md:block text-ink-faint hover:text-ink transition-colors"
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          {collapsed ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
-        </button>
+      <div className="border-t border-border flex flex-col">
+        {!collapsed && <AccountRow />}
+        <div className="px-4 py-3 flex items-center justify-between">
+          {!collapsed && <ThemeToggle />}
+          <button
+            onClick={() => setCollapsed((c) => !c)}
+            className="hidden md:block text-ink-faint hover:text-ink transition-colors"
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {collapsed ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
+          </button>
+        </div>
       </div>
     </motion.aside>
   );

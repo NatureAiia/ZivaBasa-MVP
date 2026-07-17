@@ -1,39 +1,41 @@
 /*
-  Client-side run history. No backend persistence exists yet for this (the FastAPI backend is
-  stateless — /predict and /explain don't store anything), so this is a real but v2-prototype
-  limitation: history lives in this browser's localStorage only, not synced across devices.
-  Wiring this to a real backend table is a natural next step once auth/accounts exist.
+  Predict run history — now backed by Postgres (predict_history table) instead of
+  localStorage, so history syncs across devices instead of being tied to one browser.
 */
-const KEY = "zivabasa-history";
+import { supabase } from "./supabaseClient";
 
-export function getHistory() {
-  try {
-    return JSON.parse(localStorage.getItem(KEY) || "[]");
-  } catch {
+const DISPLAY_LIMIT = 50; // same cap the old localStorage version enforced client-side
+
+export async function getHistory() {
+  const { data, error } = await supabase
+    .from("predict_history")
+    .select("id, results, created_at")
+    .order("created_at", { ascending: false })
+    .limit(DISPLAY_LIMIT);
+  if (error) {
+    console.error("getHistory failed:", error.message);
     return [];
   }
+  return data.map((r) => ({ id: r.id, timestamp: r.created_at, results: r.results }));
 }
 
-export function logHistoryEntry(results) {
-  const history = getHistory();
-  const entry = {
-    id: `run-${Date.now()}`,
-    timestamp: new Date().toISOString(),
-    results,
-  };
-  // Avoid duplicate back-to-back entries if the effect fires twice for the same completed state.
-  const last = history[0];
+export async function logHistoryEntry(results) {
+  // Avoid duplicate back-to-back entries if the effect fires twice for the same completed
+  // state (matches the old localStorage guard).
+  const existing = await getHistory();
+  const last = existing[0];
   if (last && JSON.stringify(last.results) === JSON.stringify(results)) return;
-  const next = [entry, ...history].slice(0, 50);
-  localStorage.setItem(KEY, JSON.stringify(next));
+  const { error } = await supabase.from("predict_history").insert({ results });
+  if (error) throw error;
 }
 
-export function deleteHistoryEntry(id) {
-  const next = getHistory().filter((h) => h.id !== id);
-  localStorage.setItem(KEY, JSON.stringify(next));
-  return next;
+export async function deleteHistoryEntry(id) {
+  const { error } = await supabase.from("predict_history").delete().eq("id", id);
+  if (error) throw error;
+  return getHistory();
 }
 
-export function clearHistory() {
-  localStorage.setItem(KEY, "[]");
+export async function clearHistory() {
+  const { error } = await supabase.from("predict_history").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  if (error) throw error;
 }
