@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import ThemeToggle from "../components/layout/ThemeToggle";
-import GlitterWrap from "../components/effects/GlitterWrap";
 import Globe from "../components/landing/Globe";
+import StarBurst from "../components/effects/StarBurst";
+import RisingLines from "../components/effects/RisingLines";
 
 // All custom properties below are prefixed --land- so they can never collide with the app-wide
 // design tokens in index.css (which Tailwind's rgb(var(--x)) utilities read from `:root`) even
@@ -195,22 +196,14 @@ const LANDING_CSS = `
 .landing-page .hero{ position: relative; padding: 56px 0 64px; overflow: hidden; }
 .landing-page .hero-glow{
   position: absolute;
-  top: -10%;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 900px;
-  height: 900px;
-  max-width: 220vw;
-  background: radial-gradient(circle, rgba(231,162,58,0.22) 0%, rgba(231,162,58,0.07) 32%, rgba(231,162,58,0) 62%);
+  top: -18%;
+  left: 8%;
+  width: 640px;
+  height: 640px;
+  max-width: 160vw;
+  background: radial-gradient(circle, rgba(231,162,58,0.14) 0%, rgba(231,162,58,0.04) 34%, rgba(231,162,58,0) 62%);
   pointer-events: none;
-  animation: landingPulse 7s ease-in-out infinite;
 }
-@keyframes landingPulse{
-  0%, 100% { opacity: 0.75; transform: translateX(-50%) scale(1); }
-  50% { opacity: 1; transform: translateX(-50%) scale(1.05); }
-}
-@media (prefers-reduced-motion: reduce){ .landing-page .hero-glow{ animation: none; } }
-.landing-page .hero-burst{ position: absolute; top: -60px; right: -140px; width: 460px; opacity: 0.9; }
 .landing-page .hero-inner{ position: relative; z-index: 1; }
 .landing-page .hero h1{
   font-family: var(--land-font-display);
@@ -313,21 +306,27 @@ const LANDING_CSS = `
 .landing-page .eco-head .translit{ font-family: var(--land-font-mono); font-size: 0.72rem; color: var(--land-ink-faint); }
 .landing-page .eco-focus{ font-family: var(--land-font-mono); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--land-ember); margin-bottom: 10px; display: block; }
 .landing-page .eco-card p.desc{ color: var(--land-ink-muted); font-size: 0.9rem; margin-bottom: 16px; }
-.landing-page .badge{ font-family: var(--land-font-mono); font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; padding: 6px 12px; border-radius: 100px; display: inline-block; }
-.landing-page .badge-live{ background: var(--land-gold-wash); color: var(--land-gold); border: 1px solid var(--land-gold-dim); }
-.landing-page .badge-planned{ background: transparent; color: var(--land-ink-faint); border: 1px solid var(--land-hairline-strong); }
-.landing-page .pill-row{ display: flex; flex-wrap: wrap; gap: 10px; }
-.landing-page .pill{ font-family: var(--land-font-mono); font-size: 0.72rem; letter-spacing: 0.05em; text-transform: uppercase; padding: 7px 14px; border: 1px solid var(--land-hairline-strong); border-radius: 100px; color: var(--land-ink-muted); }
+.landing-page .badge{ font-family: var(--land-font-mono); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 0 0 3px; display: inline-block; border-bottom: 1px solid currentColor; }
+.landing-page .badge-live{ color: var(--land-gold); }
+.landing-page .badge-planned{ color: var(--land-ink-faint); }
+.landing-page .pill-row{ display: flex; flex-wrap: wrap; gap: 22px; }
+.landing-page .pill{ font-family: var(--land-font-mono); font-size: 0.72rem; letter-spacing: 0.05em; text-transform: uppercase; padding-bottom: 4px; border-bottom: 1px solid var(--land-hairline-strong); color: var(--land-ink-muted); }
 
 /* ---------- AMBIENT BLOBS ---------- */
-.landing-page .ambient-blob{ position: absolute; border-radius: 50%; filter: blur(60px); pointer-events: none; z-index: 0; opacity: 0.55; animation: landingDrift 18s ease-in-out infinite; }
-.landing-page .ambient-blob.gold{ background: radial-gradient(circle, rgba(231,162,58,0.30) 0%, rgba(231,162,58,0) 70%); }
-.landing-page .ambient-blob.ember{ background: radial-gradient(circle, rgba(194,74,43,0.24) 0%, rgba(194,74,43,0) 70%); animation-duration: 22s; animation-direction: reverse; }
-@keyframes landingDrift{ 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-4%, 5%) scale(1.08); } }
-@media (prefers-reduced-motion: reduce){ .landing-page .ambient-blob{ animation: none; } }
+.landing-page .ambient-blob{ position: absolute; border-radius: 50%; filter: blur(60px); pointer-events: none; z-index: 0; opacity: 0.4; }
+.landing-page .ambient-blob.gold{ background: radial-gradient(circle, rgba(231,162,58,0.22) 0%, rgba(231,162,58,0) 70%); }
+.landing-page .ambient-blob.ember{ background: radial-gradient(circle, rgba(194,74,43,0.18) 0%, rgba(194,74,43,0) 70%); }
 
 /* ---------- GLOBE ---------- */
 .landing-page .globe-frame{ position: relative; }
+.landing-page .globe-starburst{
+  position: absolute;
+  inset: -18%;
+  z-index: 0;
+  pointer-events: none;
+}
+:root[data-theme="light"] .landing-page .globe-starburst{ display: none; }
+.landing-page .globe-frame > *:not(.globe-starburst){ position: relative; z-index: 1; }
 .landing-page .globe-tag{
   position: absolute;
   left: 50%;
@@ -405,7 +404,15 @@ const LANDING_CSS = `
 .landing-page .principles-foot{ margin-top: 40px; font-family: var(--land-font-mono); font-size: 0.75rem; color: var(--land-ink-faint); border-top: 1px solid var(--land-hairline); padding-top: 20px; }
 
 /* ---------- AUTH CTA ---------- */
-.landing-page .auth-section{ padding: 72px 0 84px; }
+.landing-page .auth-section{ padding: 72px 0 84px; position: relative; overflow: hidden; }
+.landing-page .auth-rising{
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+:root[data-theme="light"] .landing-page .auth-rising{ display: none; }
+.landing-page .auth-grid{ position: relative; z-index: 1; }
 .landing-page .auth-grid{ display: grid; grid-template-columns: 1fr; gap: 40px; align-items: start; }
 .landing-page .auth-copy h2{ font-family: var(--land-font-display); font-weight: 500; font-size: clamp(1.7rem, 5vw, 2.3rem); margin: 16px 0 14px; line-height: 1.15; }
 .landing-page .auth-copy p{ color: var(--land-ink-muted); max-width: 46ch; margin-bottom: 20px; }
@@ -496,19 +503,17 @@ const MODULES = [
 ];
 
 function BrandMark({ className }) {
+  // A horizon crescent, not a sparkle: a filled disc with an offset disc cut out of it,
+  // reading as a rising sun / first light — tied to "Chiedza" (Shona for light) rather than
+  // the generic radiating-dot mark every AI product defaults to.
   return (
     <svg className={className} viewBox="0 0 26 26" fill="none">
-      <circle cx="13" cy="13" r="3.2" fill="#E7A23A" />
-      <g stroke="#E7A23A" strokeWidth="1.1" strokeLinecap="round">
-        <line x1="13" y1="1" x2="13" y2="6.2" />
-        <line x1="13" y1="19.8" x2="13" y2="25" />
-        <line x1="1" y1="13" x2="6.2" y2="13" />
-        <line x1="19.8" y1="13" x2="25" y2="13" />
-        <line x1="4.2" y1="4.2" x2="7.9" y2="7.9" />
-        <line x1="18.1" y1="18.1" x2="21.8" y2="21.8" />
-        <line x1="21.8" y1="4.2" x2="18.1" y2="7.9" />
-        <line x1="7.9" y1="18.1" x2="4.2" y2="21.8" />
-      </g>
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M13 1.5C19.3513 1.5 24.5 6.64873 24.5 13C24.5 19.3513 19.3513 24.5 13 24.5C10.2822 24.5 7.78552 23.5546 5.82178 21.9756C10.9767 21.4954 15 17.1682 15 11.9502C15 7.7663 12.3765 4.19453 8.68115 2.79102C10.0248 2.03855 11.5647 1.5 13 1.5Z"
+        fill="#E7A23A"
+      />
     </svg>
   );
 }
@@ -529,24 +534,6 @@ export default function Landing() {
   return (
     <div className="landing-page">
       <style>{LANDING_CSS}</style>
-
-      <div className="landing-glitter-bg" aria-hidden="true">
-        <GlitterWrap
-          particleCount={180}
-          color1="#F3EEE3"
-          color2="#E7A23A"
-          color3="#C24A2B"
-          speed={1.2}
-          density={55}
-          starSize={4}
-          focalDepth={9}
-          turbulence={0.5}
-          brightness={42}
-          glitterIntensity={2.2}
-          trailAmount={95}
-          reverse={false}
-        />
-      </div>
 
       <header>
         <nav className="wrap nav">
@@ -597,33 +584,6 @@ export default function Landing() {
         {/* HERO */}
         <section className="hero">
           <div className="hero-glow" aria-hidden="true"></div>
-          <svg className="hero-burst" aria-hidden="true" viewBox="0 0 400 400" fill="none">
-            <g stroke="#E7A23A" strokeLinecap="round">
-              <line x1="200" y1="200" x2="200" y2="40" strokeWidth="1" opacity="0.5" />
-              <line x1="200" y1="200" x2="200" y2="330" strokeWidth="1" opacity="0.35" />
-              <line x1="200" y1="200" x2="60" y2="200" strokeWidth="1" opacity="0.3" />
-              <line x1="200" y1="200" x2="340" y2="200" strokeWidth="1" opacity="0.45" />
-              <line x1="200" y1="200" x2="100" y2="100" strokeWidth="1" opacity="0.4" />
-              <line x1="200" y1="200" x2="300" y2="100" strokeWidth="1" opacity="0.55" />
-              <line x1="200" y1="200" x2="300" y2="300" strokeWidth="1" opacity="0.25" />
-              <line x1="200" y1="200" x2="100" y2="300" strokeWidth="1" opacity="0.3" />
-              <line x1="200" y1="200" x2="255" y2="60" strokeWidth="0.6" opacity="0.3" />
-              <line x1="200" y1="200" x2="145" y2="60" strokeWidth="0.6" opacity="0.2" />
-              <line x1="200" y1="200" x2="340" y2="140" strokeWidth="0.6" opacity="0.28" />
-              <line x1="200" y1="200" x2="60" y2="260" strokeWidth="0.6" opacity="0.2" />
-            </g>
-            <circle cx="200" cy="200" r="46" fill="url(#landingHeroGlow)" />
-            <circle cx="200" cy="200" r="4.5" fill="#F3EEE3" />
-            <circle cx="300" cy="100" r="2.4" fill="#E7A23A" />
-            <circle cx="340" cy="200" r="2" fill="#E7A23A" opacity="0.7" />
-            <circle cx="100" cy="300" r="2" fill="#E7A23A" opacity="0.5" />
-            <defs>
-              <radialGradient id="landingHeroGlow" cx="0.5" cy="0.5" r="0.5">
-                <stop offset="0%" stopColor="#E7A23A" stopOpacity="0.55" />
-                <stop offset="100%" stopColor="#E7A23A" stopOpacity="0" />
-              </radialGradient>
-            </defs>
-          </svg>
 
           <div className="wrap hero-inner">
             <span className="eyebrow">Chiedza — Shona for light</span>
@@ -829,6 +789,18 @@ export default function Landing() {
                 </div>
               </div>
               <div className="globe-frame">
+                <div className="globe-starburst" aria-hidden="true">
+                  <StarBurst
+                    starCount={22}
+                    color="#E7A23A"
+                    opacity={45}
+                    speed={5}
+                    starSize={5}
+                    flowerIntensity={7}
+                    centerX={50}
+                    centerY={50}
+                  />
+                </div>
                 <Globe />
                 <span className="globe-tag">17.83°S · <b>Harare</b></span>
               </div>
@@ -899,6 +871,18 @@ export default function Landing() {
 
         {/* AUTH CTA */}
         <section className="auth-section" id="auth">
+          <div className="auth-rising" aria-hidden="true">
+            <RisingLines
+              particles={90}
+              color="#E7A23A"
+              showHorizon={true}
+              horizonColor="#C24A2B"
+              riseSpeed={14}
+              opacity={40}
+              horizonOpacity={22}
+              scale={5}
+            />
+          </div>
           <div className="wrap auth-grid">
             <div className="auth-copy">
               <span className="eyebrow">Get started</span>
