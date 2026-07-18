@@ -16,6 +16,8 @@ export default {
         teal: "rgb(var(--teal) / <alpha-value>)",
         red: "rgb(var(--red) / <alpha-value>)",
         indigo: "rgb(var(--indigo) / <alpha-value>)",
+        violet: "rgb(var(--violet) / <alpha-value>)",
+        cyan: "rgb(var(--cyan) / <alpha-value>)",
       },
       fontFamily: {
         display: ["'Space Grotesk'", "sans-serif"],

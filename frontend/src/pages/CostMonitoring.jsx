@@ -4,6 +4,8 @@ import { AlertTriangle, FileDown, RotateCcw, Wallet, Zap } from "lucide-react";
 import Card from "../components/common/Card";
 import Badge from "../components/common/Badge";
 import ShinyPill from "../components/effects/ShinyPill";
+import CostDonut from "../components/charts/CostDonut";
+import CostBarChart from "../components/charts/CostBarChart";
 import { staggerContainer, fadeUpItem } from "../lib/motion";
 import { getCostEntries, setCostEntry, clearCostEntries } from "../lib/costStore";
 import { downloadCostReport } from "../lib/costReport";
@@ -11,6 +13,18 @@ import { computeCostTotals, AUTO_TRACKED_ITEM_KEY } from "../lib/costCompute";
 import { usageSummary } from "../lib/usageStore";
 import { getAssignments } from "../lib/assignmentStore";
 import { aiOverrideShare } from "../lib/governanceStats";
+
+// One distinct accent per category — used consistently across the quick-total
+// buttons, the donut, the bar chart, and the legend so the same category
+// always reads as the same color throughout the page.
+const CATEGORY_COLORS = {
+  model: "text-indigo",
+  human: "text-gold",
+  maintenance: "text-teal",
+  licence: "text-violet",
+  hardware: "text-cyan",
+  other: "text-red",
+};
 
 export default function CostMonitoring() {
   const [entries, setEntries] = useState({});
@@ -33,6 +47,17 @@ export default function CostMonitoring() {
   const { categoryTotals, grandTotal, enteredCount, totalItems, autoLlmCostUsd } = useMemo(
     () => computeCostTotals(entries, llmUsage.totalCostUsd),
     [entries, llmUsage]
+  );
+
+  const chartData = useMemo(
+    () =>
+      categoryTotals.map(({ cat, total }) => ({
+        key: cat.key,
+        label: cat.label,
+        value: total,
+        colorClass: CATEGORY_COLORS[cat.key] || "text-ink-faint",
+      })),
+    [categoryTotals]
   );
 
   const scrollToCategory = (key) => {
@@ -113,20 +138,57 @@ export default function CostMonitoring() {
             </Card>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-              {categoryTotals.map(({ cat, total }) => (
-                <button
-                  key={cat.key}
-                  onClick={() => scrollToCategory(cat.key)}
-                  className="text-left rounded-xl border border-border bg-surface px-3.5 py-3 hover:border-gold/40 hover:bg-surface2/50 transition-colors"
-                >
-                  <div className="text-[10px] uppercase tracking-wide text-ink-faint font-semibold truncate">{cat.label}</div>
-                  <div className="font-mono text-lg font-semibold text-ink mt-0.5">
-                    {total ? `$${total.toLocaleString()}` : "$0"}
-                    <span className="text-[10px] text-ink-faint font-normal">/mo</span>
-                  </div>
-                </button>
-              ))}
+              {categoryTotals.map(({ cat, total }) => {
+                const share = grandTotal > 0 ? Math.min(100, (total / grandTotal) * 100) : 0;
+                const colorClass = CATEGORY_COLORS[cat.key] || "text-ink-faint";
+                return (
+                  <button
+                    key={cat.key}
+                    onClick={() => scrollToCategory(cat.key)}
+                    className="text-left rounded-xl border border-border bg-surface px-3.5 py-3 hover:border-gold/40 hover:bg-surface2/50 transition-colors"
+                  >
+                    <div className="text-[10px] uppercase tracking-wide text-ink-faint font-semibold truncate">{cat.label}</div>
+                    <div className="font-mono text-lg font-semibold text-ink mt-0.5">
+                      {total ? `$${total.toLocaleString()}` : "$0"}
+                      <span className="text-[10px] text-ink-faint font-normal">/mo</span>
+                    </div>
+                    <div className="mt-2 h-1 w-full rounded-full bg-border overflow-hidden">
+                      <div
+                        className={colorClass}
+                        style={{ width: `${Math.max(share, total ? 4 : 0)}%`, height: "100%", backgroundColor: "currentColor", transition: "width 0.6s ease" }}
+                      />
+                    </div>
+                  </button>
+                );
+              })}
             </div>
+          </motion.div>
+
+          {/* Visual overview — donut for share-of-total, bar chart for category comparison */}
+          <motion.div variants={fadeUpItem} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card animated={false}>
+              <h2 className="text-sm font-semibold text-ink mb-4">Cost Breakdown</h2>
+              <div className="flex items-center gap-5">
+                <CostDonut segments={chartData} total={grandTotal} />
+                <div className="flex-1 flex flex-col gap-2 min-w-0">
+                  {chartData.map((d) => {
+                    const pct = grandTotal > 0 ? Math.round((d.value / grandTotal) * 100) : 0;
+                    return (
+                      <div key={d.key} className="flex items-center gap-2 text-xs min-w-0">
+                        <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${d.colorClass}`} style={{ backgroundColor: "currentColor" }} />
+                        <span className="text-ink-muted truncate flex-1">{d.label}</span>
+                        <span className="font-mono text-ink-faint shrink-0">{d.value ? `${pct}%` : "—"}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </Card>
+
+            <Card animated={false}>
+              <h2 className="text-sm font-semibold text-ink mb-4">Category Comparison</h2>
+              <CostBarChart bars={chartData} />
+            </Card>
           </motion.div>
 
           {/* Category cards */}

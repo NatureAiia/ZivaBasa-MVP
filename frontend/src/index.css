@@ -23,6 +23,8 @@
   --teal: 47 191 159;       /* #2FBF9F — positive / safe, carried over from v1 */
   --red: 229 72 77;         /* #E5484D — risk / negative */
   --indigo: 108 124 255;    /* #6C7CFF — primary interactive / brand */
+  --violet: 168 129 255;    /* #A881FF — chart accent 5 */
+  --cyan: 45 197 219;       /* #2DC5DB — chart accent 6 */
 }
 
 [data-theme="light"] {
@@ -38,6 +40,8 @@
   --teal: 12 138 112;
   --red: 200 45 50;
   --indigo: 79 92 219;
+  --violet: 124 77 255;
+  --cyan: 8 137 154;
 }
 
 * {
