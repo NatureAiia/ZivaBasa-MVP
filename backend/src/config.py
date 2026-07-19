@@ -28,8 +28,9 @@ MULTITASK_MODEL_DIR = os.path.join(MODELS_DIR, "multitask_model")
 SCALER_DIR = os.path.join(MODELS_DIR, "scalers")
 SHAP_DIR = os.path.join(MODELS_DIR, "shap_outputs")
 MLRUNS_DIR = os.path.join(PROJECT_ROOT, "mlruns")
+FORECAST_MODEL_DIR = os.path.join(MODELS_DIR, "forecast")
 
-for _d in (RAW_DIR, PROCESSED_DIR, MODELS_DIR, MULTITASK_MODEL_DIR, SCALER_DIR, SHAP_DIR):
+for _d in (RAW_DIR, PROCESSED_DIR, MODELS_DIR, MULTITASK_MODEL_DIR, SCALER_DIR, SHAP_DIR, FORECAST_MODEL_DIR):
     os.makedirs(_d, exist_ok=True)
 
 RANDOM_STATE = 42
@@ -172,3 +173,43 @@ MODEL_CONFIG = ModelConfig()
 # --------------------------------------------------------------------------- #
 SHAP_N_BACKGROUND = 100
 SHAP_N_EXPLAIN = 100
+
+
+# --------------------------------------------------------------------------- #
+# Multi-year workforce forecasting (Day 11 — LSTM/GRU time-series head)
+# --------------------------------------------------------------------------- #
+@dataclass
+class ForecastConfig:
+    """
+    Multi-year workforce forecasting is the one task head that isn't a per-row
+    prediction — it forecasts *industry-level trends forward in time*, so it gets its
+    own config shape rather than reusing TaskConfig (no per-row target/drop_cols; the
+    "rows" here are (industry, year) aggregates, and the "target" is next-year values
+    for several metrics at once).
+
+    Data: the same ai_job_replacement_2020_2026_v2.csv backing the productivity task
+    already carries a real `year` column (2020-2026) — the only raw dataset in this
+    project with any time dimension. It's cross-sectional per row (no employee/job_id
+    repeats across years), so per-entity sequences aren't available; industry-level
+    yearly averages are, which is what this aggregates into a 7-point-per-industry panel.
+    """
+    raw_filename: str = "ai_job_replacement_2020_2026_v2.csv"
+    group_col: str = "industry"
+    year_col: str = "year"
+    metrics: List[str] = field(default_factory=lambda: [
+        "automation_risk_percent", "ai_adoption_level", "skill_gap_index",
+    ])
+    window_size: int = 3            # look-back years fed to the LSTM/GRU per training example
+    default_horizon: int = 3        # years forecast forward by default (e.g. 2027-2029 off a 2026 panel)
+    max_horizon: int = 5            # hard cap — recursive forecasting compounds error past this
+    rnn_type: str = "lstm"          # "lstm" or "gru" — see model.py's build_forecast_model
+    rnn_units: int = 32
+    embedding_dim: int = 8          # industry-identity embedding, concatenated with the RNN output
+    dropout_rate: float = 0.2
+    batch_size: int = 16
+    epochs: int = 200
+    patience: int = 20              # short series -> needs more patience than the per-row tasks
+    initial_lr: float = 1e-3
+
+
+FORECAST_CONFIG = ForecastConfig()
