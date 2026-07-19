@@ -18,7 +18,7 @@ export default function ZivaBasaLayout() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="zivabasa-scope flex-1 flex flex-col overflow-hidden">
       {/* Below lg: breadcrumb row + an orange hamburger that drops an anchored menu box.
           At lg+ (persistent sidebar + roomy content area) it's the full horizontal pill row. */}
       <header className="shrink-0 border-b border-border relative px-4 sm:px-6 py-3 lg:h-16 lg:py-0">

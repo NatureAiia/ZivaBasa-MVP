@@ -44,6 +44,22 @@
   --cyan: 8 137 154;
 }
 
+/*
+  Per-module accent override — each ChiedzaAI module (ZivaBasa, ZivaDzidzo, ZivaBusiness,
+  ZivaUpfumi) gets its own color code, applied by scoping class on that module's layout root
+  (see ZivaBasaLayout.jsx) rather than touching every component that reads --gold. Every
+  existing bg-gold/text-gold/border-gold usage (Badge, Button, ClarityRing, focus rings, etc.)
+  picks this up automatically since they all read the --gold CSS var, not a hardcoded color.
+  Everything outside a module scope (Shell, Sidebar, ChiedzaDashboard, LoginPage) keeps the
+  base gold above untouched, matching ChiedzaAI's own brand identity.
+*/
+.zivabasa-scope {
+  --gold: 232 131 77;       /* #E8834D — ZivaBasa's orange/peach accent (dark) */
+}
+[data-theme="light"] .zivabasa-scope {
+  --gold: 197 111 65;       /* deepened for AA contrast on white, same ratio as the base gold above */
+}
+
 * {
   border-color: rgb(var(--border));
 }
