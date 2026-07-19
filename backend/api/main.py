@@ -43,8 +43,9 @@ from api.schemas import (
     ExplainResponse, FeatureContribution, HealthResponse,
     ChatRequest, ChatResponse, PredictReportRequest, ChatReportRequest,
     ImageGenerateRequest, ImageGenerateResponse,
+    ForecastSchemaResponse, ForecastResponse, ForecastPoint,
 )
-from api.model_registry import registry
+from api.model_registry import registry, forecast_registry
 from api import batch as batch_module
 from api import chat as chat_module
 from api import reports as reports_module
@@ -53,6 +54,7 @@ from api import image_gen as image_gen_module
 from src import evaluate
 from src import config as src_config
 from src import drift as drift_module
+from src import forecast as forecast_module
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s [%(name)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -69,6 +71,11 @@ async def lifespan(app: FastAPI):
         )
     else:
         logger.info("Loaded tasks: %s", registry.task_names())
+
+    logger.info("Loading forecast model...")
+    forecast_registry.load()
+    if not forecast_registry.is_loaded():
+        logger.warning("No forecast model loaded. Run scripts/train_forecast.py first.")
     yield
 
 
@@ -188,6 +195,60 @@ def explain(task: str, request: PredictRequest, top_k: int = 10):
         prediction=prediction,
         top_contributions=contributions[:top_k],
         explainer_used=explainer_name,
+    )
+
+
+def _get_forecast_bundle_or_503():
+    bundle = forecast_registry.bundle
+    if bundle is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Forecast model not loaded. Run scripts/train_forecast.py, then restart the API.",
+        )
+    return bundle
+
+
+@app.get("/schema/forecast", response_model=ForecastSchemaResponse)
+def forecast_schema():
+    bundle = _get_forecast_bundle_or_503()
+    cfg = src_config.FORECAST_CONFIG
+    last_year = int(bundle["panel"][cfg.year_col].max())
+    return ForecastSchemaResponse(
+        industries=bundle["industries"],
+        metrics=bundle["metrics"],
+        last_year=last_year,
+        default_horizon=cfg.default_horizon,
+        max_horizon=cfg.max_horizon,
+    )
+
+
+@app.get("/predict/forecast/{industry}", response_model=ForecastResponse)
+def predict_forecast(industry: str, years: int = 0):
+    bundle = _get_forecast_bundle_or_503()
+    if industry not in bundle["industries"]:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown industry '{industry}'. Available: {bundle['industries']}",
+        )
+    try:
+        result = forecast_module.forecast_industry(
+            bundle, industry, horizon=years or None,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    metrics = result["metrics"]
+    return ForecastResponse(
+        industry=result["industry"],
+        metrics=metrics,
+        history=[
+            ForecastPoint(year=p["year"], values={m: p[m] for m in metrics})
+            for p in result["history"]
+        ],
+        forecast=[
+            ForecastPoint(year=p["year"], values={m: p[m] for m in metrics})
+            for p in result["forecast"]
+        ],
     )
 
 

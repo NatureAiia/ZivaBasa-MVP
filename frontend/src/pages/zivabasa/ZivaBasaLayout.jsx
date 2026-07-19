@@ -9,6 +9,7 @@ const TABS = [
   { to: "dashboard", label: "Dashboard" },
   { to: "chat", label: "Chat" },
   { to: "predict", label: "Predict" },
+  { to: "forecast", label: "Forecast" },
   { to: "my-organization", label: "My Organization" },
   { to: "history", label: "History" },
 ];

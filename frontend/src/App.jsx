@@ -10,6 +10,7 @@ import ZivaBasaLayout from "./pages/zivabasa/ZivaBasaLayout";
 import DashboardTab from "./pages/zivabasa/DashboardTab";
 import ChatTab from "./pages/zivabasa/ChatTab";
 import PredictTab from "./pages/zivabasa/PredictTab";
+import ForecastTab from "./pages/zivabasa/ForecastTab";
 import HistoryTab from "./pages/zivabasa/HistoryTab";
 import RosterTab from "./pages/zivabasa/RosterTab";
 import MyOrganizationTab from "./pages/zivabasa/MyOrganizationTab";
@@ -39,6 +40,7 @@ export default function App() {
           <Route path="dashboard" element={<DashboardTab />} />
           <Route path="chat" element={<ChatTab />} />
           <Route path="predict" element={<PredictTab />} />
+          <Route path="forecast" element={<ForecastTab />} />
           <Route path="history" element={<HistoryTab />} />
           <Route path="roster" element={<RosterTab />} />
           <Route path="my-organization" element={<MyOrganizationTab />} />

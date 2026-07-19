@@ -140,6 +140,9 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messages, tool_calls: toolCalls }),
     }),
+  forecastSchema: () => request("/schema/forecast"),
+  forecast: (industry, years = 0) =>
+    request(`/predict/forecast/${encodeURIComponent(industry)}?years=${years}`),
 };
 
 export const TASKS = ["employment", "skills", "productivity", "skill_match"];
