@@ -113,6 +113,63 @@ def health():
     return HealthResponse(status="ok", tasks_loaded=registry.task_names())
 
 
+def _get_forecast_bundle_or_503():
+    bundle = forecast_registry.bundle
+    if bundle is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Forecast model not loaded. Run scripts/train_forecast.py, then restart the API.",
+        )
+    return bundle
+
+
+# Registered before /schema/{task} and /predict/{task} on purpose — FastAPI matches routes in
+# registration order, and /schema/{task}'s single-path-segment pattern would otherwise swallow
+# /schema/forecast (task="forecast") before it ever reached this handler.
+@app.get("/schema/forecast", response_model=ForecastSchemaResponse)
+def forecast_schema():
+    bundle = _get_forecast_bundle_or_503()
+    cfg = src_config.FORECAST_CONFIG
+    last_year = int(bundle["panel"][cfg.year_col].max())
+    return ForecastSchemaResponse(
+        industries=bundle["industries"],
+        metrics=bundle["metrics"],
+        last_year=last_year,
+        default_horizon=cfg.default_horizon,
+        max_horizon=cfg.max_horizon,
+    )
+
+
+@app.get("/predict/forecast/{industry}", response_model=ForecastResponse)
+def predict_forecast(industry: str, years: int = 0):
+    bundle = _get_forecast_bundle_or_503()
+    if industry not in bundle["industries"]:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown industry '{industry}'. Available: {bundle['industries']}",
+        )
+    try:
+        result = forecast_module.forecast_industry(
+            bundle, industry, horizon=years or None,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    metrics = result["metrics"]
+    return ForecastResponse(
+        industry=result["industry"],
+        metrics=metrics,
+        history=[
+            ForecastPoint(year=p["year"], values={m: p[m] for m in metrics})
+            for p in result["history"]
+        ],
+        forecast=[
+            ForecastPoint(year=p["year"], values={m: p[m] for m in metrics})
+            for p in result["forecast"]
+        ],
+    )
+
+
 @app.get("/schema/{task}", response_model=SchemaResponse)
 def schema(task: str):
     artifacts = _get_task_or_404(task)
@@ -195,60 +252,6 @@ def explain(task: str, request: PredictRequest, top_k: int = 10):
         prediction=prediction,
         top_contributions=contributions[:top_k],
         explainer_used=explainer_name,
-    )
-
-
-def _get_forecast_bundle_or_503():
-    bundle = forecast_registry.bundle
-    if bundle is None:
-        raise HTTPException(
-            status_code=503,
-            detail="Forecast model not loaded. Run scripts/train_forecast.py, then restart the API.",
-        )
-    return bundle
-
-
-@app.get("/schema/forecast", response_model=ForecastSchemaResponse)
-def forecast_schema():
-    bundle = _get_forecast_bundle_or_503()
-    cfg = src_config.FORECAST_CONFIG
-    last_year = int(bundle["panel"][cfg.year_col].max())
-    return ForecastSchemaResponse(
-        industries=bundle["industries"],
-        metrics=bundle["metrics"],
-        last_year=last_year,
-        default_horizon=cfg.default_horizon,
-        max_horizon=cfg.max_horizon,
-    )
-
-
-@app.get("/predict/forecast/{industry}", response_model=ForecastResponse)
-def predict_forecast(industry: str, years: int = 0):
-    bundle = _get_forecast_bundle_or_503()
-    if industry not in bundle["industries"]:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Unknown industry '{industry}'. Available: {bundle['industries']}",
-        )
-    try:
-        result = forecast_module.forecast_industry(
-            bundle, industry, horizon=years or None,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
-
-    metrics = result["metrics"]
-    return ForecastResponse(
-        industry=result["industry"],
-        metrics=metrics,
-        history=[
-            ForecastPoint(year=p["year"], values={m: p[m] for m in metrics})
-            for p in result["history"]
-        ],
-        forecast=[
-            ForecastPoint(year=p["year"], values={m: p[m] for m in metrics})
-            for p in result["forecast"]
-        ],
     )
 
 
