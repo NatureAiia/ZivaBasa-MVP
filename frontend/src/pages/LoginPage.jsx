@@ -11,14 +11,20 @@ import GlitterWrap from "../components/auth/GlitterWrap";
 import ConfigMissingScreen from "../components/auth/ConfigMissingScreen";
 import { spring } from "../lib/motion";
 
-// One shared form, reordered (not duplicated) between the two halves of the desktop split
-// panel. The ternary below swaps which side renders FormPanel vs BrandPanel, which unmounts
-// and remounts each at the other tree position — a plain `layout` prop can't animate that (it
-// only tracks a persisting instance), so `layoutId` is what tells framer-motion these are the
-// same shared box across the swap and animates the FLIP transform between them.
+// Both panels stay permanently mounted at fixed DOM positions — only their `x` transform
+// animates. (An earlier version reordered FormPanel/BrandPanel in the DOM via a ternary and
+// relied on framer-motion's `layoutId` to bridge the resulting unmount/remount; that requires
+// AnimatePresence to keep the outgoing instance alive for measurement, which this didn't have,
+// so the two panels drifted out of sync mid-transition — one snapped instantly, the other
+// lagged and overflowed the card. Plain `x` animation on persisting elements has no such
+// measurement step, so it can't desync.)
 function FormPanel({ mode, email, setEmail, password, setPassword, error, info, busy, onSubmit }) {
   return (
-    <motion.div layoutId="login-form-panel" transition={spring} className="w-1/2 shrink-0 flex flex-col justify-center p-8">
+    <motion.div
+      animate={{ x: mode === "signIn" ? "0%" : "100%" }}
+      transition={spring}
+      className="absolute inset-y-0 left-0 w-1/2 flex flex-col justify-center p-8 bg-surface"
+    >
       <form onSubmit={onSubmit} className="flex flex-col gap-3">
         <h2 className="font-display text-lg font-semibold text-ink mb-1">
           {mode === "signIn" ? "Welcome back" : "Create account"}
@@ -60,14 +66,14 @@ function FormPanel({ mode, email, setEmail, password, setPassword, error, info, 
 }
 
 // The colored panel always promotes the OTHER action — it covers whichever side isn't the
-// active form, and its button is what flips `mode` (and slides itself to the opposite side).
+// active form, and its button is what flips `mode` (sliding both panels to swap sides).
 function BrandPanel({ mode, onToggle }) {
   const targetMode = mode === "signIn" ? "signUp" : "signIn";
   return (
     <motion.div
-      layoutId="login-brand-panel"
+      animate={{ x: mode === "signIn" ? "100%" : "0%" }}
       transition={spring}
-      className="w-1/2 shrink-0 bg-gold text-bg flex flex-col justify-center items-start gap-3 p-8"
+      className="absolute inset-y-0 left-0 w-1/2 bg-gold text-bg flex flex-col justify-center items-start gap-3 p-8"
     >
       <div className="flex items-center gap-2.5">
         <ClarityRing mode="static" size={28} strokeWidth={4} color="indigo" />
@@ -217,41 +223,22 @@ export default function LoginPage() {
       {/* md and up: the animated split panel — brand half slides to whichever side isn't the
           active form when `mode` toggles, via framer-motion's layout-reorder animation. */}
       <motion.div
-        className="relative z-10 hidden md:flex w-full max-w-[680px] rounded-2xl overflow-hidden border border-border bg-surface shadow-card dark:shadow-card-dark"
+        className="relative z-10 hidden md:block w-full max-w-[680px] h-[460px] rounded-2xl overflow-hidden border border-border bg-surface shadow-card dark:shadow-card-dark"
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        {mode === "signIn" ? (
-          <>
-            <FormPanel
-              mode={mode}
-              email={email}
-              setEmail={setEmail}
-              password={password}
-              setPassword={setPassword}
-              error={error}
-              info={info}
-              busy={busy}
-              onSubmit={submit}
-            />
-            <BrandPanel mode={mode} onToggle={toggleMode} />
-          </>
-        ) : (
-          <>
-            <BrandPanel mode={mode} onToggle={toggleMode} />
-            <FormPanel
-              mode={mode}
-              email={email}
-              setEmail={setEmail}
-              password={password}
-              setPassword={setPassword}
-              error={error}
-              info={info}
-              busy={busy}
-              onSubmit={submit}
-            />
-          </>
-        )}
+        <FormPanel
+          mode={mode}
+          email={email}
+          setEmail={setEmail}
+          password={password}
+          setPassword={setPassword}
+          error={error}
+          info={info}
+          busy={busy}
+          onSubmit={submit}
+        />
+        <BrandPanel mode={mode} onToggle={toggleMode} />
       </motion.div>
     </div>
   );
