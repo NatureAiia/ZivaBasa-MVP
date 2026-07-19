@@ -14,6 +14,15 @@ uvicorn api.main:app --reload --port 8000
 
 Check it's alive: `curl http://localhost:8000/health` should return all three tasks loaded.
 
+**On this machine specifically:** use the `deep_learning` conda env
+(`C:\Users\<user>\.conda\envs\deep_learning`, Python 3.12.13) — it already has every package at
+the exact versions `requirements.txt` pins (tensorflow==2.16.1, fastapi==0.111.0, etc.) and is
+what the four existing task models were trained under. The machine's global Python is 3.13,
+which `tensorflow==2.16.1` doesn't support; pip-installing newer TF/numpy/pandas into the global
+site-packages "works" but trains/serves under different library versions than everything else
+in `models/`, which is best avoided rather than debugged later. Run scripts and uvicorn via
+`"C:\Users\<user>\.conda\envs\deep_learning\python.exe" -m ...` (or activate the env first).
+
 ## Architecture
 
 ```
