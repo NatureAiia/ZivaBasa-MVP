@@ -1,0 +1,18 @@
+{
+  "industries": [
+    "Education",
+    "Energy",
+    "Finance",
+    "Healthcare",
+    "Manufacturing",
+    "Retail",
+    "Technology",
+    "Transportation"
+  ],
+  "metrics": [
+    "automation_risk_percent",
+    "ai_adoption_level",
+    "skill_gap_index"
+  ],
+  "window_size": 3
+}

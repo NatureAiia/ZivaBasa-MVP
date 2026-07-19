@@ -96,3 +96,23 @@ class ChatReportMessage(BaseModel):
 class ChatReportRequest(BaseModel):
     messages: List[ChatReportMessage]
     tool_calls: list = []
+
+
+class ForecastSchemaResponse(BaseModel):
+    industries: List[str]
+    metrics: List[str]
+    last_year: int
+    default_horizon: int
+    max_horizon: int
+
+
+class ForecastPoint(BaseModel):
+    year: int
+    values: dict  # {metric_name: value}
+
+
+class ForecastResponse(BaseModel):
+    industry: str
+    metrics: List[str]
+    history: List[ForecastPoint]
+    forecast: List[ForecastPoint]

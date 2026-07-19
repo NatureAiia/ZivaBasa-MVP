@@ -14,7 +14,7 @@ from typing import Dict, List, Optional
 import joblib
 import numpy as np
 
-from src import config, features, evaluate, model as model_module
+from src import config, features, evaluate, model as model_module, forecast as forecast_module
 
 logger = logging.getLogger(__name__)
 
@@ -146,3 +146,38 @@ class ModelRegistry:
 
 
 registry = ModelRegistry()
+
+
+class ForecastRegistry:
+    """
+    Holds the loaded multi-year workforce forecasting bundle (src/forecast.py) — a single
+    global model shared across industries (see forecast.build_forecast_model's industry
+    embedding), not one-per-task like ModelRegistry above, so it gets its own tiny wrapper
+    instead of forcing TaskArtifacts' per-row-prediction shape onto it.
+    """
+
+    def __init__(self):
+        self._bundle: Optional[Dict] = None
+
+    def load(self) -> "ForecastRegistry":
+        try:
+            self._bundle = forecast_module.load()
+            logger.info(
+                "[forecast] loaded: industries=%s, metrics=%s",
+                self._bundle["industries"], self._bundle["metrics"],
+            )
+        except FileNotFoundError as e:
+            logger.warning("[forecast] model not found, skipping (%s)", e)
+        except Exception as e:
+            logger.error("[forecast] failed to load: %s", e)
+        return self
+
+    def is_loaded(self) -> bool:
+        return self._bundle is not None
+
+    @property
+    def bundle(self) -> Optional[Dict]:
+        return self._bundle
+
+
+forecast_registry = ForecastRegistry()
