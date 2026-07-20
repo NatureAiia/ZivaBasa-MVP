@@ -1,0 +1,36 @@
+{
+  "employment": {
+    "task_head": "employment",
+    "model": "multitask_nn",
+    "accuracy": 0.745,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "roc_auc": 0.4166222222222222
+  },
+  "skills": {
+    "task_head": "skills",
+    "model": "multitask_nn",
+    "accuracy": 0.7959183673469388,
+    "precision": 0.27586206896551724,
+    "recall": 0.1702127659574468,
+    "f1": 0.21052631578947367,
+    "roc_auc": 0.6528555431131018
+  },
+  "productivity": {
+    "task_head": "productivity",
+    "model": "multitask_nn",
+    "rmse": 1.0011786429019807,
+    "mae": 0.8680135011672974,
+    "r2": -0.01607811450958252
+  },
+  "skill_match": {
+    "task_head": "skill_match",
+    "model": "multitask_nn",
+    "accuracy": 0.8857142857142857,
+    "precision": 0.6818181818181818,
+    "recall": 0.9375,
+    "f1": 0.7894736842105263,
+    "roc_auc": 0.9673755787037037
+  }
+}
