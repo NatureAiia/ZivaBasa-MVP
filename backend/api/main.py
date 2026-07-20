@@ -413,6 +413,7 @@ async def image_generate(request: ImageGenerateRequest):
 
 
 _DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+_PDF_MEDIA_TYPE = "application/pdf"
 
 
 @app.post("/reports/predict")
@@ -440,4 +441,32 @@ async def chat_report(request: ChatReportRequest):
         content=docx_bytes,
         media_type=_DOCX_MEDIA_TYPE,
         headers={"Content-Disposition": 'attachment; filename="zivabasa-chat-report.docx"'},
+    )
+
+
+@app.post("/reports/predict/pdf")
+async def predict_report_pdf(request: PredictReportRequest):
+    try:
+        pdf_bytes = reports_module.build_predict_report_pdf(request.results)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Report generation failed: {e}")
+    return Response(
+        content=pdf_bytes,
+        media_type=_PDF_MEDIA_TYPE,
+        headers={"Content-Disposition": 'attachment; filename="zivabasa-predict-report.pdf"'},
+    )
+
+
+@app.post("/reports/chat/pdf")
+async def chat_report_pdf(request: ChatReportRequest):
+    try:
+        pdf_bytes = reports_module.build_chat_report_pdf(
+            [m.model_dump() for m in request.messages], request.tool_calls
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Report generation failed: {e}")
+    return Response(
+        content=pdf_bytes,
+        media_type=_PDF_MEDIA_TYPE,
+        headers={"Content-Disposition": 'attachment; filename="zivabasa-chat-report.pdf"'},
     )

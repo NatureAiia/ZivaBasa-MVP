@@ -54,13 +54,15 @@ export default function StudioPanel() {
   const hasChatData = chatSession.messages.length > 0;
   const [downloadingPredict, setDownloadingPredict] = useState(false);
   const [downloadingChat, setDownloadingChat] = useState(false);
+  const [format, setFormat] = useState("docx"); // "docx" | "pdf" — shared by both report buttons below
 
   const handleGeneratePredictReport = async () => {
     if (!latest) return;
     setDownloadingPredict(true);
     try {
-      const blob = await api.predictReport(latest.results);
-      downloadBlob(`zivabasa-predict-report-${Date.now()}.docx`, blob);
+      const blob =
+        format === "pdf" ? await api.predictReportPdf(latest.results) : await api.predictReport(latest.results);
+      downloadBlob(`zivabasa-predict-report-${Date.now()}.${format}`, blob);
     } catch (e) {
       alert(`Couldn't generate report: ${e.message}`);
     } finally {
@@ -72,8 +74,11 @@ export default function StudioPanel() {
     if (!hasChatData) return;
     setDownloadingChat(true);
     try {
-      const blob = await api.chatReport(chatSession.messages, chatSession.toolCallLog);
-      downloadBlob(`zivabasa-chat-report-${Date.now()}.docx`, blob);
+      const blob =
+        format === "pdf"
+          ? await api.chatReportPdf(chatSession.messages, chatSession.toolCallLog)
+          : await api.chatReport(chatSession.messages, chatSession.toolCallLog);
+      downloadBlob(`zivabasa-chat-report-${Date.now()}.${format}`, blob);
     } catch (e) {
       alert(`Couldn't generate report: ${e.message}`);
     } finally {
@@ -86,16 +91,30 @@ export default function StudioPanel() {
       <h3 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold">Studio</h3>
 
       <StudioBlock
-        title="Reports (Word)"
-        description="Clean, shareable .docx reports with charts and tables — no raw data dumps."
+        title="Reports"
+        description="Clean, shareable reports with charts and tables — no raw data dumps."
         active={!!latest || hasChatData}
       >
+        <div className="flex items-center gap-1 self-start rounded-lg border border-border p-0.5">
+          {["docx", "pdf"].map((f) => (
+            <button
+              key={f}
+              onClick={() => setFormat(f)}
+              className={clsx(
+                "px-2 py-1 rounded-md text-[11px] font-medium transition-colors",
+                format === f ? "bg-ink text-white" : "text-ink-faint hover:text-ink"
+              )}
+            >
+              {f === "docx" ? "Word" : "PDF"}
+            </button>
+          ))}
+        </div>
         <div className="flex gap-2">
           <button
             onClick={handleGeneratePredictReport}
             disabled={!latest || downloadingPredict}
             className="flex items-center gap-1.5 rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-left text-xs text-ink hover:bg-gold/15 transition-colors disabled:opacity-40 disabled:pointer-events-none"
-            title={latest ? "Download your latest prediction as a Word report" : "Run a prediction first"}
+            title={latest ? `Download your latest prediction as a ${format === "pdf" ? "PDF" : "Word"} report` : "Run a prediction first"}
           >
             <FileDown size={14} className="text-gold shrink-0" />
             <span className="font-medium">{downloadingPredict ? "Generating…" : "Predict report"}</span>
@@ -104,7 +123,7 @@ export default function StudioPanel() {
             onClick={handleGenerateChatReport}
             disabled={!hasChatData || downloadingChat}
             className="flex items-center gap-1.5 rounded-lg border border-teal/30 bg-teal/10 px-3 py-2 text-left text-xs text-ink hover:bg-teal/15 transition-colors disabled:opacity-40 disabled:pointer-events-none"
-            title={hasChatData ? "Download this conversation as a Word report" : "Send a chat message first"}
+            title={hasChatData ? `Download this conversation as a ${format === "pdf" ? "PDF" : "Word"} report` : "Send a chat message first"}
           >
             <MessageSquareText size={14} className="text-teal shrink-0" />
             <span className="font-medium">{downloadingChat ? "Generating…" : "Chat report"}</span>

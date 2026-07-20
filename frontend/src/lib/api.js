@@ -140,6 +140,18 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messages, tool_calls: toolCalls }),
     }),
+  predictReportPdf: (results) =>
+    requestBlob("/reports/predict/pdf", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ results }),
+    }),
+  chatReportPdf: (messages, toolCalls = []) =>
+    requestBlob("/reports/chat/pdf", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages, tool_calls: toolCalls }),
+    }),
   forecastSchema: () => request("/schema/forecast"),
   forecast: (industry, years = 0) =>
     request(`/predict/forecast/${encodeURIComponent(industry)}?years=${years}`),

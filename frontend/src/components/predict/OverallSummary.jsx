@@ -12,6 +12,7 @@ import { api } from "../../lib/api";
 
 export default function OverallSummary({ results, onRestart }) {
   const [downloading, setDownloading] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
   const emp = results.employment.predict;
   const skl = results.skills.predict;
   const empFlag = emp?.task_type === "classification" && emp.label === 1;
@@ -32,6 +33,18 @@ export default function OverallSummary({ results, onRestart }) {
       alert(`Couldn't generate report: ${e.message}`);
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    setDownloadingPdf(true);
+    try {
+      const blob = await api.predictReportPdf(results);
+      downloadBlob(`zivabasa-predict-report-${Date.now()}.pdf`, blob);
+    } catch (e) {
+      alert(`Couldn't generate report: ${e.message}`);
+    } finally {
+      setDownloadingPdf(false);
     }
   };
 
@@ -88,9 +101,12 @@ export default function OverallSummary({ results, onRestart }) {
         </p>
       </Card>
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         <Button variant="primary" onClick={handleDownload} disabled={downloading}>
           <FileDown size={15} /> {downloading ? "Generating…" : "Download report (Word)"}
+        </Button>
+        <Button variant="secondary" onClick={handleDownloadPdf} disabled={downloadingPdf}>
+          <FileDown size={15} /> {downloadingPdf ? "Generating…" : "Download report (PDF)"}
         </Button>
         <Button variant="secondary" onClick={onRestart}>
           <RotateCcw size={15} /> Start over
