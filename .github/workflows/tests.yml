@@ -1,8 +1,19 @@
-# Backend integration test suite (Day 13). Runs FastAPI's TestClient against the models/
-# processed-features artifacts already checked into backend/models + backend/data/processed —
-# no retraining needed, so this is fast enough to run on every push/PR (unlike
-# scheduled-retrain.yml, which does the full train-and-promote cycle on a weekly cron).
-name: Backend tests
+# CI pipeline. Started as just the Day 13 pytest suite (job `test-backend` below); now also
+# lints both apps, runs advisory dependency/image vulnerability scans, and — on pushes to main
+# only — builds and publishes the two Day 14 Docker images to GHCR.
+#
+# HONESTY NOTE on the vulnerability scans (pip-audit / npm audit / Trivy): they run with
+# `continue-on-error: true` / `exit-code: '0'`, i.e. advisory, not a hard gate. This repo has
+# never been scanned before, so the current finding count (if any) is unknown and unfixed —
+# turning these into a failing gate on day one would block merges on pre-existing issues
+# unrelated to whatever PR happens to trigger it. Once the first run's findings are triaged,
+# flip the relevant step to fail the job.
+#
+# HONESTY NOTE on required status checks: none of these jobs are enforced as required checks
+# on `main` — that's a branch-protection *repository setting* (Settings > Branches), not
+# something a workflow file controls, and changing it wasn't done here since it affects what
+# every future PR is gated on repo-wide.
+name: CI
 
 on:
   push:
@@ -10,27 +21,202 @@ on:
   pull_request: {}
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+
 jobs:
-  test:
+  lint-backend:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install ruff
+        run: pip install ruff==0.15.22
+      - name: Ruff — critical errors only (syntax errors, undefined names)
+        # Deliberately narrow (E9/F63/F7/F82, the classic flake8 "won't run" safety-net
+        # subset), not ruff's full default rule set — this repo has no prior lint config or
+        # history of being linted, so a full style pass would fail on pre-existing code that
+        # has nothing to do with whatever change triggered the run. This subset only catches
+        # things that are straightforwardly bugs (syntax errors, undefined names, bad
+        # comparisons), so it's safe to make a hard gate from day one.
+        run: ruff check --select=E9,F63,F7,F82 .
 
+  lint-frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+
+  test-backend:
+    runs-on: ubuntu-latest
+    needs: lint-backend
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - name: Install backend dependencies
         run: pip install -r requirements.txt
-
       - name: Run pytest with coverage
         run: pytest --cov=api --cov=src --cov-report=term-missing --cov-report=xml
-
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
           path: backend/coverage.xml
+
+  audit-backend:
+    runs-on: ubuntu-latest
+    continue-on-error: true # advisory — see file header
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: pip-audit (known CVEs in installed dependencies)
+        run: |
+          pip install pip-audit
+          pip-audit
+
+  audit-frontend:
+    runs-on: ubuntu-latest
+    continue-on-error: true # advisory — see file header
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+      - name: npm audit (known CVEs in installed dependencies)
+        run: npm audit --audit-level=high
+
+  docker-build-and-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # to upload Trivy's SARIF results to the repo's Security tab
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: false
+          load: true
+          tags: zivabasa-backend:ci
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: false
+          load: true
+          tags: zivabasa-frontend:ci
+
+      - name: Scan backend image (Trivy)
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          image-ref: zivabasa-backend:ci
+          severity: CRITICAL,HIGH
+          exit-code: "0" # advisory — see file header
+          format: sarif
+          output: trivy-backend.sarif
+
+      - name: Scan frontend image (Trivy)
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          image-ref: zivabasa-frontend:ci
+          severity: CRITICAL,HIGH
+          exit-code: "0" # advisory — see file header
+          format: sarif
+          output: trivy-frontend.sarif
+
+      - name: Upload Trivy results to the Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: .
+
+  docker-publish:
+    runs-on: ubuntu-latest
+    needs: [test-backend, lint-frontend, docker-build-and-scan]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute lowercase image name components
+        id: vars
+        # GHCR package names must be lowercase; this repo's own name (ZivaBasa-MVP) isn't.
+        run: |
+          echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+          echo "repo=$(echo '${{ github.event.repository.name }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ghcr.io/${{ steps.vars.outputs.owner }}/${{ steps.vars.outputs.repo }}-backend:latest
+            ghcr.io/${{ steps.vars.outputs.owner }}/${{ steps.vars.outputs.repo }}-backend:${{ github.sha }}
+
+      # The frontend image bakes VITE_API_BASE in at build time (see frontend/Dockerfile) —
+      # docker-compose.yml's own build defaults it to http://localhost:8000, which is correct
+      # for local compose but wrong for anything actually deployed. Rather than publish an
+      # image quietly pointed at localhost, this only pushes once a real backend URL is
+      # configured as the PROD_API_BASE repository variable (Settings > Secrets and variables
+      # > Actions > Variables).
+      - name: Push frontend image
+        if: vars.PROD_API_BASE != ''
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          build-args: |
+            VITE_API_BASE=${{ vars.PROD_API_BASE }}
+            VITE_SUPABASE_URL=${{ vars.VITE_SUPABASE_URL }}
+            VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          tags: |
+            ghcr.io/${{ steps.vars.outputs.owner }}/${{ steps.vars.outputs.repo }}-frontend:latest
+            ghcr.io/${{ steps.vars.outputs.owner }}/${{ steps.vars.outputs.repo }}-frontend:${{ github.sha }}
+
+      - name: Skip frontend image push
+        if: vars.PROD_API_BASE == ''
+        run: |
+          echo "::notice::PROD_API_BASE repository variable isn't set — skipping the frontend image push so a wrong backend URL doesn't get baked into a published image. Set it under Settings > Secrets and variables > Actions > Variables to enable this."
