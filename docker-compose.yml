@@ -1,0 +1,45 @@
+# Local/dev container stack for ZivaBasa: the FastAPI+TensorFlow backend and the built
+# React SPA, as two containers. Copy .env.example to .env at the repo root and fill in
+# whatever keys you have (all optional — /predict, /explain, /schema, /health, and
+# /predict/batch/{task} work with none of them; only /chat, /images/generate, and
+# /organization/extract need a provider key).
+#
+#   docker compose up --build
+#   Frontend -> http://localhost:3000   Backend -> http://localhost:8000
+services:
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "8000:8000"
+    env_file:
+      # Optional on purpose (Compose Spec `required: false`, Docker Compose v2.24+) — the
+      # stack still starts with no chat/vision/image providers if you haven't created a root
+      # .env yet, same as running the API bare. Deliberately NOT a static `environment:` list
+      # of `VAR=${VAR:-}` entries: that pattern sets each var to an empty string (not unset)
+      # when missing from .env, which silently defeats chat.py's own
+      # `os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")`-style fallbacks — os.environ.get
+      # only applies its default when the key is absent, not when it's present-but-empty.
+      - path: .env
+        required: false
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Baked into the JS bundle at build time (Vite env vars aren't readable at container
+        # startup) — localhost:8000 is correct here because the browser on the host machine
+        # talks to the backend's published port, not the compose-internal service network.
+        VITE_API_BASE: http://localhost:8000
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
