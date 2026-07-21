@@ -7,6 +7,7 @@ import ClarityRing from "../../components/common/ClarityRing";
 
 const TABS = [
   { to: "dashboard", label: "Dashboard" },
+  { to: "action-inbox", label: "Action Inbox" },
   { to: "chat", label: "Chat" },
   { to: "predict", label: "Predict" },
   { to: "forecast", label: "Forecast" },

@@ -21,6 +21,12 @@ protobuf==4.25.9  # pinned explicitly — tensorflow/tensorboard/mlflow all need
 # allows; harmless (fastapi-cli isn't used — this app is run via `uvicorn`, not `fastapi dev`).
 flwr==1.23.0
 
+# Causal/uplift layer (demo-readiness Phase B — src/uplift.py). EconML chosen over CausalML: it
+# installs cleanly against this project's pinned numpy (verified before installing — same check
+# applied to every dependency addition this project has made), CausalML has a heavier/more
+# fragile build chain.
+econml==0.16.0
+
 # Classical ML baselines
 scikit-learn==1.5.0
 xgboost==2.0.3
@@ -65,7 +71,10 @@ python-dotenv==1.0.1
 # API layer (Day 8 — Workforce Intelligence API)
 fastapi==0.111.0
 uvicorn[standard]==0.30.1
-pydantic==2.7.4
+pydantic==2.13.4  # bumped from 2.7.4 — langchain-core==0.3.33 (below) requires pydantic-core
+                  # 2.46.4, which isn't compatible with pydantic 2.7.4's pinned pydantic-core
+                  # 2.18.4. Verified against fastapi==0.111.0 (supports pydantic v2 broadly,
+                  # <3.0.0) and the full test suite (107 passed) before pinning this bump.
 python-multipart==0.0.9  # required by FastAPI's UploadFile/File() — used by the batch CSV
                           # upload endpoint (/predict/batch/{task})
 httpx==0.27.0             # async HTTP client used by api/chat.py to call Anthropic/NVIDIA
@@ -74,6 +83,21 @@ httpx==0.27.0             # async HTTP client used by api/chat.py to call Anthro
 # (https://js.puter.com/v2/) — not a Python package, and was previously an invalid line here
 # ("heyputer/puter.js") that broke `pip install -r requirements.txt` outright. See
 # frontend/src/lib/puter.js for the actual integration.
+
+# "Chiedza" agent mode (api/agent_graph.py) — a LangGraph-powered agent added as a parallel
+# capability alongside api/chat.py's hand-rolled multi-provider loop, not a replacement for it.
+# Optional/off-by-default like every other LLM integration in this file: if these three aren't
+# installed, api/agent_graph.py's _LANGGRAPH_AVAILABLE flag stays False and POST /chat/agent
+# returns a 503 instead of failing API startup. VERIFY THESE VERSIONS install cleanly against
+# this file's pinned numpy<2.0/protobuf<5/tensorflow==2.16.1 stack in a clean venv before
+# trusting them — this project has repeatedly hit exactly this class of conflict (flwr,
+# causal-learn, dowhy, all documented above) with packages that pull in unpinned numpy/protobuf.
+langgraph==0.2.60
+langchain-core==0.3.28
+langchain-anthropic==0.3.4
+supabase==2.10.0  # server-side Supabase client for agent_graph.py's get_org_chart /
+                   # get_predict_history / get_batch_results tools (service-role key, not the
+                   # frontend's anon key) — no other backend module talks to Supabase today.
 
 # Testing (Day 13 — integration/end-to-end suite, backend/tests/)
 pytest==8.2.2

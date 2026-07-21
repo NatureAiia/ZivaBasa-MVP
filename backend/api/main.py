@@ -44,12 +44,13 @@ from api.schemas import (
     ChatRequest, ChatResponse, PredictReportRequest, ChatReportRequest,
     ImageGenerateRequest, ImageGenerateResponse,
     ForecastSchemaResponse, ForecastResponse, ForecastPoint,
-    SkillGapRequest, SkillGapResponse,
+    SkillGapRequest, SkillGapResponse, UpliftResponse,
 )
 from api.model_registry import registry, forecast_registry
 from api import auth
 from api import batch as batch_module
 from api import chat as chat_module
+from api import agent_graph
 from api import llm_gateway
 from api import reports as reports_module
 from api import org_extract as org_extract_module
@@ -59,6 +60,7 @@ from src import config as src_config
 from src import drift as drift_module
 from src import forecast as forecast_module
 from src import skill_matching
+from src import uplift as uplift_module
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s [%(name)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -354,6 +356,23 @@ async def chat(request: ChatRequest, _role: str = Depends(auth.require_role("adm
     return ChatResponse(**result)
 
 
+@app.post("/chat/agent", response_model=ChatResponse)
+async def chat_agent(request: ChatRequest, _role: str = Depends(auth.require_role("viewer"))):
+    """Chiedza's LangGraph agent mode (api/agent_graph.py) — a parallel capability alongside
+    POST /chat, not a replacement for it. Unlike plain chat, this can read the caller's own
+    saved org chart / prediction history / batch results from Supabase (request.user_id scopes
+    those reads) in addition to running fresh predictions."""
+    try:
+        result = await agent_graph.run_agent(
+            [m.model_dump() for m in request.messages], user_id=request.user_id
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Chiedza agent call failed: {e}")
+    return ChatResponse(**result)
+
+
 @app.get("/chat/budget")
 async def chat_budget(_role: str = Depends(auth.require_role("viewer"))):
     """Per-provider daily token budget status (api/llm_gateway.py) — configured cap, used
@@ -368,6 +387,35 @@ async def skill_match_recommend(request: SkillGapRequest, _role: str = Depends(a
     pair, returns the same match score skill_matching.match_score() computes plus a recommended
     training resource for each missing skill (Master Checklist §5, Day 10 item)."""
     return skill_matching.recommend_training_path(request.current_skills, request.required_skills)
+
+
+_uplift_cache: dict = {}
+
+
+def _get_uplift_bundle_or_503(task: str) -> dict:
+    if task not in _uplift_cache:
+        try:
+            _uplift_cache[task] = uplift_module.load_uplift_model(task)
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=503, detail=str(e))
+    return _uplift_cache[task]
+
+
+@app.post("/uplift/{task}", response_model=UpliftResponse)
+def uplift_endpoint(task: str, request: PredictRequest, _role: str = Depends(auth.require_role("viewer"))):
+    """Causal/uplift estimate (src/uplift.py) for the flagship attrition-risk use case: does
+    the recommended retention lever (TrainingTimesLastYear) actually move this employee's
+    attrition probability, or does ordinary SHAP just make it look that way? Currently only
+    trained for task='skills' — scripts/train_uplift_model.py."""
+    bundle = _get_uplift_bundle_or_503(task)
+    if len(request.features) != len(bundle["feature_names"]):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Expected {len(bundle['feature_names'])} features for task '{task}': "
+                   f"{bundle['feature_names']}, got {len(request.features)}.",
+        )
+    result = uplift_module.estimate_treatment_effect(bundle, request.features)
+    return UpliftResponse(task=task, **result)
 
 
 @app.get("/mlops/status")

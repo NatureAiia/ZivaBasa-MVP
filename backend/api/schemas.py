@@ -53,6 +53,9 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     messages: List[ChatMessage]
     provider: Optional[str] = None  # explicit choice from the frontend's model picker; None = auto-detect
+    user_id: Optional[str] = None  # POST /chat/agent only — scopes Chiedza's Supabase context
+                                    # tools (org chart, predict history, batch results) to this
+                                    # user; ignored by plain POST /chat.
 
 
 class ChatModelInfo(BaseModel):
@@ -116,6 +119,15 @@ class SkillGapResponse(BaseModel):
     missing_skill_count: int
     missing_skills: List[str]
     recommended_training: List[SkillTrainingRecommendation]
+
+
+class UpliftResponse(BaseModel):
+    task: str
+    treatment_feature: str
+    estimated_effect_per_unit: float
+    effect_interval_90pct: List[float]
+    statistically_significant_90pct: bool
+    interpretation: str
 
 
 class ForecastSchemaResponse(BaseModel):

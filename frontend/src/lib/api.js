@@ -98,6 +98,15 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messages, provider }),
     }),
+  // Chiedza's LangGraph agent mode (backend/api/agent_graph.py) — a parallel capability
+  // alongside chat() above, not a replacement. userId scopes its Supabase context tools
+  // (org chart / predict history / batch results) to the signed-in user.
+  chatAgent: (messages, userId = null) =>
+    request("/chat/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages, user_id: userId }),
+    }),
   chatModels: () => request("/chat/models"),
   orgExtractProviders: () => request("/organization/extract/providers"),
   extractOrgChart: async (file, provider = null) => {
@@ -155,6 +164,12 @@ export const api = {
   forecastSchema: () => request("/schema/forecast"),
   forecast: (industry, years = 0) =>
     request(`/predict/forecast/${encodeURIComponent(industry)}?years=${years}`),
+  uplift: (task, features) =>
+    request(`/uplift/${task}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ features }),
+    }),
 };
 
 export const TASKS = ["employment", "skills", "productivity", "skill_match", "human_capital"];

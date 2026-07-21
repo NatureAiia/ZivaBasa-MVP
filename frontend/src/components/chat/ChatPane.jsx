@@ -4,6 +4,7 @@ import { Send, Sparkles, ChevronDown, KeyRound, Plus } from "lucide-react";
 import clsx from "clsx";
 import { fadeUpItem } from "../../lib/motion";
 import { api } from "../../lib/api";
+import { useAuth } from "../../lib/authStore";
 import { sendPuterChat, PUTER_MODELS } from "../../lib/puter";
 import { logUsage } from "../../lib/usageStore";
 import { estimateCostUsd, estimateImageCostUsd, PRICING_PER_M_TOKENS } from "../../lib/chatPricing";
@@ -66,6 +67,7 @@ const WELCOME_MESSAGE = {
 };
 
 export default function ChatPane() {
+  const { user } = useAuth();
   const [backendModels, setBackendModels] = useState([]);
   const [selection, setSelection] = useState({ mode: "puter", id: "anthropic/claude-sonnet-5" });
   const [menuOpen, setMenuOpen] = useState(false);
@@ -105,6 +107,7 @@ export default function ChatPane() {
   }, [messages, toolCallLog, sessionLoaded]);
 
   const selectedLabel = () => {
+    if (selection.mode === "chiedza") return "Chiedza (agent)";
     if (selection.mode === "backend") {
       return backendModels.find((m) => m.provider === selection.id)?.label || "Choose a model";
     }
@@ -120,7 +123,17 @@ export default function ChatPane() {
     setSending(true);
     try {
       let replyText, replyProvider, replyImages;
-      if (selection.mode === "puter") {
+      if (selection.mode === "chiedza") {
+        const res = await api.chatAgent(nextMessages.map((m) => ({ role: m.role, content: m.text })), user?.id);
+        replyText = res.reply;
+        replyProvider = res.provider;
+        if (res.tool_calls?.length) {
+          setToolCallLog((log) => [...log, ...res.tool_calls]);
+        }
+        // No token usage reported by agent_graph.py today (LangGraph's ChatAnthropic wrapper
+        // doesn't surface it through create_react_agent's return shape) — nothing to log here,
+        // unlike the backend branch below.
+      } else if (selection.mode === "puter") {
         const history = [
           { role: "system", content: PUTER_SYSTEM },
           ...nextMessages.map((m) => ({ role: m.role, content: m.text })),
@@ -200,6 +213,25 @@ export default function ChatPane() {
                 exit={{ opacity: 0, y: -6 }}
                 className="absolute z-10 mt-1 bg-surface border border-border rounded-xl shadow-card-dark p-1.5 w-72 flex flex-col gap-2"
               >
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-ink-faint font-semibold px-1.5 pb-1">
+                    Chiedza — reads your own app data
+                  </p>
+                  <button
+                    onClick={() => { setSelection({ mode: "chiedza", id: "chiedza" }); setMenuOpen(false); }}
+                    className={clsx(
+                      "w-full text-left px-2.5 py-2 rounded-lg transition-colors",
+                      selection.mode === "chiedza" ? "bg-gold/10" : "hover:bg-surface2"
+                    )}
+                  >
+                    <span className={clsx("text-xs font-medium", selection.mode === "chiedza" ? "text-gold" : "text-ink")}>
+                      Chiedza (agent)
+                    </span>
+                    <span className="block text-[10px] text-ink-faint mt-0.5 leading-snug">
+                      Grounds answers in your own org chart, prediction history and batch results — not just fresh predictions.
+                    </span>
+                  </button>
+                </div>
                 {backendModels.length > 0 && (
                   <div>
                     <p className="text-[10px] uppercase tracking-wide text-ink-faint font-semibold px-1.5 pb-1">

@@ -165,6 +165,23 @@ create table if not exists predict_history (
 create index if not exists predict_history_user_id_created_idx on predict_history(user_id, created_at desc);
 
 -- ---------------------------------------------------------------------------
+-- profiles — signup-time info needed to assess a user's rights (name, org, job title,
+-- requested role). `role` is what the app actually gates on; it defaults to 'viewer' and
+-- only ever changes via manual admin action (Supabase dashboard / a direct SQL update by an
+-- existing admin) — there is deliberately no invite-code or other self-service path to
+-- 'admin' here, since any such check running in frontend code can't hide a real secret.
+-- ---------------------------------------------------------------------------
+create table if not exists profiles (
+  user_id         uuid primary key references auth.users(id) on delete cascade,
+  full_name       text,
+  organization    text,
+  job_title       text,
+  requested_role  text not null default 'viewer' check (requested_role in ('viewer', 'admin')),
+  role            text not null default 'viewer' check (role in ('viewer', 'admin')),
+  created_at      timestamptz not null default now()
+);
+
+-- ---------------------------------------------------------------------------
 -- Row Level Security — every table, every row scoped to its owner. This is the actual
 -- security boundary (the anon key is public by design in Supabase's model); without RLS
 -- enabled, any authenticated user could read/write any other user's rows.
@@ -177,6 +194,7 @@ alter table usage_log        enable row level security;
 alter table cost_entries     enable row level security;
 alter table chat_sessions    enable row level security;
 alter table predict_history  enable row level security;
+alter table profiles         enable row level security;
 
 do $$
 declare
@@ -193,3 +211,37 @@ begin
     );
   end loop;
 end $$;
+
+-- profiles gets its own, narrower policies instead of the generic "own rows only" loop above:
+-- a plain owner-scoped policy would let a signed-in user UPDATE their *own* `role` column
+-- straight to 'admin' through the normal client SDK, which defeats the whole point of manual
+-- admin approval. Select/insert are owner-scoped as usual; insert additionally pins role to
+-- 'viewer' regardless of what a hand-crafted request claims; update is locked to prevent
+-- role changes at the RLS layer, reinforced by a trigger below (belt and suspenders — the
+-- trigger also protects against any future policy edit that loosens this).
+create policy "own profile select" on profiles
+  for select using (user_id = auth.uid());
+
+create policy "own profile insert" on profiles
+  for insert with check (user_id = auth.uid() and role = 'viewer');
+
+create policy "own profile update" on profiles
+  for update using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- Belt-and-suspenders: reject any attempt to change `role` that comes through PostgREST as the
+-- 'authenticated' Postgres role (i.e. a normal logged-in user via the anon/authenticated key).
+-- Manual admin promotion is expected to run as the 'postgres' role (Supabase SQL editor /
+-- dashboard), which this check does not touch.
+create or replace function lock_profile_role()
+returns trigger as $$
+begin
+  if new.role <> old.role and current_user = 'authenticated' then
+    raise exception 'role can only be changed by manual admin action, not by the user themselves';
+  end if;
+  return new;
+end;
+$$ language plpgsql;
+
+create trigger profiles_lock_role
+  before update on profiles
+  for each row execute function lock_profile_role();
