@@ -49,6 +49,7 @@ from api.schemas import (
 from api.model_registry import registry, forecast_registry
 from api import batch as batch_module
 from api import chat as chat_module
+from api import llm_gateway
 from api import reports as reports_module
 from api import org_extract as org_extract_module
 from api import image_gen as image_gen_module
@@ -338,7 +339,7 @@ async def chat_models():
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     try:
-        result = await chat_module.send_chat(
+        result = await llm_gateway.send_chat_with_fallback(
             [m.model_dump() for m in request.messages], provider=request.provider
         )
     except RuntimeError as e:
@@ -346,6 +347,14 @@ async def chat(request: ChatRequest):
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Chat provider call failed: {e}")
     return ChatResponse(**result)
+
+
+@app.get("/chat/budget")
+async def chat_budget():
+    """Per-provider daily token budget status (api/llm_gateway.py) — configured cap, used
+    today, remaining. A provider with no ZIVABASA_BUDGET_<PROVIDER>_TOKENS env var set shows
+    budget_tokens_per_day=None (unlimited, today's default)."""
+    return llm_gateway.budget_status(chat_module.MODEL_CATALOG)
 
 
 @app.post("/skill_match/recommend", response_model=SkillGapResponse)

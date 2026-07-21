@@ -259,7 +259,14 @@ class PLEMultiTaskTrainer:
         for name in self.task_names:
             self.history[f"val_{name}"] = []
 
+    @tf.function
     def _train_step(self, batches: Dict[str, tuple]):
+        # @tf.function matters much more here than it would for model.py's simpler adapter:
+        # VariableSelectionNetwork unrolls a Python-level loop of per-feature GRN calls on
+        # every invocation. In pure eager mode that retraces/reinterprets the loop on every
+        # single batch across all 5 task heads, which is prohibitively slow (a 2-epoch smoke
+        # run across all heads did not finish in 15 minutes without this). Wrapped in
+        # tf.function, the loop unrolls once at trace time into a single compiled graph.
         with tf.GradientTape() as tape:
             total_loss = 0.0
             for name, (X_batch, y_batch) in batches.items():
@@ -276,10 +283,15 @@ class PLEMultiTaskTrainer:
         val_losses = {}
         for name in self.task_names:
             X_val, y_val = data[name]["X_val"], data[name]["y_val"]
-            y_pred = self.task_models[name](X_val, training=False)
+            y_pred = self._predict_graph(self.task_models[name], X_val)
             y_pred = tf.squeeze(y_pred, axis=-1)
             val_losses[name] = float(self.loss_fns[name](y_val, y_pred))
         return val_losses
+
+    @staticmethod
+    @tf.function
+    def _predict_graph(task_model, X):
+        return task_model(X, training=False)
 
     def fit(self, data: Dict[str, dict], mlflow_run=None, verbose: bool = True) -> Dict[str, list]:
         cfg = self.cfg

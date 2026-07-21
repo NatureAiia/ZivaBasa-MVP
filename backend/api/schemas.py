@@ -70,6 +70,8 @@ class ChatResponse(BaseModel):
     usage: Optional[dict] = None
     tool_calls: Optional[list] = None
     generated_images: Optional[list] = None  # [{id, mime_type, image_base64}], from the generate_image tool
+    fallback_chain: Optional[list] = None  # [{provider, outcome}] — which providers the LLM
+                                            # gateway tried this request and why (api/llm_gateway.py)
 
 
 class ImageGenerateRequest(BaseModel):

@@ -18,6 +18,20 @@ xgboost==2.0.3
 # Explainability
 shap==0.45.1
 
+# Causal-consistent XAI (Phase 3 spike — src/causal_xai.py). Installed with --no-deps +
+# hand-picked transitive deps (pydot/graphviz/momentchi2/statsmodels), NOT `pip install
+# causal-learn dowhy` plain — causal-learn's unpinned "numpy" dependency resolves to numpy>=2.0
+# by default, which would silently break tensorflow==2.16.1/Keras 3's numpy<2.0 requirement
+# (the same class of conflict already documented in evaluate.py's compute_shap_values() for
+# shap==0.52.0). dowhy itself was skipped entirely for the same reason (pulls in cvxpy/numba,
+# more numpy-version risk) — see causal_xai.py's do-calculus section for the lighter substitute.
+causal-learn==0.1.4.8
+networkx==3.6.1
+pydot==4.0.1
+graphviz==0.21
+momentchi2==0.1.8
+statsmodels==0.14.6
+
 # Experiment tracking
 mlflow==2.14.1
 
