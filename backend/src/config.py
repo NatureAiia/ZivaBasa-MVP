@@ -134,9 +134,58 @@ TASK_CONFIGS: Dict[str, TaskConfig] = {
                    "training_x_skill_readiness"],
         loss_weight=1.0,
     ),
+    "human_capital": TaskConfig(
+        name="human_capital",
+        raw_filename="human_capital.csv",
+        target="target_turnover",
+        task_type="classification",
+        # Real HR data (HRDataset_v14 shape), not a proxy — see
+        # data/schema/human_capital_dictionary.md for the full column mapping, confirmed-
+        # missing fields (training_hours_ytd/revenue_attributed/promotion_count don't exist in
+        # this file), and the join-strategy note (row-aligned on EmpID, schema-level only vs.
+        # skill_match). Its own task head (5th adapter into the shared trunk), not blended into
+        # employment/skills — the architecture has no row-alignment across datasets, so there's
+        # no mechanism for one CSV to "feed" another head; skill_match set this precedent.
+        #
+        # DateofHire is consumed into tenure_years by add_ratio_index_features and dropped
+        # there (same pattern skill_match uses for current_skills/required_skills) — never
+        # carried into the modeling matrix as a raw date string.
+        #
+        # EmploymentStatus/TermReason/DateofTermination are deliberately NOT selected at all,
+        # not selected-then-dropped: DateofTermination is non-null iff the employee is
+        # terminated (i.e. it IS target_turnover in date form), and EmploymentStatus/TermReason
+        # are the same label spelled out in words. Selecting any of them would be a stronger,
+        # more direct leak than the interaction-feature leaks already documented for the other
+        # three tasks (bug 9.2), so they're excluded from raw_cols from the start.
+        raw_cols=["Department", "Position", "PayRate", "PerformanceScore", "PerfScoreID",
+                  "EngagementSurvey", "EmpSatisfaction", "SpecialProjectsCount",
+                  "DaysLateLast30", "DateofHire", "Termd"],
+        # Termd is the direct source of target_turnover (copied 1:1) — same leakage logic as
+        # employment's automation_risk_score -> target_high_automation_risk. Dropped post-target.
+        drop_cols=["target_turnover", "Termd"],
+        loss_weight=1.0,
+    ),
 }
 
 TASK_NAMES = list(TASK_CONFIGS.keys())
+
+HUMAN_CAPITAL_RAW_FILENAME = "human_capital.csv"
+HUMAN_CAPITAL_REQUIRED_COLUMNS = ["EmpID"]  # join key — hard-fail if absent, see load_human_capital.py
+HUMAN_CAPITAL_EXPECTED_COLUMNS = [
+    "EmpID", "Department", "Position", "PositionID", "DeptID",
+    "DateofHire", "DateofTermination", "Termd", "EmploymentStatus", "TermReason",
+    "PayRate", "PerformanceScore", "PerfScoreID", "EngagementSurvey", "EmpSatisfaction",
+    "SpecialProjectsCount", "LastPerformanceReview_Date", "DaysLateLast30",
+]
+# Confirmed absent from this file — see data/schema/human_capital_dictionary.md
+# "Confirmed-missing fields". Do not add these to raw_cols or synthesize them from other
+# columns without documenting the substitution the way employment/productivity do.
+HUMAN_CAPITAL_MISSING_FIELDS = ["training_hours_ytd", "revenue_attributed", "promotion_count"]
+# Fixed snapshot date for tenure_years, not "today" — LastPerformanceReview_Date (the most
+# recent activity in the file) tops out at 2019-02-28, so treating the file as a 2019-03-01
+# snapshot keeps tenure_years reproducible across runs instead of silently drifting with
+# whatever date the pipeline happens to execute on.
+HUMAN_CAPITAL_REFERENCE_DATE = "2019-03-01"
 
 
 # --------------------------------------------------------------------------- #

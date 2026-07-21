@@ -48,3 +48,20 @@ missing_skill_count,index,skill_match,"['current_skills', 'required_skills']",Co
 overlap_x_training,interaction,skill_match,"['skill_overlap_count', 'recent_training_hours']",Existing skill overlap weighted by recent training investment — proxy for how quickly a partial match is likely to close the remaining gap.
 training_x_skill_readiness,interaction,skill_match,"['recent_training_hours', 'cosine_similarity_score']","AI4I catalogue §2.3 'Training Investment x Skill Readiness' — sharpens overlap_x_training by weighting training investment against cosine_similarity_score (a continuous fit-quality score) instead of skill_overlap_count (a raw match count), so two staff with the same overlap count but different overall fit are no longer treated identically. Dropped from skill_match's modeling matrix (config.py) — same leakage profile as cosine_similarity_score itself, which target_good_redeployment_match is a direct quantile threshold of."
 target_good_redeployment_match,target,skill_match,['cosine_similarity_score'],1 if cosine_similarity_score above 75th percentile (0.865) — same quantile-threshold pattern as employment's target_high_automation_risk.
+Department,raw,human_capital,['Department'],"Direct source column, no transformation."
+Position,raw,human_capital,['Position'],"Direct source column, no transformation."
+PayRate,raw,human_capital,['PayRate'],"Direct source column, no transformation."
+PerformanceScore,raw,human_capital,['PerformanceScore'],"Direct source column, no transformation."
+PerfScoreID,raw,human_capital,['PerfScoreID'],"Direct source column, no transformation."
+EngagementSurvey,raw,human_capital,['EngagementSurvey'],"Direct source column, no transformation."
+EmpSatisfaction,raw,human_capital,['EmpSatisfaction'],"Direct source column, no transformation."
+SpecialProjectsCount,raw,human_capital,['SpecialProjectsCount'],"Direct source column, no transformation."
+DaysLateLast30,raw,human_capital,['DaysLateLast30'],"Direct source column, no transformation."
+DateofHire,raw,human_capital,['DateofHire'],"Direct source column, no transformation."
+Termd,raw,human_capital,['Termd'],"Direct source column, no transformation."
+tenure_years,ratio,human_capital,['DateofHire'],Years between DateofHire and the fixed 2019-03-01 snapshot date (not DateofTermination or 'today' — see config.py comment).
+headcount_by_department,ratio,human_capital,['Department'],Row count per department — staff-complement proxy (no branch-level field exists).
+turnover_rate_oof,ratio,human_capital,"['Termd', 'Department']","5-fold out-of-fold department turnover rate — every row in the same (department, fold) shares an identical value computed only from the other folds, so no row's own label leaves a per-row fingerprint in its own feature (a plain leave-one-out encoding was tried first and found to leak exactly this way — see the comment above)."
+performance_readiness_index,index,human_capital,"['PerfScoreID', 'EngagementSurvey', 'EmpSatisfaction']","Closest available analogue to a 'skill_readiness_index' — training_hours_ytd and promotion_count are NOT AVAILABLE in this file (see data dictionary), so this substitutes z-scored performance/engagement/satisfaction instead. Honestly labeled substitute, not equivalent to the taxonomy's original definition."
+special_projects_x_performance_readiness,interaction,human_capital,"['SpecialProjectsCount', 'performance_readiness_index']","Substitute for the taxonomy's 'training_investment_x_skill_readiness' — training_hours_ytd is NOT AVAILABLE in this file, so SpecialProjectsCount (count of special projects, the closest adjacent signal per the data dictionary) stands in for training investment. Honestly labeled substitute, not equivalent."
+target_turnover,target,human_capital,['Termd'],"1 if the employee has left (Termd==1), 0 if still active."
