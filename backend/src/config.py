@@ -246,6 +246,30 @@ MODEL_CONFIG = ModelConfig()
 
 
 # --------------------------------------------------------------------------- #
+# PLE/VSN multi-task network hyperparameters (Phase 2 architecture spike —
+# built alongside ModelConfig/model.py, not replacing it, until the
+# scripts/benchmark_ple_vs_baseline.py gate decides whether it's kept)
+# --------------------------------------------------------------------------- #
+@dataclass
+class PLEModelConfig:
+    expert_dim: int = 32           # GRN hidden width; also the VSN output dim fed into PLE
+    num_shared_experts: int = 2    # experts every task's gate can draw on
+    num_task_experts: int = 1      # experts private to each task
+    vsn_dropout: float = 0.2
+    dropout_rate: float = 0.2      # GRN internal dropout
+    batch_size: int = 32
+    epochs: int = 100
+    patience: int = 10
+    lr_patience: int = 5
+    lr_factor: float = 0.5
+    min_lr: float = 1e-6
+    initial_lr: float = 1e-3
+
+
+PLE_MODEL_CONFIG = PLEModelConfig()
+
+
+# --------------------------------------------------------------------------- #
 # SHAP hyperparameters
 # --------------------------------------------------------------------------- #
 SHAP_N_BACKGROUND = 100
