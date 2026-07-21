@@ -35,7 +35,7 @@ load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
                 # are imported, since those modules read them at import time via os.environ.get()
 
 import numpy as np
-from fastapi import FastAPI, HTTPException, UploadFile, File, Response
+from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.schemas import (
@@ -47,6 +47,7 @@ from api.schemas import (
     SkillGapRequest, SkillGapResponse,
 )
 from api.model_registry import registry, forecast_registry
+from api import auth
 from api import batch as batch_module
 from api import chat as chat_module
 from api import llm_gateway
@@ -130,7 +131,7 @@ def _get_forecast_bundle_or_503():
 # registration order, and /schema/{task}'s single-path-segment pattern would otherwise swallow
 # /schema/forecast (task="forecast") before it ever reached this handler.
 @app.get("/schema/forecast", response_model=ForecastSchemaResponse)
-def forecast_schema():
+def forecast_schema(_role: str = Depends(auth.require_role("viewer"))):
     bundle = _get_forecast_bundle_or_503()
     cfg = src_config.FORECAST_CONFIG
     last_year = int(bundle["panel"][cfg.year_col].max())
@@ -144,7 +145,7 @@ def forecast_schema():
 
 
 @app.get("/predict/forecast/{industry}", response_model=ForecastResponse)
-def predict_forecast(industry: str, years: int = 0):
+def predict_forecast(industry: str, years: int = 0, _role: str = Depends(auth.require_role("viewer"))):
     bundle = _get_forecast_bundle_or_503()
     if industry not in bundle["industries"]:
         raise HTTPException(
@@ -174,7 +175,7 @@ def predict_forecast(industry: str, years: int = 0):
 
 
 @app.get("/schema/{task}", response_model=SchemaResponse)
-def schema(task: str):
+def schema(task: str, _role: str = Depends(auth.require_role("viewer"))):
     artifacts = _get_task_or_404(task)
     return SchemaResponse(
         task=task,
@@ -185,7 +186,7 @@ def schema(task: str):
 
 
 @app.post("/predict/{task}", response_model=PredictResponse)
-def predict(task: str, request: PredictRequest):
+def predict(task: str, request: PredictRequest, _role: str = Depends(auth.require_role("viewer"))):
     artifacts = _get_task_or_404(task)
 
     if len(request.features) != artifacts.input_dim:
@@ -214,7 +215,7 @@ def predict(task: str, request: PredictRequest):
 
 
 @app.post("/explain/{task}", response_model=ExplainResponse)
-def explain(task: str, request: PredictRequest, top_k: int = 10):
+def explain(task: str, request: PredictRequest, top_k: int = 10, _role: str = Depends(auth.require_role("viewer"))):
     artifacts = _get_task_or_404(task)
 
     if len(request.features) != artifacts.input_dim:
@@ -266,7 +267,7 @@ _VALUE_COLUMN = {"employment": "avg_salary_usd", "skills": "MonthlyIncome", "ski
 
 
 @app.post("/predict/batch/{task}")
-async def predict_batch(task: str, file: UploadFile = File(...)):
+async def predict_batch(task: str, file: UploadFile = File(...), _role: str = Depends(auth.require_role("admin"))):
     artifacts = _get_task_or_404(task)
 
     if not file.filename.lower().endswith(".csv"):
@@ -332,12 +333,12 @@ async def predict_batch(task: str, file: UploadFile = File(...)):
 
 
 @app.get("/chat/models")
-async def chat_models():
+async def chat_models(_role: str = Depends(auth.require_role("viewer"))):
     return {"models": chat_module.list_models()}
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, _role: str = Depends(auth.require_role("admin"))):
     try:
         result = await llm_gateway.send_chat_with_fallback(
             [m.model_dump() for m in request.messages], provider=request.provider
@@ -350,7 +351,7 @@ async def chat(request: ChatRequest):
 
 
 @app.get("/chat/budget")
-async def chat_budget():
+async def chat_budget(_role: str = Depends(auth.require_role("viewer"))):
     """Per-provider daily token budget status (api/llm_gateway.py) — configured cap, used
     today, remaining. A provider with no ZIVABASA_BUDGET_<PROVIDER>_TOKENS env var set shows
     budget_tokens_per_day=None (unlimited, today's default)."""
@@ -358,7 +359,7 @@ async def chat_budget():
 
 
 @app.post("/skill_match/recommend", response_model=SkillGapResponse)
-async def skill_match_recommend(request: SkillGapRequest):
+async def skill_match_recommend(request: SkillGapRequest, _role: str = Depends(auth.require_role("viewer"))):
     """Prescriptive skill-gap layer on top of the skill_match head: for one staff-vs-target-role
     pair, returns the same match score skill_matching.match_score() computes plus a recommended
     training resource for each missing skill (Master Checklist §5, Day 10 item)."""
@@ -366,7 +367,7 @@ async def skill_match_recommend(request: SkillGapRequest):
 
 
 @app.get("/mlops/status")
-async def mlops_status():
+async def mlops_status(_role: str = Depends(auth.require_role("viewer"))):
     reports_dir = os.path.join(src_config.MODELS_DIR, "retrain_reports")
     latest_report = None
     if os.path.isdir(reports_dir):
@@ -385,7 +386,7 @@ async def mlops_status():
 
 
 @app.get("/organization/extract/providers")
-async def org_extract_providers():
+async def org_extract_providers(_role: str = Depends(auth.require_role("viewer"))):
     return {"providers": org_extract_module.available_vision_providers()}
 
 
@@ -396,7 +397,7 @@ _ORG_EXTRACT_MEDIA_TYPES = {
 
 
 @app.post("/organization/extract")
-async def org_extract(file: UploadFile = File(...), provider: str = None):
+async def org_extract(file: UploadFile = File(...), provider: str = None, _role: str = Depends(auth.require_role("admin"))):
     media_type = _ORG_EXTRACT_MEDIA_TYPES.get(file.content_type)
     if media_type is None:
         raise HTTPException(
@@ -416,12 +417,12 @@ async def org_extract(file: UploadFile = File(...), provider: str = None):
 
 
 @app.get("/images/providers")
-async def image_providers():
+async def image_providers(_role: str = Depends(auth.require_role("viewer"))):
     return {"providers": ["gemini"] if image_gen_module.available() else []}
 
 
 @app.post("/images/generate", response_model=ImageGenerateResponse)
-async def image_generate(request: ImageGenerateRequest):
+async def image_generate(request: ImageGenerateRequest, _role: str = Depends(auth.require_role("admin"))):
     try:
         result = await image_gen_module.generate_image(request.prompt)
     except RuntimeError as e:
@@ -437,7 +438,7 @@ _XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.
 
 
 @app.post("/reports/predict")
-async def predict_report(request: PredictReportRequest):
+async def predict_report(request: PredictReportRequest, _role: str = Depends(auth.require_role("viewer"))):
     try:
         docx_bytes = reports_module.build_predict_report(request.results)
     except Exception as e:
@@ -450,7 +451,7 @@ async def predict_report(request: PredictReportRequest):
 
 
 @app.post("/reports/chat")
-async def chat_report(request: ChatReportRequest):
+async def chat_report(request: ChatReportRequest, _role: str = Depends(auth.require_role("viewer"))):
     try:
         docx_bytes = reports_module.build_chat_report(
             [m.model_dump() for m in request.messages], request.tool_calls
@@ -465,7 +466,7 @@ async def chat_report(request: ChatReportRequest):
 
 
 @app.post("/reports/predict/pdf")
-async def predict_report_pdf(request: PredictReportRequest):
+async def predict_report_pdf(request: PredictReportRequest, _role: str = Depends(auth.require_role("viewer"))):
     try:
         pdf_bytes = reports_module.build_predict_report_pdf(request.results)
     except Exception as e:
@@ -478,7 +479,7 @@ async def predict_report_pdf(request: PredictReportRequest):
 
 
 @app.post("/reports/chat/pdf")
-async def chat_report_pdf(request: ChatReportRequest):
+async def chat_report_pdf(request: ChatReportRequest, _role: str = Depends(auth.require_role("viewer"))):
     try:
         pdf_bytes = reports_module.build_chat_report_pdf(
             [m.model_dump() for m in request.messages], request.tool_calls
@@ -493,7 +494,7 @@ async def chat_report_pdf(request: ChatReportRequest):
 
 
 @app.post("/reports/predict/xlsx")
-async def predict_report_xlsx(request: PredictReportRequest):
+async def predict_report_xlsx(request: PredictReportRequest, _role: str = Depends(auth.require_role("viewer"))):
     try:
         xlsx_bytes = reports_module.build_predict_report_xlsx(request.results)
     except Exception as e:
@@ -506,7 +507,7 @@ async def predict_report_xlsx(request: PredictReportRequest):
 
 
 @app.post("/reports/chat/xlsx")
-async def chat_report_xlsx(request: ChatReportRequest):
+async def chat_report_xlsx(request: ChatReportRequest, _role: str = Depends(auth.require_role("viewer"))):
     try:
         xlsx_bytes = reports_module.build_chat_report_xlsx(
             [m.model_dump() for m in request.messages], request.tool_calls
