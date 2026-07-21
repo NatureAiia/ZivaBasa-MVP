@@ -10,7 +10,7 @@ const WIDTH = 320;
 const HEIGHT = 160;
 const PAD = { top: 18, right: 14, bottom: 22, left: 32 };
 
-export default function ForecastLineChart({ title, color, unit = "", history = [], forecast = [] }) {
+export default function ForecastLineChart({ title, color, unit = "", history = [], forecast = [], confidenceLevel }) {
   const [hoverIdx, setHoverIdx] = useState(null);
 
   const points = useMemo(() => {
@@ -23,12 +23,15 @@ export default function ForecastLineChart({ title, color, unit = "", history = [
     return <div className="text-xs text-ink-faint py-8 text-center">Not enough data</div>;
   }
 
+  const hasBand = forecast.some((p) => p.lower != null && p.upper != null);
+
   const years = points.map((p) => p.year);
   const values = points.map((p) => p.value);
+  const bandValues = hasBand ? forecast.flatMap((p) => [p.lower, p.upper]).filter((v) => v != null) : [];
   const minYear = Math.min(...years);
   const maxYear = Math.max(...years);
-  const rawMin = Math.min(...values);
-  const rawMax = Math.max(...values);
+  const rawMin = Math.min(...values, ...bandValues);
+  const rawMax = Math.max(...values, ...bandValues);
   const valuePad = (rawMax - rawMin) * 0.2 || Math.abs(rawMax) * 0.1 || 1;
   const minVal = rawMin - valuePad;
   const maxVal = rawMax + valuePad;
