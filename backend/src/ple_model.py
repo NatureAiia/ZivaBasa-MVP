@@ -30,6 +30,7 @@ from __future__ import annotations
 import logging
 from typing import Dict, List, Optional
 
+import keras
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers, Model
@@ -45,7 +46,7 @@ TaskType = config.TaskType
 # --------------------------------------------------------------------------- #
 # Gated Residual Network (GRN)
 # --------------------------------------------------------------------------- #
-@tf.keras.saving.register_keras_serializable(package="ple_model")
+@keras.saving.register_keras_serializable(package="ple_model")
 class GatedResidualNetwork(layers.Layer):
     """Dense->ELU->Dense->Dropout->GLU gate->residual add->LayerNorm, per the TFT paper /
     official Keras GRN+VSN example. The GLU gate lets the network learn to skip nonlinear
@@ -85,7 +86,7 @@ class GatedResidualNetwork(layers.Layer):
 # --------------------------------------------------------------------------- #
 # Variable Selection Network (VSN) — per-scalar-feature version (see module docstring)
 # --------------------------------------------------------------------------- #
-@tf.keras.saving.register_keras_serializable(package="ple_model")
+@keras.saving.register_keras_serializable(package="ple_model")
 class VariableSelectionNetwork(layers.Layer):
     """Projects each of num_features scalar inputs into `units` dims (a shared linear
     embedding, applied per-feature since Dense broadcasts over all but the last axis), runs
@@ -133,7 +134,7 @@ class VariableSelectionNetwork(layers.Layer):
 # --------------------------------------------------------------------------- #
 # PLE / CGC layer
 # --------------------------------------------------------------------------- #
-@tf.keras.saving.register_keras_serializable(package="ple_model")
+@keras.saving.register_keras_serializable(package="ple_model")
 class _WeightedExpertSum(layers.Layer):
     """Stacks expert outputs and combines them via gate weights. A raw tf.stack/tf.reduce_sum
     can't be applied directly to KerasTensors while building a Functional model — it has to
