@@ -107,6 +107,9 @@ class VariableSelectionNetwork(layers.Layer):
         self.weight_grn = GatedResidualNetwork(num_features, dropout_rate, name=f"{self.name}_weight_grn")
         self.softmax_dense = layers.Dense(num_features, activation="softmax")
 
+    def build(self, input_shape):
+        super().build(input_shape)
+
     def call(self, inputs, training: bool = False):
         # inputs: (batch, num_features)
         expanded = tf.expand_dims(inputs, axis=-1)             # (batch, num_features, 1)
