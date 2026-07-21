@@ -10,6 +10,16 @@ pyarrow==15.0.2  # required by pandas for read_parquet/to_parquet (src/features.
 
 # Deep learning
 tensorflow==2.16.1
+protobuf==4.25.9  # pinned explicitly — tensorflow/tensorboard/mlflow all need protobuf<5;
+                  # flwr (below) would otherwise pull in protobuf 6.x and break the TF stack
+
+# Federated learning simulation (Phase 4 spike — src/federated/). Installed as
+# `pip install flwr "protobuf==4.25.9"` (not plain `pip install flwr`), which resolves to an
+# older flwr (1.23.0) compatible with the pinned protobuf instead of pulling protobuf 6.x —
+# same class of hidden-dependency-conflict risk already hit with causal-learn/numpy and
+# dowhy/numpy earlier in this project. `fastapi-cli` ends up wanting a newer `typer` than flwr
+# allows; harmless (fastapi-cli isn't used — this app is run via `uvicorn`, not `fastapi dev`).
+flwr==1.23.0
 
 # Classical ML baselines
 scikit-learn==1.5.0

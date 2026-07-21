@@ -135,4 +135,8 @@ class ForecastResponse(BaseModel):
     industry: str
     metrics: List[str]
     history: List[ForecastPoint]
-    forecast: List[ForecastPoint]
+    forecast: List[ForecastPoint]  # each forecast point's `values` includes "{metric}_lower"/
+                                    # "{metric}_upper" alongside the point estimate — see
+                                    # confidence_level/uncertainty_method for what they mean
+    confidence_level: float = 0.90
+    uncertainty_method: str = ""

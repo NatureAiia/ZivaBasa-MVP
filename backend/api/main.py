@@ -168,9 +168,13 @@ def predict_forecast(industry: str, years: int = 0, _role: str = Depends(auth.re
             for p in result["history"]
         ],
         forecast=[
-            ForecastPoint(year=p["year"], values={m: p[m] for m in metrics})
+            # unlike history, forecast points also carry "{metric}_lower"/"{metric}_upper" —
+            # keep every key except "year" so those pass straight through.
+            ForecastPoint(year=p["year"], values={k: v for k, v in p.items() if k != "year"})
             for p in result["forecast"]
         ],
+        confidence_level=result["confidence_level"],
+        uncertainty_method=result["uncertainty_method"],
     )
 
 
