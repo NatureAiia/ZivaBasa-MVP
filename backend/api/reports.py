@@ -30,6 +30,11 @@ from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
+from openpyxl import Workbook
+from openpyxl.drawing.image import Image as XLImage
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
+
 from PIL import Image as PILImage
 from reportlab.lib import colors as rl_colors
 from reportlab.lib.enums import TA_LEFT
@@ -1029,4 +1034,149 @@ def build_chat_report_pdf(messages: list[dict], tool_calls: list[dict]) -> bytes
     )
 
     doc.build(story)
+    return buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Excel export (openpyxl) — a data-first sibling of the docx/PDF reports: one
+# row per prediction/factor for stakeholders who want to filter/pivot the
+# numbers rather than read a narrative document.
+# ---------------------------------------------------------------------------
+
+_XL_HEADER_FILL = PatternFill(start_color="F2EFE4", end_color="F2EFE4", fill_type="solid")
+_XL_HEADER_FONT = Font(bold=True, color=INK.lstrip("#"))
+
+
+def _xl_write_table(ws, start_row: int, headers: list[str], rows: list[tuple]) -> int:
+    """Writes a header row (styled) + data rows starting at start_row; returns the next
+    free row so callers can stack multiple tables on one sheet."""
+    for col, h in enumerate(headers, start=1):
+        cell = ws.cell(row=start_row, column=col, value=h)
+        cell.font = _XL_HEADER_FONT
+        cell.fill = _XL_HEADER_FILL
+    for r, row in enumerate(rows, start=start_row + 1):
+        for col, val in enumerate(row, start=1):
+            ws.cell(row=r, column=col, value=val)
+    for col in range(1, len(headers) + 1):
+        ws.column_dimensions[get_column_letter(col)].width = 24
+    return start_row + 1 + len(rows)
+
+
+def _xl_embed_chart(ws, anchor_cell: str, stream: io.BytesIO, width_px: int = 440):
+    """Embeds one of the shared matplotlib PNG charts (same builders the docx/PDF reports
+    use) into a worksheet at anchor_cell, scaled to width_px."""
+    stream.seek(0)
+    pil_img = PILImage.open(stream)
+    scale = width_px / pil_img.width
+    stream.seek(0)
+    img = XLImage(stream)
+    img.width = width_px
+    img.height = int(pil_img.height * scale)
+    ws.add_image(img, anchor_cell)
+
+
+def build_predict_report_xlsx(results: dict) -> bytes:
+    """Same input contract as build_predict_report()/_pdf() — a Summary sheet (table +
+    chart) plus one sheet per predicted task with its top SHAP contributions."""
+    wb = Workbook()
+    summary = wb.active
+    summary.title = "Summary"
+    summary["A1"] = "ZivaBasa Workforce Intelligence Report"
+    summary["A1"].font = Font(bold=True, size=14)
+    summary["A2"] = f"Generated {datetime.now().strftime('%B %d, %Y at %I:%M %p')}"
+    summary["A2"].font = Font(italic=True, size=9, color="6B7280")
+
+    predicted = {task: r for task, r in results.items() if r.get("predict")}
+    table_rows = []
+    chart_rows = []
+    for task, r in predicted.items():
+        p = r["predict"]
+        label = TASK_LABELS.get(task, task)
+        if p["task_type"] == "classification":
+            table_rows.append((label, "Flagged" if p["label"] == 1 else "Not flagged", f"{p['probability'] * 100:.1f}%"))
+        else:
+            table_rows.append((label, "Standardized score", f"{p['raw_output']:.3f}"))
+        chart_rows.append({
+            "label": label,
+            "value": p["probability"] if p["task_type"] == "classification" else p["raw_output"],
+            "kind": p["task_type"],
+        })
+
+    if table_rows:
+        _xl_write_table(summary, 4, ["Prediction", "Result", "Score"], table_rows)
+        _xl_embed_chart(summary, "E4", _predictions_bar_chart(chart_rows))
+    else:
+        summary["A4"] = "No predictions were run for this input."
+
+    for task, r in predicted.items():
+        label = TASK_LABELS.get(task, task)
+        p = r["predict"]
+        explain = r.get("explain")
+        ws = wb.create_sheet(label[:31])  # Excel sheet-name length limit
+        ws["A1"] = label
+        ws["A1"].font = Font(bold=True, size=12)
+        ws["A2"] = (
+            f"Estimated likelihood: {p['probability'] * 100:.1f}% ({'flagged' if p['label'] == 1 else 'not flagged'})"
+            if p["task_type"] == "classification"
+            else f"Predicted score: {p['raw_output']:.3f}"
+        )
+
+        if explain and explain.get("top_contributions"):
+            rows = [
+                (_feature_label(c["feature"]), c["value"], c["shap_value"])
+                for c in explain["top_contributions"][:6]
+            ]
+            _xl_write_table(ws, 4, ["Factor", "Value", "SHAP effect"], rows)
+            _xl_embed_chart(ws, "E4", _shap_chart(explain["top_contributions"][:6]))
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.getvalue()
+
+
+def build_chat_report_xlsx(messages: list[dict], tool_calls: list[dict]) -> bytes:
+    """Spreadsheet sibling of build_chat_report()/_pdf(): a Predictions sheet (any
+    predict_task tool calls made during the conversation) + a Conversation transcript sheet."""
+    wb = Workbook()
+    summary = wb.active
+    summary.title = "Predictions"
+    summary["A1"] = "ZivaBasa Chat Report"
+    summary["A1"].font = Font(bold=True, size=14)
+    summary["A2"] = f"Generated {datetime.now().strftime('%B %d, %Y at %I:%M %p')}"
+    summary["A2"].font = Font(italic=True, size=9, color="6B7280")
+
+    predict_calls = [
+        tc for tc in tool_calls
+        if tc["name"] == "predict_task" and "error" not in tc.get("result", {})
+    ]
+    rows = []
+    for tc in predict_calls:
+        res = tc["result"]
+        label = TASK_LABELS.get(res.get("task", ""), res.get("task", "?"))
+        if res.get("task_type") == "classification":
+            rows.append((label, "Flagged" if res.get("probability", 0) >= 0.5 else "Not flagged", f"{res.get('probability', 0) * 100:.1f}%"))
+        else:
+            rows.append((label, "Standardized score", f"{res.get('raw_output', 0):.3f}"))
+
+    if rows:
+        _xl_write_table(summary, 4, ["Prediction", "Result", "Score"], rows)
+    else:
+        summary["A4"] = "No predictions were made in this conversation."
+
+    transcript = wb.create_sheet("Conversation")
+    transcript["A1"] = "Speaker"
+    transcript["B1"] = "Message"
+    transcript["A1"].font = Font(bold=True)
+    transcript["B1"].font = Font(bold=True)
+    for i, m in enumerate(messages, start=2):
+        speaker = "You" if m["role"] == "user" else "ZivaBasa Assistant"
+        transcript.cell(row=i, column=1, value=speaker)
+        transcript.cell(row=i, column=2, value=_clean_chat_text(m.get("text", "")))
+    transcript.column_dimensions["A"].width = 20
+    transcript.column_dimensions["B"].width = 100
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
     return buf.getvalue()

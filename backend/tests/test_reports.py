@@ -7,6 +7,7 @@ wires request -> bytes -> correct content-type/magic-bytes for all four combinat
 
 _DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 _PDF_MEDIA_TYPE = "application/pdf"
+_XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 _PREDICT_RESULTS = {
     "employment": {
@@ -76,3 +77,25 @@ def test_chat_report_with_no_messages_still_generates(client):
     r = client.post("/reports/chat/pdf", json={"messages": [], "tool_calls": []})
     assert r.status_code == 200, r.text
     assert r.content[:4] == b"%PDF"
+
+
+def test_predict_report_xlsx(client):
+    r = client.post("/reports/predict/xlsx", json={"results": _PREDICT_RESULTS})
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"] == _XLSX_MEDIA_TYPE
+    assert r.content[:2] == b"PK"  # xlsx is a zip container, same magic bytes as docx
+
+
+def test_chat_report_xlsx(client):
+    r = client.post(
+        "/reports/chat/xlsx", json={"messages": _CHAT_MESSAGES, "tool_calls": _CHAT_TOOL_CALLS}
+    )
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"] == _XLSX_MEDIA_TYPE
+    assert r.content[:2] == b"PK"
+
+
+def test_chat_report_xlsx_with_no_messages_still_generates(client):
+    r = client.post("/reports/chat/xlsx", json={"messages": [], "tool_calls": []})
+    assert r.status_code == 200, r.text
+    assert r.content[:2] == b"PK"

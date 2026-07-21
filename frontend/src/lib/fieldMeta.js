@@ -141,6 +141,51 @@ export const FIELD_META = {
     min: 0, max: 100, step: 1,
     group: "Core",
   },
+  salary_change_percent: {
+    // NOTE: this field's raw values are already percentage-POINTS (real range in the training
+    // data: -38.37 to +36.92, mean ~0.11), not a 0-1 fraction — deliberately type:"slider" with
+    // unit:"%" (verbatim suffix), not type:"percent" (which multiplies the value by 100 and
+    // would badly misscale this field, since it assumes a 0-1 fraction input).
+    label: "Nominal Salary Change",
+    tooltip: "Year-over-year change in this role's salary, before adjusting for inflation.",
+    type: "slider",
+    min: -50, max: 50, step: 0.5, unit: "%",
+    default: 0, // 0% (no change) is the neutral starting point, not the slider's -50% min bound
+    group: "Core",
+  },
+  // cpi_general_index / food_inflation_rate: auto-joined server-side by year from Zimbabwe's
+  // real CPI/food-inflation data (features.py's add_macro_context_features) — the whole point
+  // of that join is that a user shouldn't have to know Zimbabwe's current CPI, so these are
+  // pre-filled with the latest real figures (2025, the source panel's most recent year) and
+  // marked optional rather than blank required fields. `default` (not `min`) is what
+  // ExecutiveTaskForm.jsx initializes from for any field that has one.
+  cpi_general_index: {
+    label: "Zimbabwe CPI (General Index)",
+    tooltip: "Consumer Price Index, 2015=100. Auto-filled with the latest known figure — override only if you have a more current number.",
+    type: "number",
+    min: 50, max: 50000, step: 10,
+    default: 38416.76, // 2025 (latest year in the source panel)
+    optional: true,
+    group: "Economic Context",
+  },
+  food_inflation_rate: {
+    // Also already percentage-POINTS in the raw data (historical range roughly -10 to +729
+    // during Zimbabwe's hyperinflation years) — same type:"slider"+unit:"%" reasoning as
+    // salary_change_percent above, not type:"percent".
+    label: "Zimbabwe Food Price Inflation",
+    tooltip: "Year-over-year food price inflation rate. Auto-filled with the latest known figure — override only if you have a more current number.",
+    type: "slider",
+    min: -20, max: 800, step: 1, unit: "%",
+    default: 57.19, // 2025 (latest year in the source panel)
+    optional: true,
+    group: "Economic Context",
+  },
+  salary_change_real: {
+    label: "Real (Inflation-Adjusted) Salary Change",
+    derived: true,
+    compute: (v) => (v.salary_change_percent ?? 0) - (v.food_inflation_rate ?? 0),
+    explain: "Auto-calculated: nominal salary change minus food price inflation — a nominal pay rise can still be a real pay cut in a high-inflation economy.",
+  },
 
   // ---- Skill Match / Redeployment ------------------------------------------
   seniority_years: {
@@ -333,7 +378,7 @@ export const FIELD_META_OVERRIDES = {
 export const GROUP_ORDER = {
   employment: ["Role Economics", "AI Exposure", "Skill Requirements"],
   skills: ["Demographics", "Engagement", "Development"],
-  productivity: ["Core"],
+  productivity: ["Core", "Economic Context"],
   skill_match: ["Staff Profile", "Redeployment Match"],
   human_capital: ["Compensation", "Performance", "Tenure & Structure"],
 };

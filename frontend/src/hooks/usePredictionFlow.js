@@ -40,11 +40,15 @@ export function usePredictionFlow() {
   }, []);
 
   // Carries a value forward from any other task's entered features that shares the same
-  // feature name, so the user isn't retyping overlapping inputs.
+  // feature name, so the user isn't retyping overlapping inputs. Falls back to `undefined`
+  // (not 0) for anything never entered anywhere — ExecutiveTaskForm's initialization chain
+  // (`initialValues?.[i] ?? meta.default ?? meta.min ?? 0`) needs a real gap to fall through
+  // to a field's meta.default (e.g. the auto-joined macro CPI figures); a literal 0 here would
+  // short-circuit that chain and silently override every field's sensible default with 0.
   const carriedFeatures = useCallback(
     (task, featureNames) => {
       const stored = results[task].features;
-      if (stored) return featureNames.map((n) => stored[n] ?? 0);
+      if (stored) return featureNames.map((n) => stored[n] ?? undefined);
       return featureNames.map((name) => {
         for (const other of TASKS) {
           if (other === task) continue;
@@ -53,7 +57,7 @@ export function usePredictionFlow() {
             return otherFeatures[name];
           }
         }
-        return 0;
+        return undefined;
       });
     },
     [results]

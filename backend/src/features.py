@@ -101,6 +101,124 @@ def load_processed(task_name: str) -> Optional[pd.DataFrame]:
 
 
 # --------------------------------------------------------------------------- #
+# Macro CPI / food-inflation context (human_capital_project.csv)
+# --------------------------------------------------------------------------- #
+# See config.py's "Macro CPI / food-inflation context" section for the naming-collision warning:
+# despite the name, human_capital_project.csv is NOT the HR file — it's an FAO/IMF-style CPI and
+# food-inflation panel with no employee dimension, joinable only by year.
+_MACRO_HUMAN_CAPITAL_CACHE: Optional[pd.DataFrame] = None
+
+
+def load_macro_human_capital() -> Optional[pd.DataFrame]:
+    """Loads, filters (Zimbabwe + the two configured indicators), annualizes (monthly mean),
+    and pivots human_capital_project.csv into one row per year. Cached at module level — the
+    source is ~190k rows of static reference data, not something that changes per pipeline
+    run, so re-reading/re-aggregating it on every call would be wasted work.
+    """
+    global _MACRO_HUMAN_CAPITAL_CACHE
+    if _MACRO_HUMAN_CAPITAL_CACHE is not None:
+        return _MACRO_HUMAN_CAPITAL_CACHE
+
+    path = config.MACRO_HUMAN_CAPITAL_PATH
+    if not os.path.exists(path):
+        logger.warning("Macro CPI/food-inflation file not found at %s — macro context features unavailable.", path)
+        return None
+
+    raw = pd.read_csv(path)
+    raw = raw[raw["REF_AREA_LABEL"] == config.MACRO_COUNTRY_LABEL]
+    raw = raw[raw["INDICATOR_LABEL"].isin(config.MACRO_INDICATORS.keys())]
+    if raw.empty:
+        logger.warning(
+            "No %s rows found for indicators %s in %s.",
+            config.MACRO_COUNTRY_LABEL, list(config.MACRO_INDICATORS.keys()), path,
+        )
+        return None
+
+    annual = raw.groupby(["Year", "INDICATOR_LABEL"])["Value"].mean().reset_index()
+    wide = annual.pivot(index="Year", columns="INDICATOR_LABEL", values="Value")
+    wide = wide.rename(columns=config.MACRO_INDICATORS)
+    wide.index.name = "year"
+    wide = wide.reset_index()
+
+    _MACRO_HUMAN_CAPITAL_CACHE = wide
+    logger.info(
+        "Loaded macro CPI/food-inflation panel: %d years (%d-%d), columns=%s",
+        len(wide), int(wide["year"].min()), int(wide["year"].max()), list(config.MACRO_INDICATORS.values()),
+    )
+    return wide
+
+
+def add_macro_context_features(
+    df: Optional[pd.DataFrame], task_name: str, year_col: str = "year"
+) -> Optional[pd.DataFrame]:
+    """Left-merges the Zimbabwe CPI/food-inflation panel onto `df` by year. Additive-only and
+    safe to call unconditionally: no-ops (returns `df` unchanged) if `df` has no `year_col` or
+    the macro table can't be loaded, so tasks without a year column are never affected.
+
+    Also derives salary_change_real = salary_change_percent - food_inflation_rate when
+    salary_change_percent is present — a nominal pay rise can still be a real pay cut in a
+    high-inflation economy, so this closes a real gap rather than modeling nominal wage growth
+    alone.
+    """
+    if df is None:
+        return None
+    if year_col not in df.columns:
+        return df
+
+    macro = load_macro_human_capital()
+    if macro is None:
+        return df
+
+    macro_cols = list(config.MACRO_INDICATORS.values())
+    n_before = len(df)
+
+    # Extend the macro panel to cover every year present in df (e.g. productivity's data runs
+    # through 2026, one year past the CPI panel's native 2025 max) before merging, so the join
+    # can't silently produce NaNs for in-range-but-unlisted years — filled via ffill/bfill
+    # instead, logged rather than silent.
+    df_years = pd.to_numeric(df[year_col], errors="coerce").dropna().astype(int)
+    all_years = range(
+        int(min(macro["year"].min(), df_years.min())),
+        int(max(macro["year"].max(), df_years.max())) + 1,
+    )
+    macro_full = macro.set_index("year").reindex(all_years)
+    n_filled = int(macro_full[macro_cols[0]].isna().sum())
+    macro_full[macro_cols] = macro_full[macro_cols].ffill().bfill()
+    macro_full = macro_full.reset_index()
+    if n_filled:
+        logger.warning(
+            "[%s] %d year(s) outside the native CPI panel range were forward/back-filled.",
+            task_name, n_filled,
+        )
+
+    merged = df.merge(macro_full, left_on=year_col, right_on="year", how="left", suffixes=("", "_macro"))
+    assert len(merged) == n_before, (
+        f"[{task_name}] macro merge changed row count ({n_before} -> {len(merged)}) — "
+        "the year join must be many-to-one, not one-to-many."
+    )
+
+    for col in macro_cols:
+        _log_feature(
+            col, "raw", task_name, [year_col],
+            f"Zimbabwe {col.replace('_', ' ')}, joined by year from human_capital_project.csv "
+            "(FAO CPI/food-inflation panel — NOT HR data despite the misleading filename).",
+        )
+
+    if "salary_change_percent" in merged.columns and "food_inflation_rate" in merged.columns:
+        merged["salary_change_real"] = merged["salary_change_percent"] - merged["food_inflation_rate"]
+        _log_feature(
+            "salary_change_real", "ratio", task_name,
+            ["salary_change_percent", "food_inflation_rate"],
+            "Inflation-adjusted (real) salary change = nominal salary_change_percent - "
+            "food_inflation_rate. A nominal pay rise can still be a real pay cut in a "
+            "high-inflation economy — this is a legitimate, exogenous (non-leaky) addition, "
+            "not a derivative of any task's own target.",
+        )
+
+    return merged
+
+
+# --------------------------------------------------------------------------- #
 # Cleaning
 # --------------------------------------------------------------------------- #
 def handle_missing(
@@ -544,6 +662,12 @@ def run_pipeline(task_name: str, save: bool = True) -> Optional[pd.DataFrame]:
     raw = clip_outliers(raw, numeric_cols, task_name)
 
     feat = select_raw(raw, task_name)
+    # Scoped to productivity only — it's the only task with a real `year` column. See
+    # add_macro_context_features()'s docstring: it no-ops safely on any task without one, but
+    # the call is still deliberately gated here rather than left unconditional, so it's an
+    # explicit decision on record, not an accident of which tasks happen to have a year column.
+    if task_name == "productivity":
+        feat = add_macro_context_features(feat, task_name)
     feat = add_ratio_index_features(feat, task_name)
     feat = add_interaction_features(feat, task_name)
     feat = encode_categoricals(feat, task_name)

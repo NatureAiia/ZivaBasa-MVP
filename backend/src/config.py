@@ -98,14 +98,20 @@ TASK_CONFIGS: Dict[str, TaskConfig] = {
         # select_raw's `if c in df.columns` filter (features.py) every run, with only a WARNING
         # log to show for it. The real column is salary_change_percent (% change in salary,
         # the actual labour-cost-trend field this dataset provides). Fixed here.
-        raw_cols=["industry", "ai_adoption_level", "skill_gap_index", "salary_change_percent"],
+        # "year" added so add_macro_context_features() (features.py) can join the
+        # human_capital_project.csv CPI/food-inflation panel by year — see config.py's "Macro
+        # CPI / food-inflation context" section below. It's a join key, not a scored feature
+        # (same reasoning as human_capital's EmpID being excluded from raw_cols entirely — but
+        # year has to be selected here first since the macro join happens after select_raw), so
+        # it's excluded from the modeling matrix via drop_cols below.
+        raw_cols=["industry", "ai_adoption_level", "skill_gap_index", "salary_change_percent", "year"],
         # ai_adoption_x_labour_cost_trend is dropped too, not just ai_adoption_index — it's a
         # direct multiplicative derivative of ai_adoption_index (= target_ai_adoption), so it
         # inherits the same leakage employment's exposure_x_skill_complexity was excluded for.
         # Stays in data/processed/ (documented in the feature dictionary) but excluded from the
         # modeling matrix for THIS task.
         drop_cols=["target_ai_adoption", "ai_adoption_level", "ai_adoption_index",
-                   "ai_adoption_x_labour_cost_trend"],
+                   "ai_adoption_x_labour_cost_trend", "year"],
         loss_weight=1.0,
     ),
     "skill_match": TaskConfig(
@@ -189,6 +195,28 @@ HUMAN_CAPITAL_REFERENCE_DATE = "2019-03-01"
 
 
 # --------------------------------------------------------------------------- #
+# Macro CPI / food-inflation context (human_capital_project.csv)
+# --------------------------------------------------------------------------- #
+# NAMING COLLISION WARNING: despite the "HUMAN_CAPITAL" prefix shared with the constants above,
+# this is a completely different file with nothing to do with the "human_capital" TASK_CONFIGS
+# entry (real employee-level HR data, target_turnover). human_capital_project.csv is actually an
+# FAO/IMF-style Consumer Price Index and food-inflation panel — 190,332 rows, columns
+# FREQ/REF_AREA/REF_AREA_LABEL/INDICATOR/INDICATOR_LABEL/Value/Year/Month, ~200 countries,
+# 2000-2025, 3 indicators. It has NO employee/role/department dimension, so it cannot be a
+# TaskConfig entry (no row-level join key against any task's population) — the one thing it can
+# do is supply an exogenous macro-economic control, joined by YEAR, to any task with a real
+# `year` column. Today that's only `productivity` (ai_job_replacement_2020_2026_v2.csv) and
+# FORECAST_CONFIG's industry-year panel. See features.py's load_macro_human_capital() /
+# add_macro_context_features().
+MACRO_HUMAN_CAPITAL_PATH = os.path.join(RAW_DIR, "human_capital_project.csv")
+MACRO_COUNTRY_LABEL = "Zimbabwe"
+MACRO_INDICATORS = {
+    "Consumer Prices, General Indices (2015 = 100)": "cpi_general_index",
+    "Food price inflation": "food_inflation_rate",
+}
+
+
+# --------------------------------------------------------------------------- #
 # Feature engineering hyperparameters
 # --------------------------------------------------------------------------- #
 OUTLIER_LOWER_QUANTILE = 0.01
@@ -248,6 +276,15 @@ class ForecastConfig:
     metrics: List[str] = field(default_factory=lambda: [
         "automation_risk_percent", "ai_adoption_level", "skill_gap_index",
     ])
+    # CONSIDERED, NOT ADDED (deliberate, not an oversight): cpi_general_index /
+    # food_inflation_rate (features.py's add_macro_context_features, sourced from
+    # human_capital_project.csv — see config.py's "Macro CPI / food-inflation context" section)
+    # would be legitimate exogenous regressors for this LSTM/GRU forecast panel too, same
+    # economic rationale as productivity's salary_change_real. Not added here because doing so
+    # changes this panel's per-step feature count, which requires rerunning
+    # scripts/train_forecast.py (a separate, heavier retrain than productivity's) and
+    # re-verifying the forecast head end-to-end — out of scope for this pass. Revisit as a
+    # follow-up, not silently, if forecast accuracy against real macro shocks becomes a concern.
     window_size: int = 3            # look-back years fed to the LSTM/GRU per training example
     default_horizon: int = 3        # years forecast forward by default (e.g. 2027-2029 off a 2026 panel)
     max_horizon: int = 5            # hard cap — recursive forecasting compounds error past this

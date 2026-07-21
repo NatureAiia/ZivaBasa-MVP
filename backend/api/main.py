@@ -44,6 +44,7 @@ from api.schemas import (
     ChatRequest, ChatResponse, PredictReportRequest, ChatReportRequest,
     ImageGenerateRequest, ImageGenerateResponse,
     ForecastSchemaResponse, ForecastResponse, ForecastPoint,
+    SkillGapRequest, SkillGapResponse,
 )
 from api.model_registry import registry, forecast_registry
 from api import batch as batch_module
@@ -55,6 +56,7 @@ from src import evaluate
 from src import config as src_config
 from src import drift as drift_module
 from src import forecast as forecast_module
+from src import skill_matching
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s [%(name)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -346,6 +348,14 @@ async def chat(request: ChatRequest):
     return ChatResponse(**result)
 
 
+@app.post("/skill_match/recommend", response_model=SkillGapResponse)
+async def skill_match_recommend(request: SkillGapRequest):
+    """Prescriptive skill-gap layer on top of the skill_match head: for one staff-vs-target-role
+    pair, returns the same match score skill_matching.match_score() computes plus a recommended
+    training resource for each missing skill (Master Checklist §5, Day 10 item)."""
+    return skill_matching.recommend_training_path(request.current_skills, request.required_skills)
+
+
 @app.get("/mlops/status")
 async def mlops_status():
     reports_dir = os.path.join(src_config.MODELS_DIR, "retrain_reports")
@@ -414,6 +424,7 @@ async def image_generate(request: ImageGenerateRequest):
 
 _DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 _PDF_MEDIA_TYPE = "application/pdf"
+_XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 @app.post("/reports/predict")
@@ -469,4 +480,32 @@ async def chat_report_pdf(request: ChatReportRequest):
         content=pdf_bytes,
         media_type=_PDF_MEDIA_TYPE,
         headers={"Content-Disposition": 'attachment; filename="zivabasa-chat-report.pdf"'},
+    )
+
+
+@app.post("/reports/predict/xlsx")
+async def predict_report_xlsx(request: PredictReportRequest):
+    try:
+        xlsx_bytes = reports_module.build_predict_report_xlsx(request.results)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Report generation failed: {e}")
+    return Response(
+        content=xlsx_bytes,
+        media_type=_XLSX_MEDIA_TYPE,
+        headers={"Content-Disposition": 'attachment; filename="zivabasa-predict-report.xlsx"'},
+    )
+
+
+@app.post("/reports/chat/xlsx")
+async def chat_report_xlsx(request: ChatReportRequest):
+    try:
+        xlsx_bytes = reports_module.build_chat_report_xlsx(
+            [m.model_dump() for m in request.messages], request.tool_calls
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Report generation failed: {e}")
+    return Response(
+        content=xlsx_bytes,
+        media_type=_XLSX_MEDIA_TYPE,
+        headers={"Content-Disposition": 'attachment; filename="zivabasa-chat-report.xlsx"'},
     )

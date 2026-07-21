@@ -98,6 +98,24 @@ class ChatReportRequest(BaseModel):
     tool_calls: list = []
 
 
+class SkillGapRequest(BaseModel):
+    current_skills: str = Field(..., description="Comma-separated skill tags the staff member currently has.")
+    required_skills: str = Field(..., description="Comma-separated skill tags the target role requires.")
+
+
+class SkillTrainingRecommendation(BaseModel):
+    skill: str
+    resource: str
+
+
+class SkillGapResponse(BaseModel):
+    cosine_similarity_score: float
+    skill_overlap_count: int
+    missing_skill_count: int
+    missing_skills: List[str]
+    recommended_training: List[SkillTrainingRecommendation]
+
+
 class ForecastSchemaResponse(BaseModel):
     industries: List[str]
     metrics: List[str]
