@@ -45,6 +45,7 @@ TaskType = config.TaskType
 # --------------------------------------------------------------------------- #
 # Gated Residual Network (GRN)
 # --------------------------------------------------------------------------- #
+@tf.keras.saving.register_keras_serializable(package="ple_model")
 class GatedResidualNetwork(layers.Layer):
     """Dense->ELU->Dense->Dropout->GLU gate->residual add->LayerNorm, per the TFT paper /
     official Keras GRN+VSN example. The GLU gate lets the network learn to skip nonlinear
@@ -53,6 +54,7 @@ class GatedResidualNetwork(layers.Layer):
     def __init__(self, units: int, dropout_rate: float = 0.2, **kwargs):
         super().__init__(**kwargs)
         self.units = units
+        self.dropout_rate = dropout_rate
         self.elu_dense = layers.Dense(units, activation="elu")
         self.linear_dense = layers.Dense(units)
         self.dropout = layers.Dropout(dropout_rate)
@@ -74,10 +76,16 @@ class GatedResidualNetwork(layers.Layer):
         h = value * tf.sigmoid(gate)
         return self.layer_norm(h + residual)
 
+    def get_config(self):
+        config = super().get_config()
+        config.update({"units": self.units, "dropout_rate": self.dropout_rate})
+        return config
+
 
 # --------------------------------------------------------------------------- #
 # Variable Selection Network (VSN) — per-scalar-feature version (see module docstring)
 # --------------------------------------------------------------------------- #
+@tf.keras.saving.register_keras_serializable(package="ple_model")
 class VariableSelectionNetwork(layers.Layer):
     """Projects each of num_features scalar inputs into `units` dims (a shared linear
     embedding, applied per-feature since Dense broadcasts over all but the last axis), runs
@@ -89,6 +97,7 @@ class VariableSelectionNetwork(layers.Layer):
         super().__init__(**kwargs)
         self.num_features = num_features
         self.units = units
+        self.dropout_rate = dropout_rate
         self.feature_embedding = layers.Dense(units)
         self.feature_grns = [
             GatedResidualNetwork(units, dropout_rate, name=f"{self.name}_feature_grn_{i}")
@@ -111,10 +120,20 @@ class VariableSelectionNetwork(layers.Layer):
         weights = tf.expand_dims(weights, axis=-1)                  # (batch, num_features, 1)
         return tf.reduce_sum(processed * weights, axis=1)           # (batch, units)
 
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "num_features": self.num_features,
+            "units": self.units,
+            "dropout_rate": self.dropout_rate,
+        })
+        return config
+
 
 # --------------------------------------------------------------------------- #
 # PLE / CGC layer
 # --------------------------------------------------------------------------- #
+@tf.keras.saving.register_keras_serializable(package="ple_model")
 class _WeightedExpertSum(layers.Layer):
     """Stacks expert outputs and combines them via gate weights. A raw tf.stack/tf.reduce_sum
     can't be applied directly to KerasTensors while building a Functional model — it has to
@@ -359,10 +378,7 @@ class PLEMultiTaskTrainer:
         path = os.path.join(directory, f"{task_name}_model.keras")
         if not os.path.exists(path):
             raise FileNotFoundError(f"No saved PLE model for '{task_name}' at {path}. Train and save first.")
-        return tf.keras.models.load_model(
-            path,
-            custom_objects={
-                "GatedResidualNetwork": GatedResidualNetwork,
-                "VariableSelectionNetwork": VariableSelectionNetwork,
-            },
-        )
+        # custom_objects not needed — GatedResidualNetwork/VariableSelectionNetwork/
+        # _WeightedExpertSum are all @register_keras_serializable'd above, and this module is
+        # necessarily already imported (we're a classmethod on a class defined in it).
+        return tf.keras.models.load_model(path)
