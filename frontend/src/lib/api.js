@@ -157,12 +157,13 @@ export const api = {
     request(`/predict/forecast/${encodeURIComponent(industry)}?years=${years}`),
 };
 
-export const TASKS = ["employment", "skills", "productivity", "skill_match"];
+export const TASKS = ["employment", "skills", "productivity", "skill_match", "human_capital"];
 export const TASK_LABELS = {
   employment: "Job & Automation Risk",
   skills: "Employee Turnover Risk",
   productivity: "AI Impact on Productivity",
   skill_match: "Job and Skill Matching",
+  human_capital: "Human Capital Turnover (Real HR Data)",
 };
 // Short form for compact UI (tabs, pills, badges) — TASK_LABELS above is full-length for
 // headers/descriptions. Previously both jobs were done by one slash-joined string
@@ -173,10 +174,15 @@ export const TASK_SHORT_LABELS = {
   skills: "Turnover Risk",
   productivity: "AI Productivity",
   skill_match: "Skill Matching",
+  human_capital: "HR Turnover",
 };
 export const TASK_DESCRIPTIONS = {
   employment: "Which roles are most at risk of being automated.",
   skills: "Which employees are most likely to leave, and why.",
   productivity: "How AI adoption is likely to change output per employee.",
   skill_match: "Which staff are a strong fit for a different role, and why.",
+  // "Real HR Data" called out explicitly here (not just in TASK_LABELS) because "skills"
+  // above already covers turnover-ish territory from a proxy dataset (IBM HR attrition) —
+  // this label is what tells a user the two aren't the same signal.
+  human_capital: "Which employees are likely to leave, based on real HR roster data (not a proxy dataset).",
 };
