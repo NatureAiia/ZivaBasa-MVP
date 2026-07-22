@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutGrid, Boxes, Wallet, ChevronDown, PanelLeftClose, PanelLeftOpen, X, LogOut, Settings,
+  Users as UsersIcon, Cpu, Cog,
 } from "lucide-react";
 import clsx from "clsx";
 import ClarityRing from "../common/ClarityRing";
@@ -60,8 +61,10 @@ function AccountRow() {
 export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
   const [collapsed, setCollapsed] = useState(false);
   const [modelsOpen, setModelsOpen] = useState(true);
-  const { signOut } = useAuth();
+  const [systemsOpen, setSystemsOpen] = useState(false);
+  const { signOut, role } = useAuth();
   const navigate = useNavigate();
+  const isAdmin = role === "admin" || role === "superadmin";
 
   const handleSignOut = async () => {
     await signOut();
@@ -160,7 +163,37 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
         </AnimatePresence>
 
         <NavItem to="/app/cost-monitoring" icon={Wallet} label="Cost Monitoring" collapsed={collapsed} onNavigate={onCloseMobile} />
-        <NavItem to="/app/settings" icon={Settings} label="Settings" collapsed={collapsed} onNavigate={onCloseMobile} />
+
+        <button
+          onClick={() => setSystemsOpen((o) => !o)}
+          className="flex items-center gap-3 rounded-xl px-3 py-3 text-[15px] font-semibold text-ink-muted hover:text-ink hover:bg-surface2/60 transition-colors"
+        >
+          <Cog size={19} className="shrink-0" />
+          {!collapsed && (
+            <>
+              <span className="flex-1 text-left">Systems</span>
+              <ChevronDown size={15} className={clsx("transition-transform", systemsOpen && "rotate-180")} />
+            </>
+          )}
+        </button>
+
+        <AnimatePresence initial={false}>
+          {systemsOpen && !collapsed && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 32 }}
+              className="overflow-hidden pl-4 flex flex-col gap-0.5"
+            >
+              <NavItem to="/app/systems/settings" icon={Settings} label="Settings" collapsed={collapsed} onNavigate={onCloseMobile} />
+              {isAdmin && (
+                <NavItem to="/app/systems/users" icon={UsersIcon} label="Users" collapsed={collapsed} onNavigate={onCloseMobile} />
+              )}
+              <NavItem to="/app/systems/models" icon={Cpu} label="Models & API" collapsed={collapsed} onNavigate={onCloseMobile} />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </nav>
 
       {/* Footer */}
