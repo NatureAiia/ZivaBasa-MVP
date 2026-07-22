@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 
 from api.main import app
 
-TASKS = ["employment", "skills", "productivity", "skill_match"]
+TASKS = ["employment", "skills", "productivity", "skill_match", "human_capital"]
 
 
 @pytest.fixture(scope="session")

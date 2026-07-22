@@ -297,13 +297,31 @@ def load(directory: str = config.FORECAST_MODEL_DIR) -> Dict:
 # --------------------------------------------------------------------------- #
 # Inference: recursive multi-year rollout
 # --------------------------------------------------------------------------- #
-def forecast_industry(bundle: Dict, industry: str, horizon: Optional[int] = None) -> Dict:
+def forecast_industry(
+    bundle: Dict,
+    industry: str,
+    horizon: Optional[int] = None,
+    mc_samples: int = 30,
+    confidence: float = 0.90,
+    seed: Optional[int] = None,
+) -> Dict:
     """
     Recursive (autoregressive) multi-step forecast: predict year N+1 from the last
     window_size actual years, slide the window forward to include that prediction, predict
     N+2, and so on. This is standard practice for short panels like this one (one global
     step-ahead model rolled forward) rather than training a separate model per horizon length.
     Error compounds with each step, which is why ForecastConfig.max_horizon caps it at 5.
+
+    Uncertainty (added for executive-credibility demo readiness — a point estimate alone
+    invites false precision): MC-dropout (Gal & Ghahranani 2016) — the model already has
+    Dropout layers (ForecastConfig.dropout_rate), so running `mc_samples` stochastic forward
+    passes with dropout active (training=True) approximates the model's predictive
+    distribution, with NO retraining required. Each of the `mc_samples` trajectories is rolled
+    forward independently step-by-step (not reset to the mean each step), which is what lets
+    the interval widen realistically over the horizon — compounding uncertainty the further out
+    the forecast reaches, exactly as an honest multi-year projection should behave. This is an
+    approximation, not a calibrated statistical guarantee — labeled as such in the return value
+    and never claimed to be more than that.
     """
     horizon = horizon or FCFG.default_horizon
     horizon = min(horizon, FCFG.max_horizon)
@@ -326,19 +344,59 @@ def forecast_industry(bundle: Dict, industry: str, horizon: Optional[int] = None
     ]
 
     window_raw = industry_panel[metrics].values[-window_size:]
-    current_window = scaler.transform(window_raw)
+    current_window = scaler.transform(window_raw).astype("float32")
     last_year = int(industry_panel[FCFG.year_col].max())
+
+    rng = np.random.RandomState(seed if seed is not None else config.RANDOM_STATE)
+    tf.random.set_seed(int(rng.randint(0, 2**31 - 1)))
+
+    # N parallel stochastic trajectories, all starting from the same real observed window.
+    trajectories = np.repeat(current_window[np.newaxis, :, :], mc_samples, axis=0)
+    id_batch = np.full((mc_samples, 1), industry_id, dtype="int32")
+
+    alpha = (1 - confidence) / 2
+    lower_pct, upper_pct = 100 * alpha, 100 * (1 - alpha)
+
+    # Deterministic (dropout-off) point estimate, computed alongside the stochastic ensemble —
+    # this is the "central" trajectory shown as the headline number; the MC samples are only
+    # used for the interval around it.
+    point_window = current_window.copy()
     id_input = np.array([[industry_id]], dtype="int32")
 
     forecast_points = []
     for step in range(horizon):
-        X_seq = current_window[np.newaxis, :, :].astype("float32")
-        pred_scaled = model([X_seq, id_input], training=False).numpy()[0]
-        pred_raw = scaler.inverse_transform(pred_scaled[np.newaxis, :])[0]
-
         year = last_year + step + 1
-        forecast_points.append({"year": year, **{m: float(v) for m, v in zip(metrics, pred_raw)}})
 
-        current_window = np.vstack([current_window[1:], pred_scaled])
+        point_pred_scaled = model(
+            [point_window[np.newaxis, :, :], id_input], training=False
+        ).numpy()[0]
+        point_pred_raw = scaler.inverse_transform(point_pred_scaled[np.newaxis, :])[0]
 
-    return {"industry": industry, "metrics": metrics, "history": history, "forecast": forecast_points}
+        mc_preds_scaled = model([trajectories, id_batch], training=True).numpy()  # (mc_samples, n_metrics)
+        mc_preds_raw = scaler.inverse_transform(mc_preds_scaled)
+
+        lower_raw = np.percentile(mc_preds_raw, lower_pct, axis=0)
+        upper_raw = np.percentile(mc_preds_raw, upper_pct, axis=0)
+
+        point = {"year": year}
+        for i, m in enumerate(metrics):
+            point[m] = float(point_pred_raw[i])
+            point[f"{m}_lower"] = float(min(lower_raw[i], point_pred_raw[i]))
+            point[f"{m}_upper"] = float(max(upper_raw[i], point_pred_raw[i]))
+        forecast_points.append(point)
+
+        point_window = np.vstack([point_window[1:], point_pred_scaled])
+        trajectories = np.concatenate([trajectories[:, 1:, :], mc_preds_scaled[:, np.newaxis, :]], axis=1)
+
+    return {
+        "industry": industry,
+        "metrics": metrics,
+        "history": history,
+        "forecast": forecast_points,
+        "confidence_level": confidence,
+        "uncertainty_method": (
+            f"MC-dropout approximation ({mc_samples} stochastic forward passes/step, "
+            f"{int(confidence * 100)}% percentile interval) — not a calibrated statistical "
+            f"guarantee, and not retrained specifically for uncertainty quantification."
+        ),
+    }

@@ -11,6 +11,21 @@ No single Kaggle dataset provides Zimbabwean banking employment, productivity, o
 | Employment / automation-risk | "AI Automation Risk by Job Role" (khushikyad001) or "Occupation, Salary and Likelihood of Automation" (andrewmvd) | Job-role-level automation exposure — proxy for Employment output |
 | Skills / attrition-readiness | "IBM HR Analytics Employee Attrition & Performance" (pavansubhasht) | Training, tenure, satisfaction, role, promotion history — proxy for Skills/workforce features |
 | Productivity / AI adoption context | "Future of Work in the Age of AI (2020–2026)" (algozee) | AI adoption level, salary trend, skill gap by industry — proxy for Productivity + AI-adoption index |
+| Skill Match / redeployment | Synthetic banking roster fixture (`scripts/generate_skill_match_fixture.py`) | Staff skill-tag sets vs. target-role requirements, cosine-matched — not Kaggle, generated in-repo |
+| Human Capital / turnover | HRDataset_v14-style roster (`data/raw/human_capital.csv`, from `data/raw/HCP/HR DATA.txt`) | **Real employee-level HR data, not a proxy** — department, tenure, pay, performance, turnover, 3,310 employees. See `data/schema/human_capital_dictionary.md`. |
+
+### `human_capital_project.csv` — not an HR file, despite the name
+
+`data/raw/human_capital_project.csv` is **not** employee/HR data. It's an FAO/IMF-style Consumer
+Price Index and food-inflation panel: 190,332 rows, columns `FREQ, REF_AREA, REF_AREA_LABEL,
+INDICATOR, INDICATOR_LABEL, Value, Year, Month`, ~200 countries, monthly, 2000–2025, 3 indicators
+(general CPI, food CPI, food price inflation). It has no employee/role/department dimension, so
+it cannot be row-joined to any task's population — it's used only as an exogenous, year-joined
+macro control for the `productivity` task (Zimbabwe CPI/food-inflation → `salary_change_real` =
+inflation-adjusted wage growth). See `src/features.py`'s `load_macro_human_capital()` /
+`add_macro_context_features()` and `config.py`'s "Macro CPI / food-inflation context" section.
+Do not confuse this with the real `human_capital.csv` HR file above — the shared name prefix is
+a pre-existing naming collision in the raw data, not something either integration chose.
 
 ## Integration strategy
 

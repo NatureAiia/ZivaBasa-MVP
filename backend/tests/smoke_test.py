@@ -17,14 +17,24 @@ rng = np.random.RandomState(0)
 N = 300
 
 # --- Synthetic "employment" raw data ---
+# Column names match config.py's real raw_cols for the khushikyad001/ai-automation-risk-by-
+# job-role schema (job-role-level, not employee-level — see config.py's TASK_CONFIGS comment).
+# Previously used "automation_risk"/"salary"/"digital_skill_level", none of which exist in the
+# real schema — select_raw() silently matched zero columns, and scale_numeric() then crashed on
+# an empty column list. Same class of staleness the human_capital work was checking against.
 df_employment = pd.DataFrame({
     "job_role": rng.choice(["Teller", "Analyst", "Manager", "Clerk"], N),
     "industry": rng.choice(["Banking", "Finance"], N),
-    "automation_risk": rng.uniform(0, 1, N),
-    "salary": rng.normal(40000, 10000, N),
-    "digital_skill_level": rng.uniform(0, 1, N),
+    "avg_salary_usd": rng.normal(40000, 10000, N),
+    "automation_risk_score": rng.uniform(0, 1, N),
+    "ai_tool_maturity_score": rng.uniform(0, 1, N),
+    "task_repetition_level": rng.uniform(0, 1, N),
+    "skill_complexity_score": rng.uniform(0, 1, N),
+    "training_hours_needed": rng.uniform(0, 40, N),
+    "job_demand_index": rng.uniform(0, 1, N),
+    "percent_tasks_automatable": rng.uniform(0, 1, N),
 })
-df_employment.loc[rng.choice(N, 10, replace=False), "salary"] = np.nan  # inject missing values
+df_employment.loc[rng.choice(N, 10, replace=False), "avg_salary_usd"] = np.nan  # inject missing values
 
 # --- Synthetic "skills" raw data (IBM HR-like) ---
 df_skills = pd.DataFrame({
@@ -70,11 +80,33 @@ df_skill_match = pd.DataFrame({
     "recent_ot_hours": rng.uniform(0, 20, N),
 })
 
+# --- Synthetic "human_capital" raw data (HRDataset_v14-like — real HR data, not a proxy) ---
+# Column names/shapes match data/raw/human_capital.csv exactly (see
+# data/schema/human_capital_dictionary.md) so this exercises tenure_years/headcount_by_department/
+# turnover_rate_oof/performance_readiness_index/special_projects_x_performance_readiness end to
+# end, same as skill_match's fixture above exercises its own engineered features.
+hire_dates = pd.date_range("2005-01-01", "2018-12-31", periods=N).strftime("%d-%b-%y")
+df_human_capital = pd.DataFrame({
+    "EmpID": np.arange(1, N + 1),
+    "Department": rng.choice(["Production", "Sales", "IT/IS", "Admin Offices"], N),
+    "Position": rng.choice(["Analyst", "Technician", "Manager", "Support"], N),
+    "PayRate": rng.uniform(15, 60, N),
+    "PerformanceScore": rng.choice(["PIP", "Needs Improvement", "Fully Meets", "Exceeds"], N),
+    "PerfScoreID": rng.randint(1, 5, N),
+    "EngagementSurvey": rng.uniform(1, 5, N),
+    "EmpSatisfaction": rng.randint(1, 5, N),
+    "SpecialProjectsCount": rng.randint(0, 8, N),
+    "DaysLateLast30": rng.choice([0, 1, 2, np.nan], N, p=[0.7, 0.15, 0.05, 0.1]),
+    "DateofHire": hire_dates,
+    "Termd": rng.choice([0, 1], N, p=[0.7, 0.3]),
+})
+
 os.makedirs(config.RAW_DIR, exist_ok=True)
 df_employment.to_parquet(os.path.join(config.RAW_DIR, "employment_checked.parquet"), index=False)
 df_skills.to_parquet(os.path.join(config.RAW_DIR, "skills_checked.parquet"), index=False)
 df_productivity.to_parquet(os.path.join(config.RAW_DIR, "productivity_checked.parquet"), index=False)
 df_skill_match.to_parquet(os.path.join(config.RAW_DIR, "skill_match_checked.parquet"), index=False)
+df_human_capital.to_parquet(os.path.join(config.RAW_DIR, "human_capital_checked.parquet"), index=False)
 print("Synthetic raw checkpoints written.\n")
 
 # --- 1. Feature engineering (all three task heads) ---

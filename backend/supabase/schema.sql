@@ -165,6 +165,44 @@ create table if not exists predict_history (
 create index if not exists predict_history_user_id_created_idx on predict_history(user_id, created_at desc);
 
 -- ---------------------------------------------------------------------------
+-- profiles — signup-time info needed to assess a user's rights (name, org, job title,
+-- requested role). `role` is what the app actually gates on; it defaults to 'viewer' and
+-- only ever changes via manual admin action (Supabase dashboard / a direct SQL update by an
+-- existing admin) — there is deliberately no invite-code or other self-service path to
+-- 'admin' here, since any such check running in frontend code can't hide a real secret.
+-- ---------------------------------------------------------------------------
+create table if not exists profiles (
+  user_id         uuid primary key references auth.users(id) on delete cascade,
+  full_name       text,
+  organization    text,
+  job_title       text,
+  phone           text,
+  department      text,
+  avatar_url      text,
+  requested_role  text not null default 'viewer' check (requested_role in ('viewer', 'admin', 'superadmin')),
+  role            text not null default 'viewer' check (role in ('viewer', 'admin', 'superadmin')),
+  created_at      timestamptz not null default now()
+);
+
+-- Settings-page addition (phone/department/avatar_url) — idempotent so this file can be
+-- re-run against an already-deployed project without erroring on columns that already exist
+-- from a fresh install's `create table` above.
+alter table profiles add column if not exists phone text;
+alter table profiles add column if not exists department text;
+alter table profiles add column if not exists avatar_url text;
+
+-- 3rd role tier (superadmin), added for the Systems/Users page — idempotent widen for an
+-- already-deployed project whose check constraints predate 'superadmin'. Postgres has no
+-- "alter constraint" that adds an enum value in place, so this drops and recreates both by
+-- their known original names; if you've since renamed them, adjust the names below.
+alter table profiles drop constraint if exists profiles_requested_role_check;
+alter table profiles add constraint profiles_requested_role_check
+  check (requested_role in ('viewer', 'admin', 'superadmin'));
+alter table profiles drop constraint if exists profiles_role_check;
+alter table profiles add constraint profiles_role_check
+  check (role in ('viewer', 'admin', 'superadmin'));
+
+-- ---------------------------------------------------------------------------
 -- Row Level Security — every table, every row scoped to its owner. This is the actual
 -- security boundary (the anon key is public by design in Supabase's model); without RLS
 -- enabled, any authenticated user could read/write any other user's rows.
@@ -177,6 +215,7 @@ alter table usage_log        enable row level security;
 alter table cost_entries     enable row level security;
 alter table chat_sessions    enable row level security;
 alter table predict_history  enable row level security;
+alter table profiles         enable row level security;
 
 do $$
 declare
@@ -193,3 +232,97 @@ begin
     );
   end loop;
 end $$;
+
+-- profiles gets its own, narrower policies instead of the generic "own rows only" loop above:
+-- a plain owner-scoped policy would let a signed-in user UPDATE their *own* `role` column
+-- straight to 'admin' through the normal client SDK, which defeats the whole point of manual
+-- admin approval. Select/insert are owner-scoped as usual; insert additionally pins role to
+-- 'viewer' regardless of what a hand-crafted request claims; update is locked to prevent
+-- role changes at the RLS layer, reinforced by a trigger below (belt and suspenders — the
+-- trigger also protects against any future policy edit that loosens this).
+create policy "own profile select" on profiles
+  for select using (user_id = auth.uid());
+
+-- Added for the Systems -> Users page: an admin/superadmin needs to see every profile, not just
+-- their own, to approve pending signups and manage roles. A self-referential subquery on the
+-- caller's OWN row (not the row being read) — this does not let anyone escalate what they can
+-- SEE based on the target row's contents, only based on who the caller already is.
+create policy "admins can view all profiles" on profiles
+  for select using (
+    exists (
+      select 1 from profiles p
+      where p.user_id = auth.uid() and p.role in ('admin', 'superadmin')
+    )
+  );
+
+create policy "own profile insert" on profiles
+  for insert with check (user_id = auth.uid() and role = 'viewer');
+
+create policy "own profile update" on profiles
+  for update using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- Belt-and-suspenders: reject any attempt to change `role` that comes through PostgREST as the
+-- 'authenticated' Postgres role (i.e. a normal logged-in user via the anon/authenticated key).
+-- Manual admin promotion is expected to run as the 'postgres' role (Supabase SQL editor /
+-- dashboard), which this check does not touch.
+create or replace function lock_profile_role()
+returns trigger as $$
+begin
+  if new.role <> old.role and current_user = 'authenticated' then
+    raise exception 'role can only be changed by manual admin action, not by the user themselves';
+  end if;
+  return new;
+end;
+$$ language plpgsql;
+
+create trigger profiles_lock_role
+  before update on profiles
+  for each row execute function lock_profile_role();
+
+-- promote_user_role — the in-app replacement for "manual admin promotion via the Supabase SQL
+-- editor" the comment above used to require. SECURITY DEFINER so it can update a row that
+-- isn't the caller's own (the update-policy above only allows a user to update their own row,
+-- and the trigger above blocks even that from touching `role`) — but the function itself
+-- re-checks the caller's own role as its first statement, so it's not a blanket bypass: only a
+-- signed-in 'superadmin' can successfully call this, checked server-side, not just hidden in
+-- frontend code. Used by the new Systems -> Users page.
+create or replace function promote_user_role(target_user_id uuid, new_role text)
+returns void as $$
+declare
+  caller_role text;
+begin
+  if new_role not in ('viewer', 'admin', 'superadmin') then
+    raise exception 'invalid role: %', new_role;
+  end if;
+
+  select role into caller_role from profiles where user_id = auth.uid();
+  if caller_role is distinct from 'superadmin' then
+    raise exception 'only a superadmin can change another user''s role';
+  end if;
+
+  update profiles set role = new_role where user_id = target_user_id;
+end;
+$$ language plpgsql security definer;
+
+-- ---------------------------------------------------------------------------
+-- avatars storage bucket — profile photo uploads (Settings page, added alongside the
+-- phone/department/avatar_url profile columns above). Public-read (so <img src={avatar_url}>
+-- works directly, no signed URL needed), but writes are scoped to the uploader's own folder
+-- (avatars/{user_id}/...) via the storage.objects policies below — the same owner-scoping
+-- principle as every other table in this file, applied to Storage instead of Postgres rows.
+-- ---------------------------------------------------------------------------
+insert into storage.buckets (id, name, public)
+values ('avatars', 'avatars', true)
+on conflict (id) do nothing;
+
+create policy "avatar public read" on storage.objects
+  for select using (bucket_id = 'avatars');
+
+create policy "avatar owner write" on storage.objects
+  for insert with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+
+create policy "avatar owner update" on storage.objects
+  for update using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+
+create policy "avatar owner delete" on storage.objects
+  for delete using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);

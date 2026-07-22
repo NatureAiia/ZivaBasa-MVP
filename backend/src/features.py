@@ -101,6 +101,124 @@ def load_processed(task_name: str) -> Optional[pd.DataFrame]:
 
 
 # --------------------------------------------------------------------------- #
+# Macro CPI / food-inflation context (human_capital_project.csv)
+# --------------------------------------------------------------------------- #
+# See config.py's "Macro CPI / food-inflation context" section for the naming-collision warning:
+# despite the name, human_capital_project.csv is NOT the HR file — it's an FAO/IMF-style CPI and
+# food-inflation panel with no employee dimension, joinable only by year.
+_MACRO_HUMAN_CAPITAL_CACHE: Optional[pd.DataFrame] = None
+
+
+def load_macro_human_capital() -> Optional[pd.DataFrame]:
+    """Loads, filters (Zimbabwe + the two configured indicators), annualizes (monthly mean),
+    and pivots human_capital_project.csv into one row per year. Cached at module level — the
+    source is ~190k rows of static reference data, not something that changes per pipeline
+    run, so re-reading/re-aggregating it on every call would be wasted work.
+    """
+    global _MACRO_HUMAN_CAPITAL_CACHE
+    if _MACRO_HUMAN_CAPITAL_CACHE is not None:
+        return _MACRO_HUMAN_CAPITAL_CACHE
+
+    path = config.MACRO_HUMAN_CAPITAL_PATH
+    if not os.path.exists(path):
+        logger.warning("Macro CPI/food-inflation file not found at %s — macro context features unavailable.", path)
+        return None
+
+    raw = pd.read_csv(path)
+    raw = raw[raw["REF_AREA_LABEL"] == config.MACRO_COUNTRY_LABEL]
+    raw = raw[raw["INDICATOR_LABEL"].isin(config.MACRO_INDICATORS.keys())]
+    if raw.empty:
+        logger.warning(
+            "No %s rows found for indicators %s in %s.",
+            config.MACRO_COUNTRY_LABEL, list(config.MACRO_INDICATORS.keys()), path,
+        )
+        return None
+
+    annual = raw.groupby(["Year", "INDICATOR_LABEL"])["Value"].mean().reset_index()
+    wide = annual.pivot(index="Year", columns="INDICATOR_LABEL", values="Value")
+    wide = wide.rename(columns=config.MACRO_INDICATORS)
+    wide.index.name = "year"
+    wide = wide.reset_index()
+
+    _MACRO_HUMAN_CAPITAL_CACHE = wide
+    logger.info(
+        "Loaded macro CPI/food-inflation panel: %d years (%d-%d), columns=%s",
+        len(wide), int(wide["year"].min()), int(wide["year"].max()), list(config.MACRO_INDICATORS.values()),
+    )
+    return wide
+
+
+def add_macro_context_features(
+    df: Optional[pd.DataFrame], task_name: str, year_col: str = "year"
+) -> Optional[pd.DataFrame]:
+    """Left-merges the Zimbabwe CPI/food-inflation panel onto `df` by year. Additive-only and
+    safe to call unconditionally: no-ops (returns `df` unchanged) if `df` has no `year_col` or
+    the macro table can't be loaded, so tasks without a year column are never affected.
+
+    Also derives salary_change_real = salary_change_percent - food_inflation_rate when
+    salary_change_percent is present — a nominal pay rise can still be a real pay cut in a
+    high-inflation economy, so this closes a real gap rather than modeling nominal wage growth
+    alone.
+    """
+    if df is None:
+        return None
+    if year_col not in df.columns:
+        return df
+
+    macro = load_macro_human_capital()
+    if macro is None:
+        return df
+
+    macro_cols = list(config.MACRO_INDICATORS.values())
+    n_before = len(df)
+
+    # Extend the macro panel to cover every year present in df (e.g. productivity's data runs
+    # through 2026, one year past the CPI panel's native 2025 max) before merging, so the join
+    # can't silently produce NaNs for in-range-but-unlisted years — filled via ffill/bfill
+    # instead, logged rather than silent.
+    df_years = pd.to_numeric(df[year_col], errors="coerce").dropna().astype(int)
+    all_years = range(
+        int(min(macro["year"].min(), df_years.min())),
+        int(max(macro["year"].max(), df_years.max())) + 1,
+    )
+    macro_full = macro.set_index("year").reindex(all_years)
+    n_filled = int(macro_full[macro_cols[0]].isna().sum())
+    macro_full[macro_cols] = macro_full[macro_cols].ffill().bfill()
+    macro_full = macro_full.reset_index()
+    if n_filled:
+        logger.warning(
+            "[%s] %d year(s) outside the native CPI panel range were forward/back-filled.",
+            task_name, n_filled,
+        )
+
+    merged = df.merge(macro_full, left_on=year_col, right_on="year", how="left", suffixes=("", "_macro"))
+    assert len(merged) == n_before, (
+        f"[{task_name}] macro merge changed row count ({n_before} -> {len(merged)}) — "
+        "the year join must be many-to-one, not one-to-many."
+    )
+
+    for col in macro_cols:
+        _log_feature(
+            col, "raw", task_name, [year_col],
+            f"Zimbabwe {col.replace('_', ' ')}, joined by year from human_capital_project.csv "
+            "(FAO CPI/food-inflation panel — NOT HR data despite the misleading filename).",
+        )
+
+    if "salary_change_percent" in merged.columns and "food_inflation_rate" in merged.columns:
+        merged["salary_change_real"] = merged["salary_change_percent"] - merged["food_inflation_rate"]
+        _log_feature(
+            "salary_change_real", "ratio", task_name,
+            ["salary_change_percent", "food_inflation_rate"],
+            "Inflation-adjusted (real) salary change = nominal salary_change_percent - "
+            "food_inflation_rate. A nominal pay rise can still be a real pay cut in a "
+            "high-inflation economy — this is a legitimate, exogenous (non-leaky) addition, "
+            "not a derivative of any task's own target.",
+        )
+
+    return merged
+
+
+# --------------------------------------------------------------------------- #
 # Cleaning
 # --------------------------------------------------------------------------- #
 def handle_missing(
@@ -204,6 +322,75 @@ def add_ratio_index_features(df: Optional[pd.DataFrame], task_name: str) -> Opti
             "Min-max normalized AI adoption level, 0-1 scale.",
         )
 
+    if task_name == "human_capital" and "DateofHire" in df.columns:
+        hire = pd.to_datetime(df["DateofHire"], dayfirst=True, errors="coerce")
+        reference = pd.Timestamp(config.HUMAN_CAPITAL_REFERENCE_DATE)
+        df["tenure_years"] = ((reference - hire).dt.days / 365.25).clip(lower=0)
+        # Drop the raw date string here, same as skill_matching.add_skill_match_features drops
+        # current_skills/required_skills after consuming them — never carried into the modeling
+        # matrix as free text.
+        df = df.drop(columns=["DateofHire"])
+        _log_feature(
+            "tenure_years", "ratio", "human_capital", ["DateofHire"],
+            f"Years between DateofHire and the fixed {config.HUMAN_CAPITAL_REFERENCE_DATE} "
+            "snapshot date (not DateofTermination or 'today' — see config.py comment).",
+        )
+
+        if "Department" in df.columns:
+            df["headcount_by_department"] = df.groupby("Department")["Department"].transform("size")
+            _log_feature(
+                "headcount_by_department", "ratio", "human_capital", ["Department"],
+                "Row count per department — staff-complement proxy (no branch-level field exists).",
+            )
+
+        if "Termd" in df.columns and "Department" in df.columns:
+            # Out-of-fold (not per-row leave-one-out) department turnover rate.
+            #
+            # An earlier version excluded only the row's OWN Termd from its department's mean
+            # (grp_sum - own) / (grp_count - 1). That still leaks: for a fixed department, that
+            # arithmetic shifts by a fixed, label-dependent amount depending on whether the row's
+            # own Termd was 0 or 1 -- a decision tree can threshold on that exact fingerprint.
+            # Caught empirically (not by check_leakage(), which shuffles the target and so can't
+            # see a leak that depends on row/group correspondence): the smoke test's baseline
+            # decision tree/gradient boosting hit 100% accuracy on human_capital with
+            # feature_importances_ putting 100% of the split weight on this single column.
+            #
+            # Fix: 5-fold out-of-fold encoding. Every row in the same (department, fold) gets the
+            # IDENTICAL rate, computed only from departments' Termd values in the OTHER folds --
+            # no row's own label can be arithmetically backed out of its own encoded value.
+            n_folds = 5
+            fold = pd.Series(np.arange(len(df)) % n_folds, index=df.index)
+            dept_sum = df.groupby("Department")["Termd"].transform("sum")
+            dept_count = df.groupby("Department")["Department"].transform("size")
+            fold_sum = df.groupby(["Department", fold])["Termd"].transform("sum")
+            fold_count = df.groupby(["Department", fold])["Department"].transform("size")
+            oof_denom = (dept_count - fold_count).clip(lower=1)
+            df["turnover_rate_oof"] = (dept_sum - fold_sum) / oof_denom
+            _log_feature(
+                "turnover_rate_oof", "ratio", "human_capital", ["Termd", "Department"],
+                "5-fold out-of-fold department turnover rate — every row in the same "
+                "(department, fold) shares an identical value computed only from the other "
+                "folds, so no row's own label leaves a per-row fingerprint in its own feature "
+                "(a plain leave-one-out encoding was tried first and found to leak exactly this "
+                "way — see the comment above).",
+            )
+
+        if {"PerfScoreID", "EngagementSurvey", "EmpSatisfaction"}.issubset(df.columns):
+            def _z(s: pd.Series) -> pd.Series:
+                return (s - s.mean()) / (s.std() + 1e-9)
+
+            df["performance_readiness_index"] = (
+                0.4 * _z(df["PerfScoreID"]) + 0.3 * _z(df["EngagementSurvey"]) + 0.3 * _z(df["EmpSatisfaction"])
+            )
+            _log_feature(
+                "performance_readiness_index", "index", "human_capital",
+                ["PerfScoreID", "EngagementSurvey", "EmpSatisfaction"],
+                "Closest available analogue to a 'skill_readiness_index' — training_hours_ytd "
+                "and promotion_count are NOT AVAILABLE in this file (see data dictionary), so "
+                "this substitutes z-scored performance/engagement/satisfaction instead. Honestly "
+                "labeled substitute, not equivalent to the taxonomy's original definition.",
+            )
+
     if task_name == "skill_match" and {"current_skills", "required_skills"}.issubset(df.columns):
         from . import skill_matching
         df = skill_matching.add_skill_match_features(df)
@@ -280,6 +467,19 @@ def add_interaction_features(df: Optional[pd.DataFrame], task_name: str) -> Opti
             "(config.py) — it's a direct multiplicative derivative of ai_adoption_index, which "
             "IS target_ai_adoption, so it inherits the same leakage employment's "
             "exposure_x_skill_complexity had to be excluded for.",
+        )
+
+    if task_name == "human_capital" and {"SpecialProjectsCount", "performance_readiness_index"}.issubset(df.columns):
+        df["special_projects_x_performance_readiness"] = (
+            df["SpecialProjectsCount"] * df["performance_readiness_index"]
+        )
+        _log_feature(
+            "special_projects_x_performance_readiness", "interaction", "human_capital",
+            ["SpecialProjectsCount", "performance_readiness_index"],
+            "Substitute for the taxonomy's 'training_investment_x_skill_readiness' — "
+            "training_hours_ytd is NOT AVAILABLE in this file, so SpecialProjectsCount (count "
+            "of special projects, the closest adjacent signal per the data dictionary) stands "
+            "in for training investment. Honestly labeled substitute, not equivalent.",
         )
 
     if task_name == "skill_match" and {"recent_training_hours", "cosine_similarity_score"}.issubset(df.columns):
@@ -404,7 +604,46 @@ def define_target(df: Optional[pd.DataFrame], task_name: str) -> Optional[pd.Dat
             "quantile-threshold pattern as employment's target_high_automation_risk.",
         )
 
+    if task_name == "human_capital" and "Termd" in df.columns:
+        df["target_turnover"] = df["Termd"].astype(int)
+        _log_feature(
+            "target_turnover", "target", "human_capital", ["Termd"],
+            "1 if the employee has left (Termd==1), 0 if still active.",
+        )
+
     return df
+
+
+# --------------------------------------------------------------------------- #
+# Leakage screen (bug 9.2 fix, made a standing check)
+# --------------------------------------------------------------------------- #
+def check_leakage(df: pd.DataFrame, target_col: str, task_name: str, threshold: float = 0.3) -> List[str]:
+    """
+    Shuffle the target and re-check correlation against every numeric feature. A feature that
+    still correlates above `threshold` with a *shuffled* target is almost certainly a direct or
+    near-direct derivative of the real target (the failure mode that produced
+    exposure_x_skill_complexity / cosine_similarity_score / training_x_skill_readiness — see
+    config.py's drop_cols comments), not real predictive signal. Logs a warning per offending
+    column and returns the list of flagged column names; does not raise or drop anything itself
+    — callers decide whether to add the column to drop_cols.
+    """
+    if target_col not in df.columns:
+        return []
+    shuffled_target = df[target_col].sample(frac=1, random_state=config.RANDOM_STATE).reset_index(drop=True)
+    flagged = []
+    for col in df.select_dtypes(include=[np.number]).columns:
+        if col == target_col:
+            continue
+        corr = abs(pd.Series(df[col]).reset_index(drop=True).corr(shuffled_target))
+        if pd.notna(corr) and corr > threshold:
+            flagged.append(col)
+            logger.warning(
+                "[%s] '%s' correlates %.2f with a SHUFFLED target — inspect for leakage.",
+                task_name, col, corr,
+            )
+    if not flagged:
+        logger.info("[%s] leakage screen: no numeric feature exceeded threshold=%.2f.", task_name, threshold)
+    return flagged
 
 
 # --------------------------------------------------------------------------- #
@@ -423,11 +662,18 @@ def run_pipeline(task_name: str, save: bool = True) -> Optional[pd.DataFrame]:
     raw = clip_outliers(raw, numeric_cols, task_name)
 
     feat = select_raw(raw, task_name)
+    # Scoped to productivity only — it's the only task with a real `year` column. See
+    # add_macro_context_features()'s docstring: it no-ops safely on any task without one, but
+    # the call is still deliberately gated here rather than left unconditional, so it's an
+    # explicit decision on record, not an accident of which tasks happen to have a year column.
+    if task_name == "productivity":
+        feat = add_macro_context_features(feat, task_name)
     feat = add_ratio_index_features(feat, task_name)
     feat = add_interaction_features(feat, task_name)
     feat = encode_categoricals(feat, task_name)
     feat = scale_numeric(feat, task_name, exclude_cols=[cfg.target], fit=True)
     feat = define_target(feat, task_name)
+    check_leakage(feat, cfg.target, task_name)
 
     if save:
         save_processed(feat, task_name)
