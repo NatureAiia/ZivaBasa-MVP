@@ -56,6 +56,7 @@ from api import llm_gateway
 from api import reports as reports_module
 from api import org_extract as org_extract_module
 from api import image_gen as image_gen_module
+from api import redact as redact_module
 from src import evaluate
 from src import config as src_config
 from src import drift as drift_module
@@ -275,7 +276,7 @@ _VALUE_COLUMN = {"employment": "avg_salary_usd", "skills": "MonthlyIncome", "ski
 
 
 @app.post("/predict/batch/{task}")
-async def predict_batch(task: str, file: UploadFile = File(...), _role: str = Depends(auth.require_role("admin"))):
+async def predict_batch(task: str, file: UploadFile = File(...), _role: str = Depends(auth.require_role("viewer"))):
     artifacts = _get_task_or_404(task)
 
     if not file.filename.lower().endswith(".csv"):
@@ -323,6 +324,11 @@ async def predict_batch(task: str, file: UploadFile = File(...), _role: str = De
         drift_report = drift_module.compute_drift_report(baseline, X_scaled, artifacts.feature_names)
     else:
         drift_report = {"available": False, "reason": "No drift baseline saved for this task yet — run scripts/retrain_and_promote.py at least once."}
+
+    # Real redaction only for a resolved, sub-admin caller (_role is None whenever auth isn't
+    # configured at all — see auth.py/redact.py docstrings) — a viewer can now reach this
+    # endpoint, but sees masked salary/compensation fields rather than colleagues' real figures.
+    rows = redact_module.redact_rows(rows, _role)
 
     return {
         "task": task,

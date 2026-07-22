@@ -54,6 +54,18 @@ export default function RosterTab() {
     if (explainCache[id] || !schema) return;
     setExplaining(id);
     try {
+      // A field can arrive as the backend's "REDACTED" sentinel (see api/redact.py) for a
+      // viewer-role caller — that's not a number the explain endpoint can use, and silently
+      // substituting a fake value would produce a SHAP explanation that looks real but isn't.
+      // Fail honestly instead.
+      const redactedField = schema.feature_names.find((n) => row[n] === "REDACTED");
+      if (redactedField) {
+        setExplainCache((c) => ({
+          ...c,
+          [id]: { error: "Explain unavailable — this row includes a field redacted for your role." },
+        }));
+        return;
+      }
       const featureValues = schema.feature_names.map((n) => row[n] ?? 0);
       const result = await api.explain("skill_match", featureValues, 8);
       setExplainCache((c) => ({ ...c, [id]: result }));

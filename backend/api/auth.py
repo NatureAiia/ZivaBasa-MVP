@@ -17,6 +17,14 @@ not a username/password login system — there is no user-account database or lo
 in this frontend to hash passwords for. If a real per-user login system is added later, password
 hashing (e.g. via passlib/bcrypt) becomes relevant then, not retrofitted onto a machine-to-machine
 API key scheme now.
+
+SUPABASE FALLBACK (added alongside the 3rd role tier): the ZIVABASA_API_KEYS scheme above was,
+until now, the *only* thing require_role() could ever resolve a role from — and the frontend
+never sends an Authorization header, so in practice every endpoint stayed fully open regardless
+of who was logged in. require_role() now also tries resolving a role from the caller's actual
+Supabase session (see supabase_auth.py) when ZIVABASA_API_KEYS isn't configured. This activates
+only once SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY are BOTH set on the backend — unset, behavior
+is byte-for-byte what it was before this change (fully open).
 """
 from __future__ import annotations
 
@@ -25,8 +33,10 @@ from typing import Dict, Optional
 
 from fastapi import Header, HTTPException
 
-Role = str  # "admin" | "viewer"
-_ROLE_RANK = {"viewer": 0, "admin": 1}
+from api import supabase_auth
+
+Role = str  # "viewer" | "admin" | "superadmin"
+_ROLE_RANK = {"viewer": 0, "admin": 1, "superadmin": 2}
 
 
 def _load_keys() -> Dict[str, Role]:
@@ -46,24 +56,37 @@ def auth_enabled() -> bool:
 
 
 def require_role(min_role: Role = "viewer"):
-    """FastAPI dependency factory. When ZIVABASA_API_KEYS is unset, always passes (auth
-    disabled — see module docstring). When set, requires a valid bearer token whose configured
-    role meets or exceeds min_role ("admin" satisfies a "viewer" requirement; "viewer" does not
-    satisfy an "admin" requirement)."""
+    """FastAPI dependency factory. Tries, in order: the ZIVABASA_API_KEYS bearer-token scheme
+    (unchanged from before), then — only if that scheme isn't configured — a Supabase-session
+    fallback (see supabase_auth.py). If NEITHER is configured, always passes with role=None
+    (fully open, identical to this file's original behavior). Once either is configured, a
+    missing/invalid/insufficient token is rejected (401/403) rather than silently allowed
+    through — configuring either secret is the explicit opt-in to real enforcement."""
 
     async def _dependency(authorization: Optional[str] = Header(default=None)) -> Optional[Role]:
         keys = _load_keys()
-        if not keys:
-            return None  # auth disabled — open, as before this file existed
+        if keys:
+            if not authorization or not authorization.startswith("Bearer "):
+                raise HTTPException(status_code=401, detail="Missing or malformed Authorization header.")
+            token = authorization.removeprefix("Bearer ").strip()
+            role = keys.get(token)
+            if role is None:
+                raise HTTPException(status_code=401, detail="Invalid API key.")
+            if _ROLE_RANK.get(role, -1) < _ROLE_RANK.get(min_role, 0):
+                raise HTTPException(status_code=403, detail=f"Role '{role}' lacks required '{min_role}' access.")
+            return role
 
-        if not authorization or not authorization.startswith("Bearer "):
-            raise HTTPException(status_code=401, detail="Missing or malformed Authorization header.")
-        token = authorization.removeprefix("Bearer ").strip()
-        role = keys.get(token)
-        if role is None:
-            raise HTTPException(status_code=401, detail="Invalid API key.")
-        if _ROLE_RANK.get(role, -1) < _ROLE_RANK.get(min_role, 0):
-            raise HTTPException(status_code=403, detail=f"Role '{role}' lacks required '{min_role}' access.")
-        return role
+        if supabase_auth.configured():
+            if not authorization or not authorization.startswith("Bearer "):
+                raise HTTPException(status_code=401, detail="Missing or malformed Authorization header.")
+            token = authorization.removeprefix("Bearer ").strip()
+            role = await supabase_auth.resolve_role_from_token(token)
+            if role is None:
+                raise HTTPException(status_code=401, detail="Invalid or unrecognized session.")
+            if _ROLE_RANK.get(role, -1) < _ROLE_RANK.get(min_role, 0):
+                raise HTTPException(status_code=403, detail=f"Role '{role}' lacks required '{min_role}' access.")
+            return role
+
+        return None  # neither scheme configured — open, as before this file existed
 
     return _dependency

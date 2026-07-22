@@ -7,6 +7,7 @@ import {
 import clsx from "clsx";
 import ClarityRing from "../common/ClarityRing";
 import ShinyPill from "../effects/ShinyPill";
+import ThemeToggle from "./ThemeToggle";
 import { useAuth } from "../../lib/authStore";
 
 export const MODELS = [
@@ -168,6 +169,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
         <div className="px-4 py-3 flex items-center justify-between">
           {!collapsed && (
             <div className="flex items-center gap-2">
+              <ThemeToggle />
               <button
                 onClick={handleSignOut}
                 className="w-9 h-9 rounded-full border border-border flex items-center justify-center text-ink-faint hover:text-red hover:border-red/40 transition-colors"

@@ -72,9 +72,9 @@ function costLabel(provider) {
 const WELCOME_MESSAGE = {
   role: "assistant",
   text:
-    "Pick a model above to chat with — models marked \"needs API key\" need that key added " +
-    "to your backend's .env first. The Puter models work immediately with no setup, but " +
-    "can't run live predictions; a Backend model can.",
+    "Ask away — the model selected above is ready to go, and you can switch any time. Models " +
+    "marked \"needs API key\" need that key added to your backend's .env first. The Puter " +
+    "models work immediately with no setup, but can't run live predictions; a Backend model can.",
 };
 
 export default function ChatPane() {

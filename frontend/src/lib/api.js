@@ -3,6 +3,7 @@
   for the scaler/leakage-column bug). Same contract v1's dashboard used: GET /health,
   GET /schema/{task}, POST /predict/{task}, POST /explain/{task}.
 */
+import { supabase } from "./supabaseClient";
 
 const DEFAULT_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 
@@ -14,11 +15,26 @@ export function setApiBase(url) {
   localStorage.setItem("zivabasa-api-base", url.replace(/\/$/, ""));
 }
 
+// Attach the current Supabase session's access token, if there is one, so the backend's
+// optional Supabase-role fallback (api/supabase_auth.py) can resolve who's actually calling. A
+// no-op when Supabase isn't configured (getSession() then just resolves to no session) or when
+// the backend hasn't turned on that fallback (auth.py ignores the header either way). Shared by
+// every call site that hits the backend, including the two raw-fetch multipart uploads below
+// that don't go through request() (predictBatch, extractOrgChart) — those need it too, since
+// /predict/batch/{task} is exactly where the new redaction feature depends on it.
+async function authHeaders() {
+  const { data } = await supabase.auth.getSession();
+  const token = data?.session?.access_token;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function request(path, options) {
   const base = getBase();
+  const auth = await authHeaders();
+  const withAuth = { ...options, headers: { ...(options?.headers || {}), ...auth } };
   let res;
   try {
-    res = await fetch(base + path, options);
+    res = await fetch(base + path, withAuth);
   } catch (e) {
     throw new Error(`Could not reach API at ${base}. Is uvicorn running? (${e.message})`);
   }
@@ -76,9 +92,10 @@ export const api = {
     const form = new FormData();
     form.append("file", file);
     const base = getBase();
+    const auth = await authHeaders();
     let res;
     try {
-      res = await fetch(`${base}/predict/batch/${task}`, { method: "POST", body: form });
+      res = await fetch(`${base}/predict/batch/${task}`, { method: "POST", body: form, headers: auth });
     } catch (e) {
       throw new Error(`Could not reach API at ${base}. Is uvicorn running? (${e.message})`);
     }
@@ -114,9 +131,10 @@ export const api = {
     form.append("file", file);
     const base = getBase();
     const qs = provider ? `?provider=${encodeURIComponent(provider)}` : "";
+    const auth = await authHeaders();
     let res;
     try {
-      res = await fetch(`${base}/organization/extract${qs}`, { method: "POST", body: form });
+      res = await fetch(`${base}/organization/extract${qs}`, { method: "POST", body: form, headers: auth });
     } catch (e) {
       throw new Error(`Could not reach API at ${base}. Is uvicorn running? (${e.message})`);
     }

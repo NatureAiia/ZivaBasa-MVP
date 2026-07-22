@@ -89,6 +89,17 @@ export default function ManagerActionInbox() {
 
     setLoadingRow(id);
     try {
+      // A field can arrive as the "REDACTED" sentinel (see api/redact.py) for a viewer-role
+      // caller — not a number the explain/uplift endpoints can use. Fail honestly rather than
+      // silently substituting a fake value into what would look like a real explanation.
+      const redactedField = schema.feature_names.find((n) => row[n] === "REDACTED");
+      if (redactedField) {
+        setExplainCache((c) => ({
+          ...c,
+          [id]: { error: "Explain unavailable — this row includes a field redacted for your role." },
+        }));
+        return;
+      }
       const featureValues = schema.feature_names.map((n) => row[n] ?? 0);
       const [explainResult, upliftResult] = await Promise.all([
         api.explain(TASK, featureValues, 8),

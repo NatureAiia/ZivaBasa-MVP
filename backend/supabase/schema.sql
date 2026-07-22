@@ -179,8 +179,8 @@ create table if not exists profiles (
   phone           text,
   department      text,
   avatar_url      text,
-  requested_role  text not null default 'viewer' check (requested_role in ('viewer', 'admin')),
-  role            text not null default 'viewer' check (role in ('viewer', 'admin')),
+  requested_role  text not null default 'viewer' check (requested_role in ('viewer', 'admin', 'superadmin')),
+  role            text not null default 'viewer' check (role in ('viewer', 'admin', 'superadmin')),
   created_at      timestamptz not null default now()
 );
 
@@ -190,6 +190,17 @@ create table if not exists profiles (
 alter table profiles add column if not exists phone text;
 alter table profiles add column if not exists department text;
 alter table profiles add column if not exists avatar_url text;
+
+-- 3rd role tier (superadmin), added for the Systems/Users page — idempotent widen for an
+-- already-deployed project whose check constraints predate 'superadmin'. Postgres has no
+-- "alter constraint" that adds an enum value in place, so this drops and recreates both by
+-- their known original names; if you've since renamed them, adjust the names below.
+alter table profiles drop constraint if exists profiles_requested_role_check;
+alter table profiles add constraint profiles_requested_role_check
+  check (requested_role in ('viewer', 'admin', 'superadmin'));
+alter table profiles drop constraint if exists profiles_role_check;
+alter table profiles add constraint profiles_role_check
+  check (role in ('viewer', 'admin', 'superadmin'));
 
 -- ---------------------------------------------------------------------------
 -- Row Level Security — every table, every row scoped to its owner. This is the actual
@@ -255,6 +266,31 @@ $$ language plpgsql;
 create trigger profiles_lock_role
   before update on profiles
   for each row execute function lock_profile_role();
+
+-- promote_user_role — the in-app replacement for "manual admin promotion via the Supabase SQL
+-- editor" the comment above used to require. SECURITY DEFINER so it can update a row that
+-- isn't the caller's own (the update-policy above only allows a user to update their own row,
+-- and the trigger above blocks even that from touching `role`) — but the function itself
+-- re-checks the caller's own role as its first statement, so it's not a blanket bypass: only a
+-- signed-in 'superadmin' can successfully call this, checked server-side, not just hidden in
+-- frontend code. Used by the new Systems -> Users page.
+create or replace function promote_user_role(target_user_id uuid, new_role text)
+returns void as $$
+declare
+  caller_role text;
+begin
+  if new_role not in ('viewer', 'admin', 'superadmin') then
+    raise exception 'invalid role: %', new_role;
+  end if;
+
+  select role into caller_role from profiles where user_id = auth.uid();
+  if caller_role is distinct from 'superadmin' then
+    raise exception 'only a superadmin can change another user''s role';
+  end if;
+
+  update profiles set role = new_role where user_id = target_user_id;
+end;
+$$ language plpgsql security definer;
 
 -- ---------------------------------------------------------------------------
 -- avatars storage bucket — profile photo uploads (Settings page, added alongside the
