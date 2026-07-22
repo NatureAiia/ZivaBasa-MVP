@@ -329,9 +329,14 @@ def _shap_chart(top_contributions: list[dict]) -> io.BytesIO:
     return _chart_to_stream(fig)
 
 
-def build_predict_report(results: dict) -> bytes:
+def build_predict_report(results: dict, extra_notes: dict | None = None) -> bytes:
     """results: { task_name: { predict: {...}, explain: {...} | None } }, same shape the
-    frontend's history entries already have — no reshaping needed at the call site."""
+    frontend's history entries already have — no reshaping needed at the call site.
+
+    extra_notes: optional { task_name: markdown_text } — rendered after that task's SHAP
+    section. Generic (not inbox-specific): any caller can attach freeform narrative per task,
+    e.g. a cost-of-inaction figure or a causal/uplift lever estimate that isn't part of the
+    core predict/explain response shape."""
     doc = Document()
     _add_title(
         doc,
@@ -445,6 +450,9 @@ Each section below covers one prediction task in plain language, followed by the
                     for c in explain["top_contributions"][:6]
                 ],
             )
+
+        if extra_notes and extra_notes.get(task):
+            _add_markdown(doc, extra_notes[task])
 
     _add_disclaimer(
         doc,
@@ -788,9 +796,10 @@ def _pdf_disclaimer_block(story: list, text: str):
     story.append(Paragraph(_xml_escape(text), _PDF_STYLES["ZBDisclaimer"]))
 
 
-def build_predict_report_pdf(results: dict) -> bytes:
+def build_predict_report_pdf(results: dict, extra_notes: dict | None = None) -> bytes:
     """Same input contract and content as build_predict_report() — a PDF sibling of the docx
-    report, sharing the same matplotlib chart builders."""
+    report, sharing the same matplotlib chart builders. See that function's docstring for what
+    extra_notes does."""
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf,
@@ -919,6 +928,9 @@ Each section below covers one prediction task in plain language, followed by the
                 )
             )
             story.append(Spacer(1, 6))
+
+        if extra_notes and extra_notes.get(task):
+            _add_markdown_pdf(story, extra_notes[task])
 
     _pdf_disclaimer_block(
         story,
@@ -1075,9 +1087,10 @@ def _xl_embed_chart(ws, anchor_cell: str, stream: io.BytesIO, width_px: int = 44
     ws.add_image(img, anchor_cell)
 
 
-def build_predict_report_xlsx(results: dict) -> bytes:
+def build_predict_report_xlsx(results: dict, extra_notes: dict | None = None) -> bytes:
     """Same input contract as build_predict_report()/_pdf() — a Summary sheet (table +
-    chart) plus one sheet per predicted task with its top SHAP contributions."""
+    chart) plus one sheet per predicted task with its top SHAP contributions. See
+    build_predict_report()'s docstring for what extra_notes does."""
     wb = Workbook()
     summary = wb.active
     summary.title = "Summary"
@@ -1128,6 +1141,12 @@ def build_predict_report_xlsx(results: dict) -> bytes:
             ]
             _xl_write_table(ws, 4, ["Factor", "Value", "SHAP effect"], rows)
             _xl_embed_chart(ws, "E4", _shap_chart(explain["top_contributions"][:6]))
+
+        if extra_notes and extra_notes.get(task):
+            note_row = 22  # below the table + chart, both anchored at row 4
+            ws.cell(row=note_row, column=1, value=extra_notes[task])
+            ws.cell(row=note_row, column=1).alignment = Alignment(wrap_text=True, vertical="top")
+            ws.merge_cells(start_row=note_row, start_column=1, end_row=note_row, end_column=4)
 
     buf = io.BytesIO()
     wb.save(buf)

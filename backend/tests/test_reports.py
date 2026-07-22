@@ -79,6 +79,28 @@ def test_chat_report_with_no_messages_still_generates(client):
     assert r.content[:4] == b"%PDF"
 
 
+def test_predict_report_pdf_with_extra_notes(client):
+    """Demo-readiness Phase D: Manager Action Inbox's export attaches a cost-of-inaction /
+    causal-lever note per task via extra_notes — confirm it doesn't break generation and the
+    note text actually makes it into the document isn't checkable from bytes alone here, but a
+    500 would mean the plumbing is broken."""
+    r = client.post(
+        "/reports/predict/pdf",
+        json={"results": _PREDICT_RESULTS, "extra_notes": {"employment": "Estimated cost of inaction: $12,345."}},
+    )
+    assert r.status_code == 200, r.text
+    assert r.content[:4] == b"%PDF"
+
+
+def test_predict_report_xlsx_with_extra_notes(client):
+    r = client.post(
+        "/reports/predict/xlsx",
+        json={"results": _PREDICT_RESULTS, "extra_notes": {"employment": "Estimated cost of inaction: $12,345."}},
+    )
+    assert r.status_code == 200, r.text
+    assert r.content[:2] == b"PK"
+
+
 def test_predict_report_xlsx(client):
     r = client.post("/reports/predict/xlsx", json={"results": _PREDICT_RESULTS})
     assert r.status_code == 200, r.text

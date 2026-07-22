@@ -510,7 +510,7 @@ _XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.
 @app.post("/reports/predict")
 async def predict_report(request: PredictReportRequest, _role: str = Depends(auth.require_role("viewer"))):
     try:
-        docx_bytes = reports_module.build_predict_report(request.results)
+        docx_bytes = reports_module.build_predict_report(request.results, request.extra_notes)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Report generation failed: {e}")
     return Response(
@@ -538,7 +538,7 @@ async def chat_report(request: ChatReportRequest, _role: str = Depends(auth.requ
 @app.post("/reports/predict/pdf")
 async def predict_report_pdf(request: PredictReportRequest, _role: str = Depends(auth.require_role("viewer"))):
     try:
-        pdf_bytes = reports_module.build_predict_report_pdf(request.results)
+        pdf_bytes = reports_module.build_predict_report_pdf(request.results, request.extra_notes)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Report generation failed: {e}")
     return Response(
@@ -566,7 +566,7 @@ async def chat_report_pdf(request: ChatReportRequest, _role: str = Depends(auth.
 @app.post("/reports/predict/xlsx")
 async def predict_report_xlsx(request: PredictReportRequest, _role: str = Depends(auth.require_role("viewer"))):
     try:
-        xlsx_bytes = reports_module.build_predict_report_xlsx(request.results)
+        xlsx_bytes = reports_module.build_predict_report_xlsx(request.results, request.extra_notes)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Report generation failed: {e}")
     return Response(

@@ -91,6 +91,10 @@ class ImageGenerateResponse(BaseModel):
 class PredictReportRequest(BaseModel):
     results: dict  # { task_name: {predict: {...}, explain: {...}|None} } — same shape the
                     # frontend's history entries already have
+    extra_notes: Optional[dict] = None  # { task_name: markdown_text } — freeform narrative
+                                          # appended after that task's SHAP section (e.g. a
+                                          # cost-of-inaction figure or causal/uplift lever
+                                          # estimate from Manager Action Inbox's export button)
 
 
 class ChatReportMessage(BaseModel):

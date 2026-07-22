@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "react-router-dom";
-import { AlertTriangle, ChevronDown, Inbox, TrendingUp, Upload } from "lucide-react";
+import { AlertTriangle, ChevronDown, FileDown, Inbox, TrendingUp, Upload } from "lucide-react";
 import Card from "../../components/common/Card";
 import Badge from "../../components/common/Badge";
 import EmptyState from "../../components/common/EmptyState";
@@ -11,6 +11,7 @@ import { getBatchResult } from "../../lib/batchStore";
 import { metaFor } from "../../lib/fieldMeta";
 import { api } from "../../lib/api";
 import { formatPercent } from "../../lib/format";
+import { downloadBlob } from "../../lib/report";
 import { useLowBandwidth } from "../../lib/lowBandwidthStore";
 
 // Text-first fallback for low-bandwidth mode — same data as ShapLedger, no SVG-equivalent
@@ -60,6 +61,7 @@ export default function ManagerActionInbox() {
   const [upliftCache, setUpliftCache] = useState({});
   const [loadingRow, setLoadingRow] = useState(null);
   const [schema, setSchema] = useState(null);
+  const [exportingRow, setExportingRow] = useState(null); // `${row._name}:pdf` | `${row._name}:xlsx`
 
   useEffect(() => {
     getBatchResult(TASK).then(setBatch);
@@ -110,6 +112,46 @@ export default function ManagerActionInbox() {
     return oppositeLabel
       ? `This employee's risk is driven mainly by ${topLabel}, not ${oppositeLabel}.`
       : `This employee's risk is driven mainly by ${topLabel}.`;
+  };
+
+  // Board-ready export (demo-readiness Phase D): reuses the existing /reports/predict/{pdf,xlsx}
+  // endpoints (built for the Predict tab) rather than a new inbox-specific report builder —
+  // shapes this one employee's skills-task result into the same {task: {predict, explain}}
+  // contract, and attaches the cost-of-inaction + causal-lever estimate via extra_notes (a
+  // generic field those endpoints already support, not an inbox-only special case).
+  const exportRow = async (row, format) => {
+    const explain = explainCache[row._name];
+    const uplift = upliftCache[row._name];
+    if (!explain || explain.error) return;
+
+    const costOfInaction = (Number(row.MonthlyIncome) || 0) * REPLACEMENT_COST_MONTHS;
+    const results = {
+      skills: {
+        predict: { task_type: "classification", probability: row._value, label: 1 },
+        explain,
+      },
+    };
+    const noteLines = [
+      `**Estimated cost of inaction:** $${costOfInaction.toLocaleString(undefined, { maximumFractionDigits: 0 })} ` +
+        `(illustrative — ${REPLACEMENT_COST_MONTHS} months' salary, a commonly cited HR replacement-cost heuristic).`,
+    ];
+    if (uplift && !uplift.error) {
+      noteLines.push(`**Recommended lever:** ${uplift.interpretation}`);
+    }
+    const extraNotes = { skills: noteLines.join("\n\n") };
+
+    setExportingRow(`${row._name}:${format}`);
+    try {
+      const blob =
+        format === "pdf"
+          ? await api.predictReportPdf(results, extraNotes)
+          : await api.predictReportXlsx(results, extraNotes);
+      downloadBlob(`zivabasa-inbox-${row._name.replace(/\s+/g, "-")}-${Date.now()}.${format}`, blob);
+    } catch (e) {
+      alert(`Couldn't generate report: ${e.message}`);
+    } finally {
+      setExportingRow(null);
+    }
   };
 
   if (!batch) {
@@ -225,6 +267,25 @@ export default function ManagerActionInbox() {
                                       <p className="text-xs text-ink-muted leading-relaxed">{uplift.interpretation}</p>
                                     </div>
                                   ) : null}
+                                </div>
+
+                                <div className="flex gap-2 border-t border-border pt-3">
+                                  <button
+                                    onClick={() => exportRow(row, "pdf")}
+                                    disabled={exportingRow === `${row._name}:pdf`}
+                                    className="flex items-center gap-1.5 text-[11px] font-medium bg-gold/10 border border-gold/30 text-gold rounded-lg px-2.5 py-1.5 hover:bg-gold/15 transition-colors disabled:opacity-50"
+                                  >
+                                    <FileDown size={12} />
+                                    {exportingRow === `${row._name}:pdf` ? "Generating…" : "Export PDF"}
+                                  </button>
+                                  <button
+                                    onClick={() => exportRow(row, "xlsx")}
+                                    disabled={exportingRow === `${row._name}:xlsx`}
+                                    className="flex items-center gap-1.5 text-[11px] font-medium bg-surface2 border border-border text-ink-muted rounded-lg px-2.5 py-1.5 hover:text-ink transition-colors disabled:opacity-50"
+                                  >
+                                    <FileDown size={12} />
+                                    {exportingRow === `${row._name}:xlsx` ? "Generating…" : "Export Excel"}
+                                  </button>
                                 </div>
                               </>
                             ) : null}

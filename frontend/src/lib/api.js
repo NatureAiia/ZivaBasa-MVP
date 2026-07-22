@@ -137,11 +137,11 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt }),
     }),
-  predictReport: (results) =>
+  predictReport: (results, extraNotes = null) =>
     requestBlob("/reports/predict", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ results }),
+      body: JSON.stringify({ results, extra_notes: extraNotes }),
     }),
   chatReport: (messages, toolCalls = []) =>
     requestBlob("/reports/chat", {
@@ -149,11 +149,17 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messages, tool_calls: toolCalls }),
     }),
-  predictReportPdf: (results) =>
+  predictReportPdf: (results, extraNotes = null) =>
     requestBlob("/reports/predict/pdf", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ results }),
+      body: JSON.stringify({ results, extra_notes: extraNotes }),
+    }),
+  predictReportXlsx: (results, extraNotes = null) =>
+    requestBlob("/reports/predict/xlsx", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ results, extra_notes: extraNotes }),
     }),
   chatReportPdf: (messages, toolCalls = []) =>
     requestBlob("/reports/chat/pdf", {
