@@ -19,50 +19,54 @@ import EmployeeMirrorView from "./pages/zivabasa/EmployeeMirrorView";
 import NationalEvidenceView from "./pages/zivabasa/NationalEvidenceView";
 import MyOrganizationTab from "./pages/zivabasa/MyOrganizationTab";
 import { MODELS } from "./components/layout/Sidebar";
+import ChiedzaWidget from "./components/chat/ChiedzaWidget";
 
 
 const OTHER_MODELS = MODELS.filter((m) => !m.live).map((m) => m.slug);
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Landing />} />
-      <Route path="/login" element={<LoginPage />} />
+    <>
+      <Routes>
+        <Route path="/" element={<Landing />} />
+        <Route path="/login" element={<LoginPage />} />
 
-      <Route
-        path="/app"
-        element={
-          <AuthGate>
-            <Shell />
-          </AuthGate>
-        }
-      >
-        <Route index element={<ChiedzaDashboard />} />
+        <Route
+          path="/app"
+          element={
+            <AuthGate>
+              <Shell />
+            </AuthGate>
+          }
+        >
+          <Route index element={<ChiedzaDashboard />} />
 
-        <Route path="models/zivabasa" element={<ZivaBasaLayout />}>
-          <Route index element={<Navigate to="dashboard" replace />} />
-          <Route path="dashboard" element={<DashboardTab />} />
-          <Route path="chat" element={<ChatTab />} />
-          <Route path="predict" element={<PredictTab />} />
-          <Route path="forecast" element={<ForecastTab />} />
-          <Route path="history" element={<HistoryTab />} />
-          <Route path="roster" element={<RosterTab />} />
-          <Route path="action-inbox" element={<ManagerActionInbox />} />
-          <Route path="my-view" element={<EmployeeMirrorView />} />
-          <Route path="national-view" element={<NationalEvidenceView />} />
-          <Route path="my-organization" element={<MyOrganizationTab />} />
+          <Route path="models/zivabasa" element={<ZivaBasaLayout />}>
+            <Route index element={<Navigate to="dashboard" replace />} />
+            <Route path="dashboard" element={<DashboardTab />} />
+            <Route path="chat" element={<ChatTab />} />
+            <Route path="predict" element={<PredictTab />} />
+            <Route path="forecast" element={<ForecastTab />} />
+            <Route path="history" element={<HistoryTab />} />
+            <Route path="roster" element={<RosterTab />} />
+            <Route path="action-inbox" element={<ManagerActionInbox />} />
+            <Route path="my-view" element={<EmployeeMirrorView />} />
+            <Route path="national-view" element={<NationalEvidenceView />} />
+            <Route path="my-organization" element={<MyOrganizationTab />} />
+          </Route>
+
+          {OTHER_MODELS.map((slug) => (
+            <Route key={slug} path={`models/${slug}`} element={<InDevelopment />} />
+          ))}
+
+          <Route path="cost-monitoring" element={<CostMonitoring />} />
+          <Route path="settings" element={<SettingsPage />} />
+          <Route path="*" element={<InDevelopment />} />
         </Route>
 
-        {OTHER_MODELS.map((slug) => (
-          <Route key={slug} path={`models/${slug}`} element={<InDevelopment />} />
-        ))}
-
-        <Route path="cost-monitoring" element={<CostMonitoring />} />
-        <Route path="settings" element={<SettingsPage />} />
-        <Route path="*" element={<InDevelopment />} />
-      </Route>
-
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+      <ChiedzaWidget />
+    </>
   );
 }
