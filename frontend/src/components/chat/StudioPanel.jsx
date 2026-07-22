@@ -102,7 +102,7 @@ export default function StudioPanel() {
               onClick={() => setFormat(f)}
               className={clsx(
                 "px-2 py-1 rounded-md text-[11px] font-medium transition-colors",
-                format === f ? "bg-ink text-white" : "text-ink-faint hover:text-ink"
+                format === f ? "bg-red text-white" : "text-ink-faint hover:text-ink"
               )}
             >
               {f === "docx" ? "Word" : "PDF"}

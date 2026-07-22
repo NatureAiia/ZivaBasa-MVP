@@ -10,7 +10,7 @@ const WIDTH = 320;
 const HEIGHT = 160;
 const PAD = { top: 18, right: 14, bottom: 22, left: 32 };
 
-export default function ForecastLineChart({ title, color, unit = "", history = [], forecast = [] }) {
+export default function ForecastLineChart({ title, color, unit = "", history = [], forecast = [], confidenceLevel }) {
   const [hoverIdx, setHoverIdx] = useState(null);
 
   const points = useMemo(() => {
@@ -23,12 +23,15 @@ export default function ForecastLineChart({ title, color, unit = "", history = [
     return <div className="text-xs text-ink-faint py-8 text-center">Not enough data</div>;
   }
 
+  const hasBand = forecast.some((p) => p.lower != null && p.upper != null);
+
   const years = points.map((p) => p.year);
   const values = points.map((p) => p.value);
+  const bandValues = hasBand ? forecast.flatMap((p) => [p.lower, p.upper]).filter((v) => v != null) : [];
   const minYear = Math.min(...years);
   const maxYear = Math.max(...years);
-  const rawMin = Math.min(...values);
-  const rawMax = Math.max(...values);
+  const rawMin = Math.min(...values, ...bandValues);
+  const rawMax = Math.max(...values, ...bandValues);
   const valuePad = (rawMax - rawMin) * 0.2 || Math.abs(rawMax) * 0.1 || 1;
   const minVal = rawMin - valuePad;
   const maxVal = rawMax + valuePad;
@@ -44,6 +47,17 @@ export default function ForecastLineChart({ title, color, unit = "", history = [
   const historyPts = points.slice(0, lastHistoryIdx + 1);
   const forecastPts = points.slice(lastHistoryIdx);
   const lastPoint = points[points.length - 1];
+
+  // Confidence band (MC-dropout interval) — drawn only across the forecast segment, anchored
+  // at the last actual (history) point so it visually connects rather than starting mid-air.
+  const bandPts = hasBand ? [{ ...points[lastHistoryIdx], lower: points[lastHistoryIdx].value, upper: points[lastHistoryIdx].value }, ...forecast] : [];
+  const bandPath = hasBand
+    ? [
+        ...bandPts.map((p, i) => `${i === 0 ? "M" : "L"} ${xScale(p.year)} ${yScale(p.upper)}`),
+        ...[...bandPts].reverse().map((p) => `L ${xScale(p.year)} ${yScale(p.lower)}`),
+        "Z",
+      ].join(" ")
+    : null;
   const gridValues = [minVal + (maxVal - minVal) * 0.2, (minVal + maxVal) / 2, maxVal - (maxVal - minVal) * 0.2];
   const hovered = hoverIdx != null ? points[hoverIdx] : null;
 
@@ -77,6 +91,12 @@ export default function ForecastLineChart({ title, color, unit = "", history = [
             </svg>
             Projected
           </span>
+          {hasBand && (
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block w-2.5 h-2 rounded-sm" style={{ background: color, opacity: 0.18 }} />
+              {confidenceLevel ? `${Math.round(confidenceLevel * 100)}% interval` : "Interval"}
+            </span>
+          )}
         </span>
       </div>
 
@@ -97,6 +117,8 @@ export default function ForecastLineChart({ title, color, unit = "", history = [
             </text>
           </g>
         ))}
+
+        {hasBand && <path d={bandPath} fill={color} opacity="0.18" stroke="none" />}
 
         <path d={toPath(historyPts)} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         <path

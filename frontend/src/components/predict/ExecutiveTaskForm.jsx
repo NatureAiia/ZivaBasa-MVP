@@ -44,7 +44,7 @@ function FieldControl({ name, meta, value, onChange }) {
   );
 }
 
-export default function ExecutiveTaskForm({ task, schema, initialValues, onPredict, onExplain, predicting, explaining, canExplain, loading }) {
+export default function ExecutiveTaskForm({ task, schema, initialValues, onPredict, onExplain, predicting, explaining, canExplain, loading, appliedValues }) {
   const [values, setValues] = useState({});
 
   useEffect(() => {
@@ -52,11 +52,22 @@ export default function ExecutiveTaskForm({ task, schema, initialValues, onPredi
     const next = {};
     schema.feature_names.forEach((name, i) => {
       const meta = metaFor(name, task);
-      next[name] = meta.derived ? undefined : (initialValues?.[i] ?? meta.min ?? 0);
+      // meta.default (e.g. the auto-joined macro CPI figures) wins over meta.min when present —
+      // meta.min is a slider bound, not necessarily a sensible starting value.
+      next[name] = meta.derived ? undefined : (initialValues?.[i] ?? meta.default ?? meta.min ?? 0);
     });
     setValues(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schema]);
+
+  // Merges document-auto-fill results (DocumentAutoFill.jsx) into the form after the person
+  // reviews and clicks "Apply" — a new object reference each time (AdvancedPredict passes a
+  // fresh extraction result), never touches fields the extraction didn't find.
+  useEffect(() => {
+    if (!appliedValues) return;
+    setValues((prev) => ({ ...prev, ...appliedValues }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appliedValues]);
 
   if (loading || !schema) {
     return (
@@ -95,8 +106,13 @@ export default function ExecutiveTaskForm({ task, schema, initialValues, onPredi
                     <label className="flex items-center gap-1.5 text-xs font-medium text-ink" title={meta.tooltip}>
                       {meta.label}
                       {meta.tooltip && <Info size={11} className="text-ink-faint" />}
+                      {meta.optional && (
+                        <span className="text-[10px] font-normal text-ink-faint bg-surface2 border border-border rounded-full px-1.5 py-0.5">
+                          optional — auto-filled
+                        </span>
+                      )}
                     </label>
-                    <FieldControl name={name} meta={meta} value={values[name] ?? meta.min ?? 0} onChange={setField} />
+                    <FieldControl name={name} meta={meta} value={values[name] ?? meta.default ?? meta.min ?? 0} onChange={setField} />
                   </div>
                 );
               })}

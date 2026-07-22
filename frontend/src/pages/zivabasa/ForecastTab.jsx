@@ -115,7 +115,13 @@ export default function ForecastTab() {
                         color={meta.color}
                         unit={meta.unit}
                         history={result.history.map((p) => ({ year: p.year, value: p.values[metric] }))}
-                        forecast={result.forecast.map((p) => ({ year: p.year, value: p.values[metric] }))}
+                        forecast={result.forecast.map((p) => ({
+                          year: p.year,
+                          value: p.values[metric],
+                          lower: p.values[`${metric}_lower`],
+                          upper: p.values[`${metric}_upper`],
+                        }))}
+                        confidenceLevel={result.confidence_level}
                       />
                     </Card>
                   );
@@ -128,6 +134,14 @@ export default function ForecastTab() {
               industry-level averages), not real Zimbabwean banking-sector workforce data. Read
               trend direction as a validation of the forecasting pipeline, not a real-world
               prediction — same proxy-data caveat as the rest of this MVP phase.
+              {result && (
+                <>
+                  {" "}
+                  The shaded band around each projected year is a {Math.round((result.confidence_level ?? 0.9) * 100)}%
+                  interval ({result.uncertainty_method}), not a guarantee — it widens the further out the forecast
+                  reaches, which is expected: uncertainty compounds with every additional year projected.
+                </>
+              )}
             </Card>
           </motion.div>
         </motion.div>

@@ -7,9 +7,10 @@ import ClarityRing from "../../components/common/ClarityRing";
 
 const TABS = [
   { to: "dashboard", label: "Dashboard" },
+  { to: "my-view", label: "My View" },
+  { to: "national-view", label: "National View" },
   { to: "chat", label: "Chat" },
   { to: "predict", label: "Predict" },
-  { to: "forecast", label: "Forecast" },
   { to: "my-organization", label: "My Organization" },
   { to: "history", label: "History" },
 ];
@@ -63,14 +64,16 @@ export default function ZivaBasaLayout() {
             ))}
           </nav>
 
-          <button
-            onClick={() => setMobileNavOpen((o) => !o)}
-            className="lg:hidden shrink-0 w-9 h-9 rounded-lg bg-gold/15 border border-gold/30 text-gold flex items-center justify-center hover:bg-gold/25 transition-colors"
-            aria-label="Toggle section navigation"
-            aria-expanded={mobileNavOpen}
-          >
-            {mobileNavOpen ? <X size={18} /> : <Menu size={18} />}
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setMobileNavOpen((o) => !o)}
+              className="lg:hidden shrink-0 w-9 h-9 rounded-lg bg-gold/15 border border-gold/30 text-gold flex items-center justify-center hover:bg-gold/25 transition-colors"
+              aria-label="Toggle section navigation"
+              aria-expanded={mobileNavOpen}
+            >
+              {mobileNavOpen ? <X size={18} /> : <Menu size={18} />}
+            </button>
+          </div>
         </div>
 
         <AnimatePresence>

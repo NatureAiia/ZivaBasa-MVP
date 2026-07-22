@@ -141,6 +141,51 @@ export const FIELD_META = {
     min: 0, max: 100, step: 1,
     group: "Core",
   },
+  salary_change_percent: {
+    // NOTE: this field's raw values are already percentage-POINTS (real range in the training
+    // data: -38.37 to +36.92, mean ~0.11), not a 0-1 fraction — deliberately type:"slider" with
+    // unit:"%" (verbatim suffix), not type:"percent" (which multiplies the value by 100 and
+    // would badly misscale this field, since it assumes a 0-1 fraction input).
+    label: "Nominal Salary Change",
+    tooltip: "Year-over-year change in this role's salary, before adjusting for inflation.",
+    type: "slider",
+    min: -50, max: 50, step: 0.5, unit: "%",
+    default: 0, // 0% (no change) is the neutral starting point, not the slider's -50% min bound
+    group: "Core",
+  },
+  // cpi_general_index / food_inflation_rate: auto-joined server-side by year from Zimbabwe's
+  // real CPI/food-inflation data (features.py's add_macro_context_features) — the whole point
+  // of that join is that a user shouldn't have to know Zimbabwe's current CPI, so these are
+  // pre-filled with the latest real figures (2025, the source panel's most recent year) and
+  // marked optional rather than blank required fields. `default` (not `min`) is what
+  // ExecutiveTaskForm.jsx initializes from for any field that has one.
+  cpi_general_index: {
+    label: "Zimbabwe CPI (General Index)",
+    tooltip: "Consumer Price Index, 2015=100. Auto-filled with the latest known figure — override only if you have a more current number.",
+    type: "number",
+    min: 50, max: 50000, step: 10,
+    default: 38416.76, // 2025 (latest year in the source panel)
+    optional: true,
+    group: "Economic Context",
+  },
+  food_inflation_rate: {
+    // Also already percentage-POINTS in the raw data (historical range roughly -10 to +729
+    // during Zimbabwe's hyperinflation years) — same type:"slider"+unit:"%" reasoning as
+    // salary_change_percent above, not type:"percent".
+    label: "Zimbabwe Food Price Inflation",
+    tooltip: "Year-over-year food price inflation rate. Auto-filled with the latest known figure — override only if you have a more current number.",
+    type: "slider",
+    min: -20, max: 800, step: 1, unit: "%",
+    default: 57.19, // 2025 (latest year in the source panel)
+    optional: true,
+    group: "Economic Context",
+  },
+  salary_change_real: {
+    label: "Real (Inflation-Adjusted) Salary Change",
+    derived: true,
+    compute: (v) => (v.salary_change_percent ?? 0) - (v.food_inflation_rate ?? 0),
+    explain: "Auto-calculated: nominal salary change minus food price inflation — a nominal pay rise can still be a real pay cut in a high-inflation economy.",
+  },
 
   // ---- Skill Match / Redeployment ------------------------------------------
   seniority_years: {
@@ -184,6 +229,119 @@ export const FIELD_META = {
     compute: (v) => (v.skill_overlap_count ?? 0) * (v.recent_training_hours ?? 0),
     explain: "Auto-calculated: existing skill overlap weighted by recent training investment — no separate input needed.",
   },
+
+  // ---- Human Capital / Turnover (real HRDataset_v14 HR data, not a proxy) -------------------
+  // Ranges/means below are the ACTUAL min/mean/std/max from data/raw/human_capital.csv (3,310
+  // real employee rows) — unlike the other tasks' comment-header disclaimer, these were
+  // verified against the training data at build time, not estimated.
+  PayRate: {
+    label: "Hourly Pay Rate",
+    tooltip: "Employee's hourly pay rate, in USD.",
+    type: "currency",
+    min: 14, max: 80, step: 1,
+    group: "Compensation",
+  },
+  PerfScoreID: {
+    label: "Performance Score",
+    tooltip: "Most recent formal performance review rating.",
+    type: "select",
+    group: "Performance",
+    options: [
+      { value: 1, label: "1 — PIP" },
+      { value: 2, label: "2 — Needs Improvement" },
+      { value: 3, label: "3 — Fully Meets" },
+      { value: 4, label: "4 — Exceeds" },
+    ],
+  },
+  EngagementSurvey: {
+    label: "Engagement Survey Score",
+    tooltip: "Most recent employee engagement survey score (1 = low, 5 = high).",
+    type: "slider",
+    min: 1, max: 5, step: 0.1,
+    group: "Performance",
+  },
+  EmpSatisfaction: {
+    label: "Employee Satisfaction",
+    tooltip: "Self-reported satisfaction rating (1 = low, 5 = high).",
+    type: "select",
+    group: "Performance",
+    options: [
+      { value: 1, label: "1 — Low" },
+      { value: 2, label: "2" },
+      { value: 3, label: "3" },
+      { value: 4, label: "4" },
+      { value: 5, label: "5 — High" },
+    ],
+  },
+  SpecialProjectsCount: {
+    label: "Special Projects Count",
+    tooltip: "Number of special projects the employee has taken on. Closest available signal to " +
+      "training investment — the real dataset has no training-hours field (see data/schema/human_capital_dictionary.md).",
+    type: "slider",
+    min: 0, max: 8, step: 1,
+    group: "Performance",
+  },
+  DaysLateLast30: {
+    label: "Days Late (Last 30 Days)",
+    tooltip: "Attendance lateness in the last 30 days. Note: this field is constant at 0 across " +
+      "every row in the current real training data — included for schema completeness, not because it varies today.",
+    type: "slider",
+    min: 0, max: 5, step: 1,
+    group: "Performance",
+  },
+  tenure_years: {
+    label: "Tenure",
+    tooltip: "Years since hire date (real range in training data: ~1.9–13.1 years).",
+    type: "slider",
+    min: 0, max: 15, step: 0.5, unit: "yrs",
+    group: "Tenure & Structure",
+  },
+  headcount_by_department: {
+    label: "Department Headcount",
+    tooltip: "Total employees in this person's department (real range: 24–2,231 across the 6 departments in the training data).",
+    type: "slider",
+    min: 0, max: 2300, step: 10,
+    group: "Tenure & Structure",
+  },
+  turnover_rate_oof: {
+    label: "Department Historical Turnover Rate",
+    tooltip: "This department's historical turnover rate (0% = no one has left, 100% = everyone has left).",
+    type: "percent",
+    min: 0, max: 1, step: 0.01,
+    group: "Tenure & Structure",
+  },
+  performance_readiness_index: {
+    label: "Performance Readiness Index",
+    derived: true,
+    // Matches features.py's add_ratio_index_features exactly: 0.4*z(PerfScoreID) +
+    // 0.3*z(EngagementSurvey) + 0.3*z(EmpSatisfaction), z-scored against the real training
+    // data's mean/std (verified from data/raw/human_capital.csv, not estimated):
+    //   PerfScoreID:       mean=3.006, std=0.543
+    //   EngagementSurvey:  mean=3.378, std=1.279
+    //   EmpSatisfaction:   mean=3.891, std=0.832
+    compute: (v) => {
+      const z = (x, mean, std) => (x - mean) / std;
+      return (
+        0.4 * z(v.PerfScoreID ?? 3, 3.006, 0.543) +
+        0.3 * z(v.EngagementSurvey ?? 3.4, 3.378, 1.279) +
+        0.3 * z(v.EmpSatisfaction ?? 3.9, 3.891, 0.832)
+      );
+    },
+    explain: "Auto-calculated: weighted, standardized blend of performance score, engagement, and satisfaction — no separate input needed.",
+  },
+  special_projects_x_performance_readiness: {
+    label: "Special Projects × Readiness Interaction",
+    derived: true,
+    compute: (v) => {
+      const z = (x, mean, std) => (x - mean) / std;
+      const readiness =
+        0.4 * z(v.PerfScoreID ?? 3, 3.006, 0.543) +
+        0.3 * z(v.EngagementSurvey ?? 3.4, 3.378, 1.279) +
+        0.3 * z(v.EmpSatisfaction ?? 3.9, 3.891, 0.832);
+      return (v.SpecialProjectsCount ?? 0) * readiness;
+    },
+    explain: "Auto-calculated: special-projects involvement weighted by performance readiness — no separate input needed.",
+  },
 };
 
 // performance_rating and avg_salary_usd are shared raw column names across multiple tasks
@@ -220,8 +378,9 @@ export const FIELD_META_OVERRIDES = {
 export const GROUP_ORDER = {
   employment: ["Role Economics", "AI Exposure", "Skill Requirements"],
   skills: ["Demographics", "Engagement", "Development"],
-  productivity: ["Core"],
+  productivity: ["Core", "Economic Context"],
   skill_match: ["Staff Profile", "Redeployment Match"],
+  human_capital: ["Compensation", "Performance", "Tenure & Structure"],
 };
 
 export function metaFor(name, task) {

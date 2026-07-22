@@ -13,9 +13,23 @@ import { metaFor } from "../../lib/fieldMeta";
 export default function ShapLedger({ result, task }) {
   if (!result) return null;
   const maxAbs = Math.max(...result.top_contributions.map((c) => Math.abs(c.shap_value)), 1e-9);
+  const hasLime = result.lime_top_contributions != null && result.agreement_score != null;
+  const agreedCount = hasLime ? Math.round(result.agreement_score * result.top_contributions.length) : 0;
 
   return (
     <div className="flex flex-col gap-4">
+      {hasLime && (
+        <div className="flex items-center gap-2 text-[11px] bg-surface2 border border-border rounded-lg px-3 py-2">
+          <span
+            className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+              result.agreement_score >= 0.6 ? "bg-teal" : result.agreement_score >= 0.3 ? "bg-gold" : "bg-red"
+            }`}
+          />
+          <span className="text-ink-muted">
+            SHAP &amp; LIME agree on <span className="text-ink font-medium">{agreedCount}/{result.top_contributions.length}</span> top drivers
+          </span>
+        </div>
+      )}
       <motion.div variants={staggerContainer} initial="hidden" animate="show" className="flex flex-col gap-2.5">
         {result.top_contributions.map((c) => {
           const pct = (Math.abs(c.shap_value) / maxAbs) * 50;

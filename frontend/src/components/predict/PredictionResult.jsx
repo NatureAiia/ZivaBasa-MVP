@@ -3,12 +3,14 @@ import { AlertTriangle } from "lucide-react";
 import ClarityRing from "../common/ClarityRing";
 import Badge from "../common/Badge";
 import { formatPercent, formatRaw, isOverconfident } from "../../lib/format";
+import { TASK_POSITIVE_IS_RISK } from "../../lib/api";
 
 export default function PredictionResult({ result }) {
   if (!result) return null;
 
   if (result.task_type === "classification") {
-    const isRisk = result.label === 1;
+    const positiveIsRisk = TASK_POSITIVE_IS_RISK[result.task] ?? true;
+    const isRisk = positiveIsRisk ? result.label === 1 : result.label === 0;
     const overconfident = isOverconfident(result.probability);
     return (
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-4">
@@ -16,7 +18,7 @@ export default function PredictionResult({ result }) {
           <ClarityRing mode="confidence" value={result.probability} size={64} color={isRisk ? "red" : "teal"} />
           <div>
             <div className="font-mono text-2xl font-semibold text-ink">{formatPercent(result.probability)}</div>
-            <Badge tone={isRisk ? "red" : "teal"}>{isRisk ? "Positive" : "Negative"}</Badge>
+            <Badge tone={isRisk ? "red" : "teal"}>{isRisk ? "Flagged" : "Clear"}</Badge>
           </div>
         </div>
         <p className="text-xs text-ink-muted">Predicted probability for task "{result.task}"</p>

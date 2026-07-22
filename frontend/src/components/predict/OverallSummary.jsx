@@ -4,25 +4,34 @@ import { FileDown, RotateCcw } from "lucide-react";
 import Card from "../common/Card";
 import Button from "../common/Button";
 import { staggerContainer, fadeUpItem } from "../../lib/motion";
-import { TASKS, TASK_LABELS } from "../../lib/api";
+import { TASKS, TASK_LABELS, TASK_POSITIVE_IS_RISK } from "../../lib/api";
 import { formatPercent, formatRaw } from "../../lib/format";
 import { downloadBlob } from "../../lib/report";
 import { metaFor } from "../../lib/fieldMeta";
 import { api } from "../../lib/api";
 
+// Per-task "is this classification result flagged?" check, respecting skill_match's inverted
+// polarity (label === 1 there is a GOOD match, not a risk) via TASK_POSITIVE_IS_RISK.
+function isFlagged(predict) {
+  if (!predict || predict.task_type !== "classification") return false;
+  const positiveIsRisk = TASK_POSITIVE_IS_RISK[predict.task] ?? true;
+  return positiveIsRisk ? predict.label === 1 : predict.label === 0;
+}
+
+const FLAG_PHRASES = {
+  employment: "elevated automation-risk signal on Employment",
+  skills: "elevated attrition-risk signal on Skills",
+  skill_match: "a poor redeployment match on Skill Matching",
+  human_capital: "elevated turnover-risk signal on Human Capital",
+};
+
 export default function OverallSummary({ results, onRestart }) {
   const [downloading, setDownloading] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
-  const emp = results.employment.predict;
-  const skl = results.skills.predict;
-  const empFlag = emp?.task_type === "classification" && emp.label === 1;
-  const sklFlag = skl?.task_type === "classification" && skl.label === 1;
-  const flags = [];
-  if (empFlag) flags.push("elevated automation-risk signal on Employment");
-  if (sklFlag) flags.push("elevated attrition-risk signal on Skills");
+  const flags = TASKS.filter((t) => isFlagged(results[t].predict)).map((t) => FLAG_PHRASES[t] || t);
   const flagSentence = flags.length
-    ? `This input combination triggers ${flags.join(" and ")}.`
-    : "This input combination does not trigger either classification task's risk flag.";
+    ? `This input combination triggers ${flags.join(", ")}.`
+    : "This input combination does not trigger any classification task's risk flag.";
 
   const handleDownload = async () => {
     setDownloading(true);
@@ -63,13 +72,14 @@ export default function OverallSummary({ results, onRestart }) {
           }
           const isClass = r.predict.task_type === "classification";
           const value = isClass ? formatPercent(r.predict.probability) : formatRaw(r.predict.raw_output);
-          const tone = isClass ? (r.predict.label === 1 ? "text-red" : "text-teal") : "text-gold";
+          const flagged = isFlagged(r.predict);
+          const tone = isClass ? (flagged ? "text-red" : "text-teal") : "text-gold";
           return (
             <Card key={task}>
               <h3 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold mb-2">{TASK_LABELS[task]}</h3>
               <div className={`font-mono text-xl font-semibold mb-1 ${tone}`}>{value}</div>
               <div className="text-[11px] text-ink-muted mb-3">
-                {isClass ? (r.predict.label === 1 ? "Positive" : "Negative") : "standardized regression output"}
+                {isClass ? (flagged ? "Flagged" : "Clear") : "standardized regression output"}
               </div>
               {r.explain && (
                 <div className="text-[11px] text-ink-muted space-y-1">
