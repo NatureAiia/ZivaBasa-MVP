@@ -11,6 +11,26 @@ import { getBatchResult } from "../../lib/batchStore";
 import { metaFor } from "../../lib/fieldMeta";
 import { api } from "../../lib/api";
 import { formatPercent } from "../../lib/format";
+import { useLowBandwidth } from "../../lib/lowBandwidthStore";
+
+// Text-first fallback for low-bandwidth mode — same data as ShapLedger, no SVG-equivalent
+// animated bars, just a plain list. Cheaper to render and doesn't rely on framer-motion.
+function PlainShapList({ result, task }) {
+  return (
+    <ul className="flex flex-col gap-1 text-xs">
+      {result.top_contributions.map((c) => {
+        const label = metaFor(c.feature, task).label || c.feature;
+        const isPos = c.shap_value >= 0;
+        return (
+          <li key={c.feature} className="flex items-center justify-between gap-2">
+            <span className="text-ink-muted truncate">{label}</span>
+            <span className={isPos ? "text-teal" : "text-red"}>{isPos ? "Pushed up" : "Pushed down"}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
 const PAGE_SIZE = 10;
 const TASK = "skills";
@@ -32,6 +52,7 @@ const REPLACEMENT_COST_MONTHS = 9;
   flow, no new backend endpoint for the inbox itself (only /uplift/{task} is new).
 */
 export default function ManagerActionInbox() {
+  const { lowBandwidth } = useLowBandwidth();
   const [batch, setBatch] = useState(null);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [expanded, setExpanded] = useState(null);
@@ -173,9 +194,9 @@ export default function ManagerActionInbox() {
                           className={`text-ink-faint transition-transform ${expanded === row._name ? "rotate-180" : ""}`}
                         />
                       </button>
-                      <AnimatePresence>
-                        {expanded === row._name && (
-                          <motion.div variants={fadeScale} initial="hidden" animate="show" exit="exit" className="px-5 pb-4">
+                      {(() => {
+                        const body = expanded === row._name && (
+                          <div className="px-5 pb-4">
                             <div className="bg-surface2/60 rounded-xl p-4 flex flex-col gap-4">
                               {loadingRow === row._name ? (
                                 <p className="text-xs text-ink-faint">Computing explanation and lever estimate…</p>
@@ -184,7 +205,11 @@ export default function ManagerActionInbox() {
                               ) : explain ? (
                                 <>
                                   <p className="text-sm text-ink font-medium leading-relaxed">{riskSentence(explain)}</p>
-                                  <ShapLedger result={explain} task={TASK} />
+                                  {lowBandwidth ? (
+                                    <PlainShapList result={explain} task={TASK} />
+                                  ) : (
+                                    <ShapLedger result={explain} task={TASK} />
+                                  )}
 
                                   <div className="border-t border-border pt-3">
                                     <h3 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold mb-2">
@@ -205,9 +230,19 @@ export default function ManagerActionInbox() {
                                 </>
                               ) : null}
                             </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
+                          </div>
+                        );
+                        if (lowBandwidth) return body || null;
+                        return (
+                          <AnimatePresence>
+                            {expanded === row._name && (
+                              <motion.div variants={fadeScale} initial="hidden" animate="show" exit="exit" className="contents">
+                                {body}
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        );
+                      })()}
                     </div>
                   );
                 })}

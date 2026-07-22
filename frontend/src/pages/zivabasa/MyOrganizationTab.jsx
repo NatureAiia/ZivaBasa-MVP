@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Trash2, Sparkles, CheckCircle2, XCircle, Clock, ArrowRight, Network, FileText, X, File as FileIcon, Image as ImageIcon, Loader2 } from "lucide-react";
+import { Plus, Trash2, Sparkles, CheckCircle2, XCircle, Clock, ArrowRight, Network, FileText, X, File as FileIcon, Image as ImageIcon, Loader2, Flame } from "lucide-react";
 import Card from "../../components/common/Card";
 import Badge from "../../components/common/Badge";
 import EmptyState from "../../components/common/EmptyState";
@@ -100,6 +100,7 @@ export default function MyOrganizationTab() {
   const [selectedId, setSelectedId] = useState(null);
   const [referenceFile, setReferenceFile] = useState(null);
   const [illustration, setIllustration] = useState(null); // { status, mimeType, imageBase64, error }
+  const [showHeatmap, setShowHeatmap] = useState(false);
 
   useEffect(() => {
     getOrgNodes().then(setNodes);
@@ -126,6 +127,20 @@ export default function MyOrganizationTab() {
   };
 
   const gap = selected?.targetRole ? matchScore(selected.currentSkills, selected.targetSkills) : null;
+
+  // Org chart heatmap (demo-readiness Phase B) — skills-gap ratio per node with a target role
+  // set, 0 (no gap) to 1 (no overlap at all). Nodes without a target role get `undefined`
+  // (rendered as a dashed, untinted node — no gap to show for a role with no destination).
+  const heatmapValues = useMemo(() => {
+    const values = {};
+    nodes.forEach((n) => {
+      if (!n.targetRole) return;
+      const g = matchScore(n.currentSkills, n.targetSkills);
+      const total = g.skillOverlapCount + g.missingSkillCount;
+      values[n.id] = total > 0 ? g.missingSkillCount / total : 0;
+    });
+    return values;
+  }, [nodes]);
 
   const recommend = async () => {
     if (!selected || !gap) return;
@@ -242,21 +257,47 @@ export default function MyOrganizationTab() {
             <Card animated={false} className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <div className="overflow-x-auto flex-1">
-                  <OrgChart nodes={nodes} onSelect={setSelectedId} selectedId={selectedId} />
+                  <OrgChart
+                    nodes={nodes}
+                    onSelect={setSelectedId}
+                    selectedId={selectedId}
+                    showHeatmap={showHeatmap}
+                    heatmapValues={heatmapValues}
+                  />
                 </div>
-                <button
-                  onClick={illustrateOrgChart}
-                  disabled={illustration?.status === "generating"}
-                  className="flex items-center gap-1.5 text-[11px] font-medium text-gold hover:brightness-110 disabled:opacity-50 shrink-0 self-start"
-                >
-                  {illustration?.status === "generating" ? (
-                    <Loader2 size={12} className="animate-spin" />
-                  ) : (
-                    <ImageIcon size={12} />
-                  )}
-                  Illustrate with Gemini
-                </button>
+                <div className="flex flex-col items-end gap-2 shrink-0 self-start">
+                  <button
+                    onClick={() => setShowHeatmap((v) => !v)}
+                    className={`flex items-center gap-1.5 text-[11px] font-medium rounded-lg px-2.5 py-1.5 border transition-colors ${
+                      showHeatmap
+                        ? "bg-red/10 border-red/30 text-red"
+                        : "bg-surface2 border-border text-ink-muted hover:text-ink"
+                    }`}
+                  >
+                    <Flame size={12} /> Skills-gap heatmap
+                  </button>
+                  <button
+                    onClick={illustrateOrgChart}
+                    disabled={illustration?.status === "generating"}
+                    className="flex items-center gap-1.5 text-[11px] font-medium text-gold hover:brightness-110 disabled:opacity-50"
+                  >
+                    {illustration?.status === "generating" ? (
+                      <Loader2 size={12} className="animate-spin" />
+                    ) : (
+                      <ImageIcon size={12} />
+                    )}
+                    Illustrate with Gemini
+                  </button>
+                </div>
               </div>
+              {showHeatmap && (
+                <p className="text-[11px] text-ink-faint leading-relaxed">
+                  Color shows each role's skills-gap ratio toward its target role (teal = fully
+                  covered, red = no overlap) — computed client-side from the skills you entered
+                  for each role, not a model prediction. Dashed nodes have no target role set, so
+                  there's no gap to show.
+                </p>
+              )}
               {illustration?.status === "error" && (
                 <p className="text-[11px] text-red">{illustration.error}</p>
               )}

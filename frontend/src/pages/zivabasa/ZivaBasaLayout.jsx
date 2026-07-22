@@ -4,10 +4,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X } from "lucide-react";
 import clsx from "clsx";
 import ClarityRing from "../../components/common/ClarityRing";
+import LowBandwidthToggle from "../../components/layout/LowBandwidthToggle";
 
 const TABS = [
   { to: "dashboard", label: "Dashboard" },
   { to: "action-inbox", label: "Action Inbox" },
+  { to: "my-view", label: "My View" },
   { to: "chat", label: "Chat" },
   { to: "predict", label: "Predict" },
   { to: "forecast", label: "Forecast" },
@@ -64,14 +66,17 @@ export default function ZivaBasaLayout() {
             ))}
           </nav>
 
-          <button
-            onClick={() => setMobileNavOpen((o) => !o)}
-            className="lg:hidden shrink-0 w-9 h-9 rounded-lg bg-gold/15 border border-gold/30 text-gold flex items-center justify-center hover:bg-gold/25 transition-colors"
-            aria-label="Toggle section navigation"
-            aria-expanded={mobileNavOpen}
-          >
-            {mobileNavOpen ? <X size={18} /> : <Menu size={18} />}
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <LowBandwidthToggle />
+            <button
+              onClick={() => setMobileNavOpen((o) => !o)}
+              className="lg:hidden shrink-0 w-9 h-9 rounded-lg bg-gold/15 border border-gold/30 text-gold flex items-center justify-center hover:bg-gold/25 transition-colors"
+              aria-label="Toggle section navigation"
+              aria-expanded={mobileNavOpen}
+            >
+              {mobileNavOpen ? <X size={18} /> : <Menu size={18} />}
+            </button>
+          </div>
         </div>
 
         <AnimatePresence>
