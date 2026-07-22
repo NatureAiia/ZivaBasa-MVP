@@ -82,8 +82,8 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ features }),
     }),
-  explain: (task, features, topK = 8) =>
-    request(`/explain/${task}?top_k=${topK}`, {
+  explain: (task, features, topK = 8, includeLime = false) =>
+    request(`/explain/${task}?top_k=${topK}&include_lime=${includeLime}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ features }),

@@ -40,7 +40,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.schemas import (
     PredictRequest, PredictResponse, SchemaResponse,
-    ExplainResponse, FeatureContribution, HealthResponse,
+    ExplainResponse, FeatureContribution, LimeContribution, HealthResponse,
     ChatRequest, ChatResponse, PredictReportRequest, ChatReportRequest,
     ImageGenerateRequest, ImageGenerateResponse,
     ForecastSchemaResponse, ForecastResponse, ForecastPoint,
@@ -55,6 +55,7 @@ from api import agent_graph
 from api import llm_gateway
 from api import reports as reports_module
 from api import org_extract as org_extract_module
+from api import field_extract as field_extract_module
 from api import image_gen as image_gen_module
 from api import redact as redact_module
 from src import evaluate
@@ -224,7 +225,10 @@ def predict(task: str, request: PredictRequest, _role: str = Depends(auth.requir
 
 
 @app.post("/explain/{task}", response_model=ExplainResponse)
-def explain(task: str, request: PredictRequest, top_k: int = 10, _role: str = Depends(auth.require_role("viewer"))):
+def explain(
+    task: str, request: PredictRequest, top_k: int = 10, include_lime: bool = False,
+    _role: str = Depends(auth.require_role("viewer")),
+):
     artifacts = _get_task_or_404(task)
 
     if len(request.features) != artifacts.input_dim:
@@ -258,13 +262,36 @@ def explain(task: str, request: PredictRequest, top_k: int = 10, _role: str = De
         for name, val, sv in zip(artifacts.feature_names, request.features, shap_values)
     ]
     contributions.sort(key=lambda c: abs(c.shap_value), reverse=True)
+    top_contributions = contributions[:top_k]
+
+    lime_contributions = None
+    agreement_score = None
+    if include_lime:
+        try:
+            lime_pairs, _ = evaluate.compute_lime_values(
+                artifacts.keras_model, artifacts.shap_background, X,
+                artifacts.feature_names, artifacts.task_type,
+            )
+            lime_contributions = [
+                LimeContribution(feature=name, weight=float(w)) for name, w in lime_pairs[:top_k]
+            ]
+            agreement_score = evaluate.shap_lime_agreement(
+                [c.feature for c in top_contributions],
+                [c.feature for c in lime_contributions],
+            )
+        except Exception as e:
+            # LIME is additive/optional — a failure here shouldn't take down an otherwise-working
+            # SHAP explanation. Logged, not silently swallowed.
+            logger.warning("LIME explanation failed for task '%s': %s", task, e)
 
     return ExplainResponse(
         task=task,
         base_value=base_value,
         prediction=prediction,
-        top_contributions=contributions[:top_k],
+        top_contributions=top_contributions,
         explainer_used=explainer_name,
+        lime_top_contributions=lime_contributions,
+        agreement_score=agreement_score,
     )
 
 
@@ -490,6 +517,37 @@ async def org_extract(file: UploadFile = File(...), provider: str = None, _role:
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Org chart extraction failed: {e}")
     return result
+
+
+@app.get("/extract/task-fields/providers")
+async def field_extract_providers(_role: str = Depends(auth.require_role("viewer"))):
+    return {"providers": field_extract_module.available_vision_providers()}
+
+
+@app.post("/extract/task-fields/{task}")
+async def field_extract(
+    task: str, file: UploadFile = File(...), provider: str = None,
+    _role: str = Depends(auth.require_role("viewer")),
+):
+    """Document upload -> auto-fill review payload for a task's prediction form (see
+    field_extract.py's docstring — human-in-the-loop, never auto-submits a prediction)."""
+    artifacts = _get_task_or_404(task)
+    media_type = _ORG_EXTRACT_MEDIA_TYPES.get(file.content_type)
+    if media_type is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unsupported file type '{file.content_type}'. Supported: PNG, JPEG, WEBP images, or PDF.",
+        )
+    file_bytes = await file.read()
+    try:
+        result = await field_extract_module.extract_task_fields(
+            file_bytes, media_type, artifacts.feature_names, provider
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Document field extraction failed: {e}")
+    return {"task": task, **result}
 
 
 @app.get("/images/providers")

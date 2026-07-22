@@ -67,7 +67,7 @@ export default function RosterTab() {
         return;
       }
       const featureValues = schema.feature_names.map((n) => row[n] ?? 0);
-      const result = await api.explain("skill_match", featureValues, 8);
+      const result = await api.explain("skill_match", featureValues, 8, true);
       setExplainCache((c) => ({ ...c, [id]: result }));
     } catch (e) {
       setExplainCache((c) => ({ ...c, [id]: { error: e.message } }));

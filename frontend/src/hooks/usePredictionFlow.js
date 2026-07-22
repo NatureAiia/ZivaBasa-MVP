@@ -86,7 +86,7 @@ export function usePredictionFlow() {
     setExplaining(true);
     setError(null);
     try {
-      const result = await api.explain(task, featureValues, 8);
+      const result = await api.explain(task, featureValues, 8, true);
       const byName = Object.fromEntries(featureNames.map((n, i) => [n, featureValues[i]]));
       setResults((r) => ({
         ...r,

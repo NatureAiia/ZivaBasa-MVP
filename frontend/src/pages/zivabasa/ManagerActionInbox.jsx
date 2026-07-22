@@ -102,7 +102,7 @@ export default function ManagerActionInbox() {
       }
       const featureValues = schema.feature_names.map((n) => row[n] ?? 0);
       const [explainResult, upliftResult] = await Promise.all([
-        api.explain(TASK, featureValues, 8),
+        api.explain(TASK, featureValues, 8, true),
         api.uplift(TASK, featureValues).catch((e) => ({ error: e.message })),
       ]);
       setExplainCache((c) => ({ ...c, [id]: explainResult }));
