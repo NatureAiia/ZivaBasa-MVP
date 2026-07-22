@@ -8,6 +8,7 @@ import PredictionResult from "../../components/predict/PredictionResult";
 import ShapLedger from "../../components/predict/ShapLedger";
 import OverallSummary from "../../components/predict/OverallSummary";
 import PipelineTrace from "../../components/predict/PipelineTrace";
+import DocumentAutoFill from "../../components/predict/DocumentAutoFill";
 import { usePredictionFlow } from "../../hooks/usePredictionFlow";
 import { TASKS, TASK_LABELS, TASK_SHORT_LABELS } from "../../lib/api";
 import { fadeScale } from "../../lib/motion";
@@ -28,6 +29,9 @@ export default function AdvancedPredict() {
   // UI trust signal (mirrors NeuroWorks's dependency-free TraceBlock), not persisted, not fed
   // back into usePredictionFlow's own state/tests.
   const [trace, setTrace] = useState({});
+  // Latest document-auto-fill result to merge into the form — keyed by task so switching tasks
+  // doesn't leak one task's extracted values into another's form.
+  const [appliedValues, setAppliedValues] = useState({});
 
   useEffect(() => {
     if (activeTask !== "summary" && !schemas[activeTask]) loadSchema(activeTask);
@@ -152,11 +156,21 @@ export default function AdvancedPredict() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             <Card animated={false}>
               <h2 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold mb-4">Assessment Inputs</h2>
+              {schema && (
+                <div className="mb-4">
+                  <DocumentAutoFill
+                    task={activeTask}
+                    feature_names={schema.feature_names}
+                    onApply={(features) => setAppliedValues({ [activeTask]: features })}
+                  />
+                </div>
+              )}
               <ExecutiveTaskForm
                 task={activeTask}
                 schema={schema}
                 loading={loadingSchema || !schema}
                 initialValues={schema ? carriedFeatures(activeTask, schema.feature_names) : []}
+                appliedValues={appliedValues[activeTask]}
                 onPredict={handlePredict}
                 onExplain={handleExplain}
                 predicting={predicting}

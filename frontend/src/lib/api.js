@@ -125,6 +125,7 @@ export const api = {
       body: JSON.stringify({ messages, user_id: userId }),
     }),
   chatModels: () => request("/chat/models"),
+  chatBudget: () => request("/chat/budget"),
   orgExtractProviders: () => request("/organization/extract/providers"),
   extractOrgChart: async (file, provider = null) => {
     const form = new FormData();

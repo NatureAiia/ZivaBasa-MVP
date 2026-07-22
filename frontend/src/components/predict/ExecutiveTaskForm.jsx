@@ -44,7 +44,7 @@ function FieldControl({ name, meta, value, onChange }) {
   );
 }
 
-export default function ExecutiveTaskForm({ task, schema, initialValues, onPredict, onExplain, predicting, explaining, canExplain, loading }) {
+export default function ExecutiveTaskForm({ task, schema, initialValues, onPredict, onExplain, predicting, explaining, canExplain, loading, appliedValues }) {
   const [values, setValues] = useState({});
 
   useEffect(() => {
@@ -59,6 +59,15 @@ export default function ExecutiveTaskForm({ task, schema, initialValues, onPredi
     setValues(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schema]);
+
+  // Merges document-auto-fill results (DocumentAutoFill.jsx) into the form after the person
+  // reviews and clicks "Apply" — a new object reference each time (AdvancedPredict passes a
+  // fresh extraction result), never touches fields the extraction didn't find.
+  useEffect(() => {
+    if (!appliedValues) return;
+    setValues((prev) => ({ ...prev, ...appliedValues }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appliedValues]);
 
   if (loading || !schema) {
     return (

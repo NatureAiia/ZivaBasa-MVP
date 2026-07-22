@@ -21,6 +21,29 @@ export async function getProfile() {
   return data;
 }
 
+// Systems -> Users page. Only returns more than the caller's own row for an admin/superadmin —
+// enforced by the "admins can view all profiles" RLS policy in schema.sql, not by this function;
+// a viewer calling this just gets their own single row back, same as getProfile() effectively.
+export async function listAllProfiles() {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("user_id, full_name, organization, job_title, requested_role, role, created_at")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+// Calls the promote_user_role() RPC (schema.sql) — SECURITY DEFINER, re-checks the caller is
+// actually a superadmin server-side, so this isn't a client-trust boundary even though it's
+// invoked from the browser.
+export async function promoteUserRole(targetUserId, newRole) {
+  const { error } = await supabase.rpc("promote_user_role", {
+    target_user_id: targetUserId,
+    new_role: newRole,
+  });
+  if (error) throw error;
+}
+
 export async function createProfile({ fullName, organization, jobTitle, requestedRole }) {
   const { error } = await supabase.from("profiles").insert({
     full_name: fullName || null,

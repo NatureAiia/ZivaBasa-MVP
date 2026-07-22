@@ -243,6 +243,18 @@ end $$;
 create policy "own profile select" on profiles
   for select using (user_id = auth.uid());
 
+-- Added for the Systems -> Users page: an admin/superadmin needs to see every profile, not just
+-- their own, to approve pending signups and manage roles. A self-referential subquery on the
+-- caller's OWN row (not the row being read) — this does not let anyone escalate what they can
+-- SEE based on the target row's contents, only based on who the caller already is.
+create policy "admins can view all profiles" on profiles
+  for select using (
+    exists (
+      select 1 from profiles p
+      where p.user_id = auth.uid() and p.role in ('admin', 'superadmin')
+    )
+  );
+
 create policy "own profile insert" on profiles
   for insert with check (user_id = auth.uid() and role = 'viewer');
 
