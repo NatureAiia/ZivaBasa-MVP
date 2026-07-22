@@ -176,10 +176,20 @@ create table if not exists profiles (
   full_name       text,
   organization    text,
   job_title       text,
+  phone           text,
+  department      text,
+  avatar_url      text,
   requested_role  text not null default 'viewer' check (requested_role in ('viewer', 'admin')),
   role            text not null default 'viewer' check (role in ('viewer', 'admin')),
   created_at      timestamptz not null default now()
 );
+
+-- Settings-page addition (phone/department/avatar_url) — idempotent so this file can be
+-- re-run against an already-deployed project without erroring on columns that already exist
+-- from a fresh install's `create table` above.
+alter table profiles add column if not exists phone text;
+alter table profiles add column if not exists department text;
+alter table profiles add column if not exists avatar_url text;
 
 -- ---------------------------------------------------------------------------
 -- Row Level Security — every table, every row scoped to its owner. This is the actual
@@ -245,3 +255,26 @@ $$ language plpgsql;
 create trigger profiles_lock_role
   before update on profiles
   for each row execute function lock_profile_role();
+
+-- ---------------------------------------------------------------------------
+-- avatars storage bucket — profile photo uploads (Settings page, added alongside the
+-- phone/department/avatar_url profile columns above). Public-read (so <img src={avatar_url}>
+-- works directly, no signed URL needed), but writes are scoped to the uploader's own folder
+-- (avatars/{user_id}/...) via the storage.objects policies below — the same owner-scoping
+-- principle as every other table in this file, applied to Storage instead of Postgres rows.
+-- ---------------------------------------------------------------------------
+insert into storage.buckets (id, name, public)
+values ('avatars', 'avatars', true)
+on conflict (id) do nothing;
+
+create policy "avatar public read" on storage.objects
+  for select using (bucket_id = 'avatars');
+
+create policy "avatar owner write" on storage.objects
+  for insert with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+
+create policy "avatar owner update" on storage.objects
+  for update using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+
+create policy "avatar owner delete" on storage.objects
+  for delete using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);

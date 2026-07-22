@@ -118,7 +118,7 @@ plan).
 - **If live demo fails mid-pitch**: fall back to a pre-generated PDF export (produce one from
   this exact click-through before the pitch, save it locally) and narrate from it rather than
   re-attempting the live flow under time pressure.
-- **If network is bad**: toggle **Low-bandwidth mode** (top-right of the ZivaBasa header) before
+- **If network is bad**: toggle **Low-bandwidth mode** (Settings page, in the sidebar) before
   starting — this was verified functionally in this repo but **not verified under real 3G
   throttling**; test it yourself on the actual venue's network before relying on it live.
 - **Offline-capable build**: not built in this repo as of this writing — `docker-compose up` on a

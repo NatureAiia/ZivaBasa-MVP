@@ -6,6 +6,7 @@ import Shell from "./components/layout/Shell";
 import ChiedzaDashboard from "./pages/ChiedzaDashboard";
 import InDevelopment from "./pages/InDevelopment";
 import CostMonitoring from "./pages/CostMonitoring";
+import SettingsPage from "./pages/SettingsPage";
 import ZivaBasaLayout from "./pages/zivabasa/ZivaBasaLayout";
 import DashboardTab from "./pages/zivabasa/DashboardTab";
 import ChatTab from "./pages/zivabasa/ChatTab";
@@ -57,6 +58,7 @@ export default function App() {
         ))}
 
         <Route path="cost-monitoring" element={<CostMonitoring />} />
+        <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<InDevelopment />} />
       </Route>
 

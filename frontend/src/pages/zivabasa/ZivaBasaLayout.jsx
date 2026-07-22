@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X } from "lucide-react";
 import clsx from "clsx";
 import ClarityRing from "../../components/common/ClarityRing";
-import LowBandwidthToggle from "../../components/layout/LowBandwidthToggle";
 
 const TABS = [
   { to: "dashboard", label: "Dashboard" },
@@ -68,7 +67,6 @@ export default function ZivaBasaLayout() {
           </nav>
 
           <div className="flex items-center gap-2 shrink-0">
-            <LowBandwidthToggle />
             <button
               onClick={() => setMobileNavOpen((o) => !o)}
               className="lg:hidden shrink-0 w-9 h-9 rounded-lg bg-gold/15 border border-gold/30 text-gold flex items-center justify-center hover:bg-gold/25 transition-colors"

@@ -2,11 +2,10 @@ import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  LayoutGrid, Boxes, Wallet, ChevronDown, PanelLeftClose, PanelLeftOpen, X, LogOut,
+  LayoutGrid, Boxes, Wallet, ChevronDown, PanelLeftClose, PanelLeftOpen, X, LogOut, Settings,
 } from "lucide-react";
 import clsx from "clsx";
 import ClarityRing from "../common/ClarityRing";
-import ThemeToggle from "./ThemeToggle";
 import ShinyPill from "../effects/ShinyPill";
 import { useAuth } from "../../lib/authStore";
 
@@ -160,6 +159,7 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
         </AnimatePresence>
 
         <NavItem to="/app/cost-monitoring" icon={Wallet} label="Cost Monitoring" collapsed={collapsed} onNavigate={onCloseMobile} />
+        <NavItem to="/app/settings" icon={Settings} label="Settings" collapsed={collapsed} onNavigate={onCloseMobile} />
       </nav>
 
       {/* Footer */}
@@ -168,7 +168,6 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
         <div className="px-4 py-3 flex items-center justify-between">
           {!collapsed && (
             <div className="flex items-center gap-2">
-              <ThemeToggle />
               <button
                 onClick={handleSignOut}
                 className="w-9 h-9 rounded-full border border-border flex items-center justify-center text-ink-faint hover:text-red hover:border-red/40 transition-colors"

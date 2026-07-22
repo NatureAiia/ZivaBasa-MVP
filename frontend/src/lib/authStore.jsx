@@ -73,6 +73,10 @@ export function AuthProvider({ children }) {
   const signIn = (email, password) => supabase.auth.signInWithPassword({ email, password });
   const signOut = () => supabase.auth.signOut();
 
+  // Settings page calls this after updateProfile()/uploadAvatar() so the rest of the app (e.g.
+  // any header/sidebar that shows profile fields) reflects the change without a full reload.
+  const refreshProfile = async () => setProfile(await getProfile());
+
   const value = {
     session,
     user: session?.user ?? null,
@@ -84,6 +88,7 @@ export function AuthProvider({ children }) {
     signUp,
     signIn,
     signOut,
+    refreshProfile,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
