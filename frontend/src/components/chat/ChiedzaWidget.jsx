@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, MessageCircle, X } from "lucide-react";
+import { Send, X } from "lucide-react";
 import { api } from "../../lib/api";
 import { useAuth } from "../../lib/authStore";
 import ClarityRing from "../common/ClarityRing";
 import ChatMarkdown from "./ChatMarkdown";
+import chiedzaIcon from "../../assets/chiedza-icon.png";
 
 // Displayed once as the first bubble, computed locally — never sent to the backend as part of
 // the actual chatAgent conversation (mirrors ChatPane.jsx's WELCOME_MESSAGE pattern).
@@ -62,10 +63,14 @@ export default function ChiedzaWidget() {
         onClick={() => setOpen((o) => !o)}
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
-        className="fixed bottom-6 right-6 z-50 flex items-center justify-center w-14 h-14 rounded-full bg-gold text-bg shadow-card-dark hover:brightness-110 transition-all"
+        className="fixed bottom-6 right-6 z-50 flex items-center justify-center w-14 h-14 rounded-full bg-gold text-bg shadow-card-dark hover:brightness-110 transition-all overflow-hidden"
         aria-label={open ? "Close Chiedza" : "Open Chiedza"}
       >
-        {open ? <X size={22} /> : <MessageCircle size={22} />}
+        {open ? (
+          <X size={22} />
+        ) : (
+          <img src={chiedzaIcon} alt="" className="w-9 h-9 object-contain brightness-0 invert dark:filter-none dark:brightness-100 dark:invert-0" />
+        )}
       </motion.button>
 
       <AnimatePresence>
