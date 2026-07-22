@@ -10,6 +10,7 @@ const TABS = [
   { to: "dashboard", label: "Dashboard" },
   { to: "action-inbox", label: "Action Inbox" },
   { to: "my-view", label: "My View" },
+  { to: "national-view", label: "National View" },
   { to: "chat", label: "Chat" },
   { to: "predict", label: "Predict" },
   { to: "forecast", label: "Forecast" },

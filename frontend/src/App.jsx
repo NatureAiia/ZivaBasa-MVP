@@ -15,6 +15,7 @@ import HistoryTab from "./pages/zivabasa/HistoryTab";
 import RosterTab from "./pages/zivabasa/RosterTab";
 import ManagerActionInbox from "./pages/zivabasa/ManagerActionInbox";
 import EmployeeMirrorView from "./pages/zivabasa/EmployeeMirrorView";
+import NationalEvidenceView from "./pages/zivabasa/NationalEvidenceView";
 import MyOrganizationTab from "./pages/zivabasa/MyOrganizationTab";
 import { MODELS } from "./components/layout/Sidebar";
 
@@ -47,6 +48,7 @@ export default function App() {
           <Route path="roster" element={<RosterTab />} />
           <Route path="action-inbox" element={<ManagerActionInbox />} />
           <Route path="my-view" element={<EmployeeMirrorView />} />
+          <Route path="national-view" element={<NationalEvidenceView />} />
           <Route path="my-organization" element={<MyOrganizationTab />} />
         </Route>
 

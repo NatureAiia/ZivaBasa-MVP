@@ -45,6 +45,7 @@ from api.schemas import (
     ImageGenerateRequest, ImageGenerateResponse,
     ForecastSchemaResponse, ForecastResponse, ForecastPoint,
     SkillGapRequest, SkillGapResponse, UpliftResponse,
+    FederatedSimulateRequest, FederatedSimulationResponse,
 )
 from api.model_registry import registry, forecast_registry
 from api import auth
@@ -61,6 +62,7 @@ from src import drift as drift_module
 from src import forecast as forecast_module
 from src import skill_matching
 from src import uplift as uplift_module
+from src.federated import simulation as federated_module
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s [%(name)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -387,6 +389,22 @@ async def skill_match_recommend(request: SkillGapRequest, _role: str = Depends(a
     pair, returns the same match score skill_matching.match_score() computes plus a recommended
     training resource for each missing skill (Master Checklist §5, Day 10 item)."""
     return skill_matching.recommend_training_path(request.current_skills, request.required_skills)
+
+
+@app.post("/federated/simulate", response_model=FederatedSimulationResponse)
+def federated_simulate(request: FederatedSimulateRequest, _role: str = Depends(auth.require_role("admin"))):
+    """Runs the Phase 4 federated-learning SIMULATION (src/federated/simulation.py) live and
+    returns per-round results, for the head-of-state/national-sovereignty demo track.
+    SIMULATED — one process, one machine, no real institutions; see src/federated/ package
+    docstring. Admin-gated since this triggers real model training, unlike the mostly-read
+    endpoints elsewhere in this API."""
+    try:
+        result = federated_module.run_federated_simulation(
+            request.task, num_institutions=request.num_institutions, num_rounds=request.num_rounds,
+        )
+    except (RuntimeError, ValueError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return FederatedSimulationResponse(**result)
 
 
 _uplift_cache: dict = {}

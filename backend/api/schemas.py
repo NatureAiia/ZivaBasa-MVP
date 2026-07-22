@@ -130,6 +130,32 @@ class UpliftResponse(BaseModel):
     interpretation: str
 
 
+class FederatedSimulateRequest(BaseModel):
+    task: str = "skills"
+    num_institutions: int = Field(3, ge=2, le=5)
+    num_rounds: int = Field(5, ge=1, le=10)
+
+
+class FederatedRound(BaseModel):
+    round: int
+    val_loss: float
+    val_metric: float
+
+
+class FederatedSimulationResponse(BaseModel):
+    task: str
+    num_institutions: int
+    num_rounds: int
+    institution_ids: List[str]
+    round_history: List[FederatedRound]
+    final_federated_val_loss: float
+    final_federated_val_metric: float
+    centralized_val_loss: float
+    centralized_val_metric: float
+    SIMULATED: bool
+    simulation_note: str
+
+
 class ForecastSchemaResponse(BaseModel):
     industries: List[str]
     metrics: List[str]

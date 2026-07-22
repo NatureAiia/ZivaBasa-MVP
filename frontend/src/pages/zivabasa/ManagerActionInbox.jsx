@@ -194,52 +194,49 @@ export default function ManagerActionInbox() {
                           className={`text-ink-faint transition-transform ${expanded === row._name ? "rotate-180" : ""}`}
                         />
                       </button>
-                      {(() => {
-                        const body = expanded === row._name && (
-                          <div className="px-5 pb-4">
-                            <div className="bg-surface2/60 rounded-xl p-4 flex flex-col gap-4">
-                              {loadingRow === row._name ? (
-                                <p className="text-xs text-ink-faint">Computing explanation and lever estimate…</p>
-                              ) : explain?.error ? (
-                                <p className="text-xs text-red">{explain.error}</p>
-                              ) : explain ? (
-                                <>
-                                  <p className="text-sm text-ink font-medium leading-relaxed">{riskSentence(explain)}</p>
-                                  {lowBandwidth ? (
-                                    <PlainShapList result={explain} task={TASK} />
-                                  ) : (
-                                    <ShapLedger result={explain} task={TASK} />
-                                  )}
+                      {expanded === row._name && (() => {
+                        const inner = (
+                          <div className="bg-surface2/60 rounded-xl p-4 flex flex-col gap-4">
+                            {loadingRow === row._name ? (
+                              <p className="text-xs text-ink-faint">Computing explanation and lever estimate…</p>
+                            ) : explain?.error ? (
+                              <p className="text-xs text-red">{explain.error}</p>
+                            ) : explain ? (
+                              <>
+                                <p className="text-sm text-ink font-medium leading-relaxed">{riskSentence(explain)}</p>
+                                {lowBandwidth ? (
+                                  <PlainShapList result={explain} task={TASK} />
+                                ) : (
+                                  <ShapLedger result={explain} task={TASK} />
+                                )}
 
-                                  <div className="border-t border-border pt-3">
-                                    <h3 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold mb-2">
-                                      Recommended lever
-                                    </h3>
-                                    {uplift?.error ? (
-                                      <p className="text-xs text-red">{uplift.error}</p>
-                                    ) : uplift ? (
-                                      <div className="flex items-start gap-2">
-                                        <AlertTriangle
-                                          size={13}
-                                          className={`shrink-0 mt-0.5 ${uplift.statistically_significant_90pct ? "text-teal" : "text-ink-faint"}`}
-                                        />
-                                        <p className="text-xs text-ink-muted leading-relaxed">{uplift.interpretation}</p>
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                </>
-                              ) : null}
-                            </div>
+                                <div className="border-t border-border pt-3">
+                                  <h3 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold mb-2">
+                                    Recommended lever
+                                  </h3>
+                                  {uplift?.error ? (
+                                    <p className="text-xs text-red">{uplift.error}</p>
+                                  ) : uplift ? (
+                                    <div className="flex items-start gap-2">
+                                      <AlertTriangle
+                                        size={13}
+                                        className={`shrink-0 mt-0.5 ${uplift.statistically_significant_90pct ? "text-teal" : "text-ink-faint"}`}
+                                      />
+                                      <p className="text-xs text-ink-muted leading-relaxed">{uplift.interpretation}</p>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              </>
+                            ) : null}
                           </div>
                         );
-                        if (lowBandwidth) return body || null;
-                        return (
+                        return lowBandwidth ? (
+                          <div className="px-5 pb-4">{inner}</div>
+                        ) : (
                           <AnimatePresence>
-                            {expanded === row._name && (
-                              <motion.div variants={fadeScale} initial="hidden" animate="show" exit="exit" className="contents">
-                                {body}
-                              </motion.div>
-                            )}
+                            <motion.div variants={fadeScale} initial="hidden" animate="show" exit="exit" className="px-5 pb-4">
+                              {inner}
+                            </motion.div>
                           </AnimatePresence>
                         );
                       })()}

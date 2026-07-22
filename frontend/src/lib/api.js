@@ -170,6 +170,12 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ features }),
     }),
+  federatedSimulate: (task = "skills", numInstitutions = 3, numRounds = 5) =>
+    request("/federated/simulate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ task, num_institutions: numInstitutions, num_rounds: numRounds }),
+    }),
 };
 
 export const TASKS = ["employment", "skills", "productivity", "skill_match", "human_capital"];
