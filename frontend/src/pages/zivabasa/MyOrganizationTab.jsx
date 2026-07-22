@@ -15,6 +15,7 @@ import OrgChart from "../../components/organization/OrgChart";
 import RoleEditor from "../../components/organization/RoleEditor";
 import OrgStructureUpload from "../../components/organization/OrgStructureUpload";
 import OrgExtractPanel from "../../components/organization/OrgExtractPanel";
+import CorporateView from "./CorporateView";
 
 function productivityNarrative(overlapCount, missingCount) {
   const total = overlapCount + missingCount;
@@ -195,6 +196,10 @@ export default function MyOrganizationTab() {
             </div>
           )}
         </div>
+
+        <motion.div variants={fadeUpItem}>
+          <CorporateView />
+        </motion.div>
 
         {referenceFile && (
           <motion.div variants={fadeUpItem} className="rounded-xl border border-border bg-surface2/50 p-3 flex flex-col gap-2">
