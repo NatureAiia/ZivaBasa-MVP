@@ -76,13 +76,17 @@ export default function DashboardTab() {
                 {error ? (
                   <Badge tone="red">Unreachable</Badge>
                 ) : health ? (
-                  <Badge tone="teal">{health.tasks_loaded.length} task(s) loaded</Badge>
+                  <Badge tone="teal">{health.tasks_loaded.length} model(s) available</Badge>
                 ) : (
                   <Badge tone="neutral">Checking…</Badge>
                 )}
               </div>
               <p className="text-xs text-ink-muted mt-0.5">
-                {error ? error : health ? `Loaded: ${health.tasks_loaded.join(", ")}` : "Contacting the ZivaBasa API…"}
+                {error
+                  ? error
+                  : health
+                  ? `Ready to score uploads for: ${health.tasks_loaded.join(", ")} — upload a batch below to populate results.`
+                  : "Contacting the ZivaBasa API…"}
               </p>
             </div>
             <Activity size={16} className="text-ink-faint" />
