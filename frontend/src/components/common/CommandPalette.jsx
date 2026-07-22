@@ -64,25 +64,28 @@ export default function CommandPalette() {
         </div>
         <Command.List className="max-h-80 overflow-y-auto p-1.5">
           <Command.Empty className="px-3 py-6 text-center text-xs text-ink-faint">No matches.</Command.Empty>
-          {["Navigate", "System"].map((group) => (
-            <Command.Group
-              key={group}
-              heading={group}
-              className="[&_[cmdk-group-heading]]:px-2.5 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-ink-faint [&_[cmdk-group-heading]]:font-semibold"
-            >
-              {ITEMS.filter((i) => i.group === group).map((item) => (
-                <Command.Item
-                  key={item.to}
-                  value={`${item.label} ${item.keywords}`}
-                  onSelect={() => go(item.to)}
-                  className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-ink cursor-pointer data-[selected=true]:bg-gold/10 data-[selected=true]:text-gold"
-                >
-                  <item.icon size={15} className="shrink-0" />
-                  {item.label}
-                </Command.Item>
-              ))}
-            </Command.Group>
-          ))}
+          {/*
+            Single group, not one per section: cmdk only sorts items by fuzzy-match score
+            WITHIN a group — with separate "Navigate"/"System" groups, a weak match in the
+            first-declared group could out-rank (and get auto-highlighted over) the actual best
+            match sitting in a later group. One flat, score-sorted list fixes that; the group
+            label prefix on each item's `value` keeps a lightweight visual/searchable category
+            without needing a second Command.Group.
+          */}
+          <Command.Group>
+            {ITEMS.map((item) => (
+              <Command.Item
+                key={item.to}
+                value={`${item.label} ${item.keywords}`}
+                onSelect={() => go(item.to)}
+                className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-ink cursor-pointer data-[selected=true]:bg-gold/10 data-[selected=true]:text-gold"
+              >
+                <item.icon size={15} className="shrink-0" />
+                <span className="flex-1">{item.label}</span>
+                <span className="text-[10px] text-ink-faint">{item.group}</span>
+              </Command.Item>
+            ))}
+          </Command.Group>
         </Command.List>
       </div>
     </Command.Dialog>

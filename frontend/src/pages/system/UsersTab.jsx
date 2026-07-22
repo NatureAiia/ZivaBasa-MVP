@@ -4,7 +4,7 @@ import { Users as UsersIcon, Loader2, ShieldAlert } from "lucide-react";
 import Card from "../../components/common/Card";
 import Badge from "../../components/common/Badge";
 import EmptyState from "../../components/common/EmptyState";
-import { staggerContainer, fadeUpItem } from "../../lib/motion";
+import { staggerContainer } from "../../lib/motion";
 import { useAuth } from "../../lib/authStore";
 import { listAllProfiles, promoteUserRole } from "../../lib/profileStore";
 
@@ -92,7 +92,12 @@ export default function UsersTab() {
             <Card animated={false} className="!p-0 overflow-hidden">
               <div className="flex flex-col divide-y divide-border">
                 {profiles.map((p) => (
-                  <motion.div key={p.user_id} variants={fadeUpItem} className="flex items-center justify-between gap-3 px-4 py-3">
+                  <motion.div
+                    key={p.user_id}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex items-center justify-between gap-3 px-4 py-3"
+                  >
                     <div className="min-w-0">
                       <div className="text-sm text-ink truncate">
                         {p.full_name || `User ${p.user_id.slice(0, 8)}`}

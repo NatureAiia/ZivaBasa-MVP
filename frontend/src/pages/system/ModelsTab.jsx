@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { Boxes, Loader2, KeyRound } from "lucide-react";
 import Card from "../../components/common/Card";
 import Badge from "../../components/common/Badge";
-import { staggerContainer, fadeUpItem } from "../../lib/motion";
+import { staggerContainer } from "../../lib/motion";
 import { api } from "../../lib/api";
 
 /*
@@ -53,7 +53,12 @@ export default function ModelsTab() {
                   const capped = b?.budget_tokens_per_day != null;
                   const usedPct = capped ? Math.min(100, (b.used_today / b.budget_tokens_per_day) * 100) : 0;
                   return (
-                    <motion.div key={m.provider} variants={fadeUpItem} className="flex flex-col gap-2 px-4 py-3">
+                    <motion.div
+                      key={m.provider}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="flex flex-col gap-2 px-4 py-3"
+                    >
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
                           <div className="text-sm text-ink flex items-center gap-1.5">
