@@ -19,6 +19,17 @@ const SUGGESTIONS = [
   "What data do you need from me?",
 ];
 
+// Inline "/" quick-actions in the input box — pattern adapted from NeuroWorks's slash-command
+// palette (Chat.tsx SLASH_COMMANDS), reworked around ZivaBasa's own tasks. Complements, rather
+// than replaces, the suggestion chips above (those are one-tap sends; these are text templates
+// the person can still edit before sending).
+const SLASH_COMMANDS = [
+  { cmd: "/predict", text: "/predict employment role: ", hint: "Run a prediction for a task" },
+  { cmd: "/explain", text: "/explain the last prediction", hint: "Ask what drove a result" },
+  { cmd: "/forecast", text: "/forecast next 12 months for ", hint: "Ask for a multi-period outlook" },
+  { cmd: "/image", text: "/image generate an illustration of ", hint: "Generate an image" },
+];
+
 const PUTER_SYSTEM = "You are the ZivaBasa workforce intelligence assistant, embedded in ChiedzaAI. " +
   "You do not have live access to the Employment/Skills/Productivity/Skill Match prediction models in this mode " +
   "(that requires one of the 'Backend' models) — answer from general knowledge, and if the person asks for " +
@@ -76,7 +87,10 @@ export default function ChatPane() {
   const [sessionLoaded, setSessionLoaded] = useState(false);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [slashOpen, setSlashOpen] = useState(false);
   const endRef = useRef(null);
+  const scrollRef = useRef(null);
+  const wasNearBottomRef = useRef(true);
 
   useEffect(() => {
     getChatSession().then((session) => {
@@ -95,9 +109,26 @@ export default function ChatPane() {
       .catch(() => {}); // backend not reachable yet — Puter still works standalone
   }, []);
 
+  // Near-bottom-aware auto-scroll — pattern adapted from NeuroWorks's Chat.tsx (ResizeObserver
+  // instead of a `messages`-dependency effect). Only sticks to the bottom if the reader was
+  // already close to it; someone who's scrolled up to re-read earlier messages doesn't get
+  // yanked back down by a new reply arriving.
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, sending]);
+    const el = scrollRef.current;
+    if (!el) return;
+    const updateNearBottom = () => {
+      wasNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    };
+    el.addEventListener("scroll", updateNearBottom, { passive: true });
+    const ro = new ResizeObserver(() => {
+      if (wasNearBottomRef.current) endRef.current?.scrollIntoView({ behavior: "smooth" });
+    });
+    ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", updateNearBottom);
+      ro.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     // Only persist once the initial load has completed — otherwise the [WELCOME_MESSAGE]
@@ -118,6 +149,7 @@ export default function ChatPane() {
     const t = (text ?? input).trim();
     if (!t || sending) return;
     const nextMessages = [...messages, { role: "user", text: t }];
+    wasNearBottomRef.current = true; // sending a message always re-anchors the view to the bottom
     setMessages(nextMessages);
     setInput("");
     setSending(true);
@@ -308,7 +340,7 @@ export default function ChatPane() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-3">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-3">
         <AnimatePresence initial={false}>
           {messages.map((m, i) => (
             <motion.div
@@ -369,12 +401,40 @@ export default function ChatPane() {
             </motion.button>
           ))}
         </div>
-        <div className="flex gap-2">
+        <div className="relative flex gap-2">
+          <AnimatePresence>
+            {slashOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 6 }}
+                className="absolute bottom-full mb-2 left-0 right-0 bg-surface border border-border rounded-xl shadow-card-dark p-1.5 flex flex-col gap-0.5 max-h-48 overflow-y-auto"
+              >
+                {SLASH_COMMANDS.filter((c) => c.cmd.startsWith(input.trim() || "/")).map((c) => (
+                  <button
+                    key={c.cmd}
+                    onClick={() => { setInput(c.text); setSlashOpen(false); }}
+                    className="text-left px-2.5 py-1.5 rounded-lg hover:bg-surface2 transition-colors"
+                  >
+                    <span className="text-xs font-mono text-gold">{c.cmd}</span>
+                    <span className="block text-[10px] text-ink-faint mt-0.5">{c.hint}</span>
+                  </button>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
           <input
             value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && send()}
-            placeholder="Ask about a forecast, scenario, or role…"
+            onChange={(e) => {
+              const v = e.target.value;
+              setInput(v);
+              setSlashOpen(v.startsWith("/") && !v.includes(" "));
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setSlashOpen(false);
+              if (e.key === "Enter" && !slashOpen) send();
+            }}
+            placeholder="Ask about a forecast, scenario, or role… (try / for quick actions)"
             disabled={sending}
             className="flex-1 bg-surface2 border border-border rounded-xl px-3.5 py-2.5 text-sm outline-none focus:border-gold/50 transition-colors disabled:opacity-60"
           />

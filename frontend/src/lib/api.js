@@ -203,6 +203,20 @@ export const TASK_SHORT_LABELS = {
   skill_match: "Skill Matching",
   human_capital: "HR Turnover",
 };
+// Whether a classification task's positive label (label === 1) represents a risk/negative
+// outcome (true) or a desirable outcome (false). Every task except skill_match is a risk flag
+// (automation, attrition, turnover); skill_match's target is target_good_redeployment_match,
+// so label === 1 there means a GOOD match, not a risk. Centralized here so every UI surface
+// that colors/badges a classification result agrees on which way "positive" points, instead of
+// each component independently assuming label === 1 always means "bad" (a real bug found 22 Jul:
+// PredictionResult/OverallSummary/InteractionExplorer/BatchUpload all rendered a good skill
+// match with the same red "risk" styling as an attrition-risk flag).
+export const TASK_POSITIVE_IS_RISK = {
+  employment: true,
+  skills: true,
+  skill_match: false,
+  human_capital: true,
+};
 export const TASK_DESCRIPTIONS = {
   employment: "Which roles are most at risk of being automated.",
   skills: "Which employees are most likely to leave, and why.",

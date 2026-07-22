@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, Lock, ArrowRight } from "lucide-react";
 import clsx from "clsx";
@@ -7,19 +7,45 @@ import ExecutiveTaskForm from "../../components/predict/ExecutiveTaskForm";
 import PredictionResult from "../../components/predict/PredictionResult";
 import ShapLedger from "../../components/predict/ShapLedger";
 import OverallSummary from "../../components/predict/OverallSummary";
+import PipelineTrace from "../../components/predict/PipelineTrace";
 import { usePredictionFlow } from "../../hooks/usePredictionFlow";
 import { TASKS, TASK_LABELS, TASK_SHORT_LABELS } from "../../lib/api";
 import { fadeScale } from "../../lib/motion";
 import { logHistoryEntry } from "../../lib/history";
+
+const PIPELINE_STEPS = [
+  { key: "schema", label: "Schema" },
+  { key: "predict", label: "Predict" },
+  { key: "explain", label: "Explain" },
+];
 
 export default function AdvancedPredict() {
   const flow = usePredictionFlow();
   const { activeTask, setActiveTask, schemas, loadSchema, results, predict, explain,
           carriedFeatures, reset, allComplete, loadingSchema, predicting, explaining, error } = flow;
 
+  // Local, additive trace of how long each pipeline stage took for the active task — purely a
+  // UI trust signal (mirrors NeuroWorks's dependency-free TraceBlock), not persisted, not fed
+  // back into usePredictionFlow's own state/tests.
+  const [trace, setTrace] = useState({});
+
   useEffect(() => {
     if (activeTask !== "summary" && !schemas[activeTask]) loadSchema(activeTask);
   }, [activeTask, schemas, loadSchema]);
+
+  const markStep = (task, key, status, ms) => {
+    setTrace((t) => ({ ...t, [task]: { ...t[task], [key]: { status, ms } } }));
+  };
+
+  const pipelineSteps = (task) => {
+    const t = trace[task] || {};
+    const schemaStatus = schemas[task] ? "done" : loadingSchema ? "active" : "pending";
+    return PIPELINE_STEPS.map((s) => {
+      if (s.key === "schema") return { ...s, status: schemaStatus };
+      if (s.key === "predict") return { ...s, status: t.predict?.status ?? (predicting ? "active" : "pending"), ms: t.predict?.ms };
+      return { ...s, status: t.explain?.status ?? (explaining ? "active" : "pending"), ms: t.explain?.ms };
+    });
+  };
 
   useEffect(() => {
     if (allComplete) logHistoryEntry(results).catch((e) => console.error("logHistoryEntry failed:", e.message));
@@ -29,10 +55,24 @@ export default function AdvancedPredict() {
   const current = activeTask !== "summary" ? results[activeTask] : null;
 
   const handlePredict = async (values) => {
-    await predict(activeTask, values, schema.feature_names);
+    const started = performance.now();
+    markStep(activeTask, "predict", "active");
+    try {
+      await predict(activeTask, values, schema.feature_names);
+      markStep(activeTask, "predict", "done", Math.round(performance.now() - started));
+    } catch {
+      markStep(activeTask, "predict", "error", Math.round(performance.now() - started));
+    }
   };
   const handleExplain = async (values) => {
-    await explain(activeTask, values, schema.feature_names);
+    const started = performance.now();
+    markStep(activeTask, "explain", "active");
+    try {
+      await explain(activeTask, values, schema.feature_names);
+      markStep(activeTask, "explain", "done", Math.round(performance.now() - started));
+    } catch {
+      markStep(activeTask, "explain", "error", Math.round(performance.now() - started));
+    }
   };
   const goNext = () => {
     const idx = TASKS.indexOf(activeTask);
@@ -105,7 +145,11 @@ export default function AdvancedPredict() {
             <OverallSummary results={results} onRestart={reset} />
           </motion.div>
         ) : (
-          <motion.div key={activeTask} variants={fadeScale} initial="hidden" animate="show" exit="exit" className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <motion.div key={activeTask} variants={fadeScale} initial="hidden" animate="show" exit="exit" className="flex flex-col gap-4">
+            <Card animated={false} className="!p-4">
+              <PipelineTrace steps={pipelineSteps(activeTask)} />
+            </Card>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             <Card animated={false}>
               <h2 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold mb-4">Assessment Inputs</h2>
               <ExecutiveTaskForm
@@ -153,6 +197,7 @@ export default function AdvancedPredict() {
                   <p className="text-xs text-ink-faint">Run "Show Key Drivers" to see what's influencing this result.</p>
                 )}
               </Card>
+            </div>
             </div>
           </motion.div>
         )}

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { getAllBatchResults } from "../../lib/batchStore";
-import { TASKS, TASK_LABELS, TASK_SHORT_LABELS } from "../../lib/api";
+import { TASKS, TASK_LABELS, TASK_SHORT_LABELS, TASK_POSITIVE_IS_RISK } from "../../lib/api";
 
 /*
   Interaction Explorer — a real scatter plot of any two numeric features against each other
@@ -101,7 +101,9 @@ export default function InteractionExplorer() {
         <line x1={0} y1={H / 2} x2={W} y2={H / 2} stroke="rgb(var(--border))" strokeDasharray="2,3" />
         {rows.map((r, i) => {
           const [px, py] = project(r[xKey] ?? 0, r[yKey] ?? 0);
-          const color = isClass ? (r._label === 1 ? "rgb(var(--red))" : "rgb(var(--teal))") : "rgb(var(--gold))";
+          const positiveIsRisk = TASK_POSITIVE_IS_RISK[task] ?? true;
+          const flagged = positiveIsRisk ? r._label === 1 : r._label === 0;
+          const color = isClass ? (flagged ? "rgb(var(--red))" : "rgb(var(--teal))") : "rgb(var(--gold))";
           return <circle key={i} cx={px} cy={py} r={2} fill={color} fillOpacity={0.65} />;
         })}
       </svg>

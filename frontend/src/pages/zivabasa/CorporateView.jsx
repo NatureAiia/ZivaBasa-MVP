@@ -1,23 +1,22 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Building2, ChevronDown, Upload } from "lucide-react";
+import { Building2, Upload } from "lucide-react";
 import { motion } from "framer-motion";
 import Card from "../../components/common/Card";
 import EmptyState from "../../components/common/EmptyState";
-import { fadeUpItem } from "../../lib/motion";
+import { staggerContainer, fadeUpItem } from "../../lib/motion";
 import { getAllBatchResults } from "../../lib/batchStore";
 import { TASKS, TASK_LABELS, TASK_DESCRIPTIONS } from "../../lib/api";
 import { formatPercent } from "../../lib/format";
 
 /*
-  Corporate View — embedded under My Organization (not a top-level nav tab). Same
-  "aggregate/by_segment only, never individual rows" evidence framing as National Evidence
-  View, but scoped to this organization only and across every uploaded task, without the
+  Corporate View — the National Evidence View's counterpart scoped down to this
+  organization only. Same "aggregate/by_segment only, never individual rows" evidence
+  framing, but across every uploaded task (not just "skills") and without the
   federated-simulation / national-strategy sections, which are national-scale concerns.
 */
 export default function CorporateView() {
   const [batches, setBatches] = useState(null);
-  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     getAllBatchResults().then(setBatches);
@@ -26,45 +25,39 @@ export default function CorporateView() {
   const populatedTasks = batches ? TASKS.filter((t) => batches[t]) : [];
 
   return (
-    <Card animated={false} className="flex flex-col gap-3">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="flex items-center justify-between gap-2 text-left"
-        aria-expanded={open}
-      >
-        <div className="flex items-center gap-2">
-          <Building2 size={16} className="text-gold" />
+    <div className="flex-1 overflow-y-auto">
+      <div className="p-6 max-w-3xl mx-auto w-full">
+        <motion.div variants={staggerContainer} initial="hidden" animate="show" className="flex flex-col gap-6">
           <div>
-            <h2 className="text-sm font-semibold text-ink">Corporate View</h2>
-            <p className="text-[11px] text-ink-muted">
+            <h1 className="font-display text-xl font-semibold text-ink flex items-center gap-2">
+              <Building2 size={20} className="text-gold" /> Corporate View
+            </h1>
+            <p className="text-xs text-ink-muted mt-1 max-w-lg">
               Aggregate evidence for this organization only — never any one employee's number.
             </p>
           </div>
-        </div>
-        <ChevronDown size={16} className={`text-ink-faint shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
 
-      {open && (
-        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="flex flex-col gap-4 border-t border-border pt-3">
           {!batches ? null : populatedTasks.length === 0 ? (
-            <EmptyState
-              icon={Upload}
-              title="No batch data yet"
-              description="Upload a batch (Predict → Upload & Analyze) to populate organization-level evidence here."
-              action={
-                <Link to="../predict" className="text-xs font-semibold text-gold hover:brightness-110">
-                  Go to Predict →
-                </Link>
-              }
-            />
+            <Card animated={false}>
+              <EmptyState
+                icon={Upload}
+                title="No batch data yet"
+                description="Upload a batch (Predict → Upload & Analyze) to populate organization-level evidence here."
+                action={
+                  <Link to="../predict" className="text-xs font-semibold text-gold hover:brightness-110">
+                    Go to Predict →
+                  </Link>
+                }
+              />
+            </Card>
           ) : (
             populatedTasks.map((task) => {
               const batch = batches[task];
               return (
-                <motion.div key={task} variants={fadeUpItem} className="rounded-xl border border-border p-3.5 flex flex-col gap-3">
+                <Card key={task} variants={fadeUpItem} animated={false} className="flex flex-col gap-3">
                   <div>
-                    <h3 className="text-xs font-semibold text-ink">{TASK_LABELS[task]}</h3>
-                    <p className="text-[11px] text-ink-muted mt-0.5">{TASK_DESCRIPTIONS[task]}</p>
+                    <h2 className="text-sm font-semibold text-ink">{TASK_LABELS[task]}</h2>
+                    <p className="text-xs text-ink-muted mt-0.5">{TASK_DESCRIPTIONS[task]}</p>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="rounded-lg bg-surface2/60 p-3">
@@ -95,20 +88,18 @@ export default function CorporateView() {
                       </div>
                     </div>
                   )}
-                </motion.div>
+                </Card>
               );
             })
           )}
 
-          {populatedTasks.length > 0 && (
-            <p className="text-[11px] text-ink-faint leading-relaxed">
-              This section only ever reads aggregate counts and per-segment rates — never individual rows or
-              names — from whatever your organization uploaded. Treat every number as a reflection of your
-              uploaded data, not a verified external figure.
-            </p>
-          )}
+          <p className="text-[11px] text-ink-faint leading-relaxed">
+            This screen only ever reads aggregate counts and per-segment rates — never individual rows or
+            names — from whatever your organization uploaded. Treat every number as a reflection of your
+            uploaded data, not a verified external figure.
+          </p>
         </motion.div>
-      )}
-    </Card>
+      </div>
+    </div>
   );
 }

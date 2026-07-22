@@ -5,7 +5,7 @@ import clsx from "clsx";
 import Card from "../common/Card";
 import ClarityRing from "../common/ClarityRing";
 import { staggerContainer, fadeUpItem } from "../../lib/motion";
-import { api, TASKS, TASK_LABELS, TASK_SHORT_LABELS } from "../../lib/api";
+import { api, TASKS, TASK_LABELS, TASK_SHORT_LABELS, TASK_POSITIVE_IS_RISK } from "../../lib/api";
 import { saveBatchResult } from "../../lib/batchStore";
 import { addSource } from "../../lib/sourcesStore";
 import { formatPercent } from "../../lib/format";
@@ -56,6 +56,8 @@ export default function BatchUpload({ task, onResult }) {
 
   if (state === "done" && result) {
     const isClass = result.task_type === "classification";
+    const positiveIsRisk = TASK_POSITIVE_IS_RISK[task] ?? true;
+    const positiveTone = positiveIsRisk ? "text-red" : "text-teal";
     return (
       <motion.div variants={staggerContainer} initial="hidden" animate="show" className="flex flex-col gap-4">
         {result.drift?.available !== false && result.drift?.overall_verdict !== "none" && (
@@ -89,8 +91,8 @@ export default function BatchUpload({ task, onResult }) {
           {isClass ? (
             <>
               <Card className="flex flex-col gap-1">
-                <span className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold">Flagged {copy.risk}</span>
-                <span className="font-mono text-2xl font-semibold text-red">{result.aggregate.positive_count} {copy.verb}</span>
+                <span className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold">{positiveIsRisk ? "Flagged" : "Identified"} {copy.risk}</span>
+                <span className={`font-mono text-2xl font-semibold ${positiveTone}`}>{result.aggregate.positive_count} {copy.verb}</span>
                 <span className="text-[11px] text-ink-faint">{formatPercent(result.aggregate.positive_rate)} of uploaded rows</span>
               </Card>
               <Card className="flex flex-col gap-1">

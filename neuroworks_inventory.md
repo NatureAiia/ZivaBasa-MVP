@@ -25,7 +25,7 @@ portable code.
 ## Recommended Adoption
 
 | NeuroWorks asset | Classification | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `Chat.tsx` scroll-stickiness (`ResizeObserver` + `wasNearBottomRef`, not a `messages`-array effect) | **Pattern worth reusing** | ZivaBasa's `ChatPane.jsx` scrolls on every message/sending change unconditionally — fine today, but the NeuroWorks trick (only stick to bottom if the user was already near it) is the correct fix once messages can arrive out of user-scroll-sync (e.g. future streaming). Adopted 22 Jul → `ChatPane.jsx`. |
 | Slash-command palette (`SLASH_COMMANDS` regex-matched dropdown) | **Pattern worth reusing** | ZivaBasa already has a `SUGGESTIONS` chip row (different UX, same goal: fast canned prompts). Adopted as a complementary `/`-triggered dropdown in the input box, not a replacement for the chips. |
 | SSE streaming + polling fallback (`EventSource` in `Chat.tsx`, `server/src/routes/tasks.ts` SSE pattern) | **Pattern worth reusing, deferred** | Real value, but rewiring all 4 ZivaBasa chat providers (Anthropic/NVIDIA/Groq/Gemini) for token streaming is a substantial backend change touching a working, tested code path (`api/chat.py`, `test_chat.py`, `test_llm_gateway.py`). Not attempted this session per "don't touch what's already useful" — flagged as a follow-up, not silently dropped. |
@@ -36,9 +36,26 @@ portable code.
 | Markdown rendering (`marked` + `dangerouslySetInnerHTML`) | **Already covered** | ZivaBasa has `ChatMarkdown.jsx` already wired in. Not touched. |
 
 ## Adopted this session
+
 - `ChatPane.jsx` — near-bottom-aware auto-scroll (was: unconditional scroll-into-view on every message).
 - `ChatPane.jsx` — `/`-triggered slash-command dropdown for quick prompts, additive alongside the existing suggestion chips.
 - New `PipelineTrace.jsx` component + wiring into `AdvancedPredict.jsx` — visualizes the predict/explain pipeline as a CSS-only timeline, styled with ZivaBasa's existing design tokens (gold/teal/red), no new dependency.
 
+## Bug found and fixed during the "UI surfaces" follow-up (22 Jul)
+
+While scoping the Phase 2 item-5 "cross-task consistency flags" UI, found that `skill_match`'s
+positive label (`target_good_redeployment_match` — a GOOD match) was being colored/badged as a
+risk everywhere else in the app assumes label===1 means "bad" (automation/attrition/turnover
+risk). Confirmed 4 real instances: `PredictionResult.jsx` (red ring + "Positive" badge on a good
+match), `OverallSummary.jsx` (red card tone, missing skill_match/human_capital from the flag
+sentence entirely — it only ever checked employment/skills), `InteractionExplorer.jsx` (scatter
+dot color), `BatchUpload.jsx` (aggregate stat card, hardcoded `text-red`). `RosterTab.jsx` and
+`ManagerActionInbox.jsx` were already correct (hardcoded to skill_match/skills respectively with
+the right polarity for that one task). Fixed via a new central `TASK_POSITIVE_IS_RISK` map in
+`lib/api.js`, consumed by all four affected components; `OverallSummary`'s flag sentence now also
+covers all 5 tasks (was 2 of 5) via a `FLAG_PHRASES` map. Frontend build verified clean
+(`npm run build`).
+
 ## Deferred, stated explicitly
+
 - Full SSE token-streaming for chat replies — real backend rewrite across 4 providers + `test_chat.py`/`test_llm_gateway.py` re-verification; scoped out of this session to keep the diff reviewable and avoid touching a tested, working code path without a dedicated pass.
