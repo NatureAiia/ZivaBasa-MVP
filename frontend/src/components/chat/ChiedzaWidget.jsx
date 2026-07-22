@@ -63,13 +63,13 @@ export default function ChiedzaWidget() {
         onClick={() => setOpen((o) => !o)}
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
-        className="fixed bottom-6 right-6 z-50 flex items-center justify-center w-14 h-14 rounded-full bg-gold/15 backdrop-blur-md border border-white/30 ring-1 ring-inset ring-white/40 text-ink shadow-card-dark hover:bg-gold/25 hover:border-white/50 transition-all overflow-hidden"
+        className="fixed bottom-6 right-6 z-50 flex items-center justify-center w-14 h-14 rounded-full bg-gold text-bg shadow-card-dark hover:brightness-110 transition-all overflow-hidden"
         aria-label={open ? "Close Chiedza" : "Open Chiedza"}
       >
         {open ? (
           <X size={22} />
         ) : (
-          <img src={chiedzaIcon} alt="" className="w-9 h-9 object-contain brightness-0 invert dark:filter-none dark:brightness-100 dark:invert-0 drop-shadow-sm" />
+          <img src={chiedzaIcon} alt="" className="w-9 h-9 object-contain brightness-0 invert dark:filter-none dark:brightness-100 dark:invert-0" />
         )}
       </motion.button>
 
