@@ -32,12 +32,22 @@ class FeatureContribution(BaseModel):
     shap_value: float
 
 
+class LimeContribution(BaseModel):
+    feature: str
+    weight: float
+
+
 class ExplainResponse(BaseModel):
     task: str
     base_value: float
     prediction: float
     top_contributions: List[FeatureContribution]
     explainer_used: str
+    # Additive, optional — only populated when POST /explain/{task}?include_lime=true is set.
+    # Every existing caller (including api/chat.py's explain_task tool) is unaffected, since
+    # both default to None.
+    lime_top_contributions: Optional[List[LimeContribution]] = None
+    agreement_score: Optional[float] = None
 
 
 class HealthResponse(BaseModel):

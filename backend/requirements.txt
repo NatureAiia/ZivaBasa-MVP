@@ -34,6 +34,16 @@ xgboost==2.0.3
 # Explainability
 shap==0.45.1
 
+# LIME — 2nd explainer alongside SHAP (src/evaluate.py::compute_lime_values()), for a
+# SHAP/LIME agreement signal on ShapLedger.jsx. Installed with --no-deps, NOT `pip install lime`
+# plain — same class of hidden-conflict risk already hit with causal-learn/flwr above: lime's
+# unpinned "numpy" dependency resolves to numpy>=2.0 by default (verified: a plain install pulls
+# numpy-2.5.1), which would break the tensorflow==2.16.1/Keras-3 numpy<2.0 ceiling. lime also
+# lists scikit-image>=0.12 as a hard dependency, but that's only used by its (unused here)
+# lime_image module — verified `from lime.lime_tabular import LimeTabularExplainer` imports
+# cleanly with scikit-image absent, so it's skipped rather than installed just to sit unused.
+lime==0.2.0.1  # install with: pip install lime==0.2.0.1 --no-deps
+
 # Causal-consistent XAI (Phase 3 spike — src/causal_xai.py). Installed with --no-deps +
 # hand-picked transitive deps (pydot/graphviz/momentchi2/statsmodels), NOT `pip install
 # causal-learn dowhy` plain — causal-learn's unpinned "numpy" dependency resolves to numpy>=2.0
