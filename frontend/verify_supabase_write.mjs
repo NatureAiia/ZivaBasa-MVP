@@ -6,7 +6,7 @@ import { chromium } from "playwright";
 
 const EMAIL = process.argv[2];
 const PASSWORD = process.argv[3];
-const BASE_URL = "http://localhost:5173";
+const BASE_URL = "http://127.0.0.1:5173";
 
 if (!EMAIL || !PASSWORD) {
   console.error("Usage: node verify_supabase_write.mjs <email> <password>");
@@ -19,9 +19,10 @@ const page = await browser.newPage();
 try {
   await page.goto(`${BASE_URL}/login`, { waitUntil: "networkidle" });
 
-  await page.getByLabel("Email").fill(EMAIL);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: /sign in/i }).click();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.getByLabel("Email").last().fill(EMAIL);
+  await page.getByLabel("Password").last().fill(PASSWORD);
+  await page.getByRole("button", { name: /sign in/i }).last().click();
 
   await page.waitForURL(/\/app/, { timeout: 15000 });
   console.log("Login OK, landed on:", page.url());
