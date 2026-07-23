@@ -60,12 +60,21 @@ class ChatMessage(BaseModel):
     content: str
 
 
+class ImageAttachment(BaseModel):
+    image_base64: str
+    mime_type: str = "image/png"
+
+
 class ChatRequest(BaseModel):
     messages: List[ChatMessage]
     provider: Optional[str] = None  # explicit choice from the frontend's model picker; None = auto-detect
     user_id: Optional[str] = None  # POST /chat/agent only — scopes Chiedza's Supabase context
                                     # tools (org chart, predict history, batch results) to this
                                     # user; ignored by plain POST /chat.
+    attachment: Optional[ImageAttachment] = None  # the image the person is currently referring
+                                                   # to (just uploaded, or a prior generated
+                                                   # image they clicked "Edit" on) — only the
+                                                   # edit_image tool reads this.
 
 
 class ChatModelInfo(BaseModel):
@@ -92,6 +101,19 @@ class ImageGenerateRequest(BaseModel):
 
 
 class ImageGenerateResponse(BaseModel):
+    provider: str
+    mime_type: str
+    image_base64: str
+    text: Optional[str] = None
+
+
+class ImageEditRequest(BaseModel):
+    prompt: str = Field(..., description="A clear description of the edit to make to the source image.")
+    image_base64: str = Field(..., description="Base64-encoded source image to edit.")
+    mime_type: str = "image/png"
+
+
+class ImageEditResponse(BaseModel):
     provider: str
     mime_type: str
     image_base64: str

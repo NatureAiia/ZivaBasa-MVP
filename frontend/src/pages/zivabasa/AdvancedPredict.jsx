@@ -6,6 +6,7 @@ import Card from "../../components/common/Card";
 import ExecutiveTaskForm from "../../components/predict/ExecutiveTaskForm";
 import PredictionResult from "../../components/predict/PredictionResult";
 import ShapLedger from "../../components/predict/ShapLedger";
+import ShapWaterfall from "../../components/predict/ShapWaterfall";
 import OverallSummary from "../../components/predict/OverallSummary";
 import PipelineTrace from "../../components/predict/PipelineTrace";
 import DocumentAutoFill from "../../components/predict/DocumentAutoFill";
@@ -32,6 +33,7 @@ export default function AdvancedPredict() {
   // Latest document-auto-fill result to merge into the form — keyed by task so switching tasks
   // doesn't leak one task's extracted values into another's form.
   const [appliedValues, setAppliedValues] = useState({});
+  const [shapView, setShapView] = useState("trace");
 
   useEffect(() => {
     if (activeTask !== "summary" && !schemas[activeTask]) loadSchema(activeTask);
@@ -190,10 +192,32 @@ export default function AdvancedPredict() {
               </Card>
 
               <Card animated={false}>
-                <h2 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold mb-4">What's Driving This Result</h2>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold">What's Driving This Result</h2>
+                  {current?.explain && (
+                    <div className="flex items-center gap-1 bg-surface2 rounded-lg p-0.5">
+                      {[["trace", "Trace"], ["bars", "Bars"]].map(([key, label]) => (
+                        <button
+                          key={key}
+                          onClick={() => setShapView(key)}
+                          className={clsx(
+                            "px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors",
+                            shapView === key ? "bg-surface text-ink shadow-sm" : "text-ink-faint hover:text-ink-muted"
+                          )}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 {current?.explain ? (
                   <>
-                    <ShapLedger result={current.explain} task={activeTask} />
+                    {shapView === "trace" ? (
+                      <ShapWaterfall result={current.explain} task={activeTask} />
+                    ) : (
+                      <ShapLedger result={current.explain} task={activeTask} />
+                    )}
                     <div className="mt-4 pt-4 border-t border-border flex items-center justify-between gap-3">
                       <span className="text-[11px] text-ink-faint">
                         {TASK_LABELS[activeTask]} complete.

@@ -109,11 +109,11 @@ export const api = {
     }
     return res.json();
   },
-  chat: (messages, provider = null) =>
+  chat: (messages, provider = null, attachment = null) =>
     request("/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages, provider }),
+      body: JSON.stringify({ messages, provider, attachment }),
     }),
   // Chiedza's LangGraph agent mode (backend/api/agent_graph.py) — a parallel capability
   // alongside chat() above, not a replacement. userId scopes its Supabase context tools
@@ -178,6 +178,14 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt }),
+    }),
+  // Always routed to Azure OpenAI on the backend (image_router.py) — Gemini's image model here
+  // is generation-only, it can't take an existing image back in.
+  editImage: (prompt, imageBase64, mimeType = "image/png") =>
+    request("/images/edit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, image_base64: imageBase64, mime_type: mimeType }),
     }),
   predictReport: (results, extraNotes = null) =>
     requestBlob("/reports/predict", {

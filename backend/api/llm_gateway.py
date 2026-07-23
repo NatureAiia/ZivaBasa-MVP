@@ -84,7 +84,8 @@ def budget_status(model_catalog: list) -> dict:
     return status
 
 
-async def send_chat_with_fallback(messages: list[dict], provider: Optional[str] = None) -> dict:
+async def send_chat_with_fallback(messages: list[dict], provider: Optional[str] = None,
+                                   attachment: Optional[dict] = None) -> dict:
     """Tries `provider` (or the auto-detect default order) first; falls through the remaining
     configured providers, in chat.MODEL_CATALOG order, if the first is over budget, unconfigured,
     or its call raises. Returns the same shape chat.send_chat() already returns, plus
@@ -118,7 +119,7 @@ async def send_chat_with_fallback(messages: list[dict], provider: Optional[str] 
             logger.warning("[%s] daily token budget exhausted, falling back.", candidate)
             continue
         try:
-            reply, usage, tool_calls, generated_images = await chat_module._DISPATCH[candidate](messages)
+            reply, usage, tool_calls, generated_images = await chat_module._DISPATCH[candidate](messages, attachment)
         except Exception as e:
             attempts.append({"provider": candidate, "outcome": f"error: {e}"})
             logger.warning("[%s] call failed (%s), falling back.", candidate, e)

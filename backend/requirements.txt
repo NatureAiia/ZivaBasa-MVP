@@ -103,7 +103,8 @@ httpx==0.27.0             # async HTTP client used by api/chat.py to call Anthro
 # trusting them — this project has repeatedly hit exactly this class of conflict (flwr,
 # causal-learn, dowhy, all documented above) with packages that pull in unpinned numpy/protobuf.
 langgraph==0.2.60
-langchain-core==0.3.28
+langchain-core==0.3.31  # bumped from 0.3.28 — langchain-anthropic==0.3.4 (below) requires
+                        # langchain-core>=0.3.31; pip's resolver rejects 0.3.28 outright.
 langchain-anthropic==0.3.4
 supabase==2.10.0  # server-side Supabase client for agent_graph.py's get_org_chart /
                    # get_predict_history / get_batch_results tools (service-role key, not the

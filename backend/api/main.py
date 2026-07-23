@@ -42,7 +42,7 @@ from api.schemas import (
     PredictRequest, PredictResponse, SchemaResponse,
     ExplainResponse, FeatureContribution, LimeContribution, HealthResponse,
     ChatRequest, ChatResponse, PredictReportRequest, ChatReportRequest,
-    ImageGenerateRequest, ImageGenerateResponse,
+    ImageGenerateRequest, ImageGenerateResponse, ImageEditRequest, ImageEditResponse,
     ForecastSchemaResponse, ForecastResponse, ForecastPoint,
     SkillGapRequest, SkillGapResponse, UpliftResponse,
     FederatedSimulateRequest, FederatedSimulationResponse,
@@ -56,7 +56,7 @@ from api import llm_gateway
 from api import reports as reports_module
 from api import org_extract as org_extract_module
 from api import field_extract as field_extract_module
-from api import image_gen as image_gen_module
+from api import image_router as image_router_module
 from api import redact as redact_module
 from src import evaluate
 from src import config as src_config
@@ -382,7 +382,8 @@ async def chat_models(_role: str = Depends(auth.require_role("viewer"))):
 async def chat(request: ChatRequest, _role: str = Depends(auth.require_role("admin"))):
     try:
         result = await llm_gateway.send_chat_with_fallback(
-            [m.model_dump() for m in request.messages], provider=request.provider
+            [m.model_dump() for m in request.messages], provider=request.provider,
+            attachment=request.attachment.model_dump() if request.attachment else None,
         )
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
@@ -552,18 +553,33 @@ async def field_extract(
 
 @app.get("/images/providers")
 async def image_providers(_role: str = Depends(auth.require_role("viewer"))):
-    return {"providers": ["gemini"] if image_gen_module.available() else []}
+    return {"providers": image_router_module.providers()}
 
 
 @app.post("/images/generate", response_model=ImageGenerateResponse)
 async def image_generate(request: ImageGenerateRequest, _role: str = Depends(auth.require_role("admin"))):
+    """Provider (Gemini vs Azure OpenAI) is picked automatically by image_router.py based on the
+    prompt — the caller never chooses it, same as the generate_image chat tool."""
     try:
-        result = await image_gen_module.generate_image(request.prompt)
+        result = await image_router_module.generate_image(request.prompt)
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Image generation failed: {e}")
-    return ImageGenerateResponse(provider="gemini", **result)
+    return ImageGenerateResponse(**result)
+
+
+@app.post("/images/edit", response_model=ImageEditResponse)
+async def image_edit(request: ImageEditRequest, _role: str = Depends(auth.require_role("admin"))):
+    """Always routed to Azure OpenAI (image_router.py) — the only provider wired up here that
+    can edit an existing image rather than only generate a new one."""
+    try:
+        result = await image_router_module.edit_image(request.prompt, request.image_base64, request.mime_type)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Image edit failed: {e}")
+    return ImageEditResponse(**result)
 
 
 _DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"

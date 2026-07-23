@@ -6,9 +6,10 @@ POST /chat keeps working exactly as it did; this backs the new POST /chat/agent.
 What this adds that plain chat.py's tool loop doesn't: chat.py's `predict_task`/`explain_task`
 tools only ever compute fresh outputs from features the person types in. Chiedza's whole point
 per the product brief is to "take info from the app and give users [answers]" — so this module
-adds three more tools that read the signed-in user's OWN previously-saved data (org chart,
-prediction history, batch results) out of Supabase, and reuses chat.py's existing prediction
-tools rather than duplicating that logic.
+adds tools that read the signed-in user's OWN previously-saved data (org chart, prediction
+history, batch results, a derived skill-gap summary, and durable notes saved via remember_note/
+recall_notes) out of Supabase, and reuses chat.py's existing prediction tools rather than
+duplicating that logic.
 
 OPTIONAL, OFF BY DEFAULT — same convention as every other optional feature in this project
 (see auth.py's and chat.py's own module docstrings): if `langgraph`/`langchain-anthropic`
@@ -16,13 +17,18 @@ aren't installed, or ANTHROPIC_API_KEY isn't set, `run_agent()` raises a plain R
 with a clear message (caught by main.py and turned into a 503) rather than the import itself
 breaking API startup for everyone else.
 
+GRAPH, NOT THE PREBUILT: this used to call LangGraph's `create_react_agent` prebuilt directly.
+That prebuilt's agent<->tools loop has no iteration cap — a confused model could keep issuing
+tool calls indefinitely, unlike every hand-rolled provider loop in chat.py, which all bound
+themselves to 4 turns (`for _ in range(4)`). `_build_graph()` below reimplements the same
+agent<->tools loop explicitly as a two-node StateGraph so it can enforce that same 4-turn cap
+(see `_route` / `_MAX_TOOL_TURNS`) and give later work (memory nodes, etc.) an actual graph to
+extend instead of an opaque prebuilt.
+
 VERSION CAVEAT, same honesty note as chat.py's provider functions: this was written strictly
-against LangGraph's documented `create_react_agent` prebuilt contract, not exercised against a
-live Anthropic call or a real Supabase project from the sandbox this was authored in. Test it
-against your own keys before relying on it — in particular, `create_react_agent`'s exact
-keyword for the system prompt has changed across LangGraph versions (`prompt` in newer
-releases, `state_modifier`/`messages_modifier` in older ones); pin a version and confirm which
-one it expects.
+against LangGraph 0.2.60's documented `StateGraph`/`ToolNode`/`bind_tools` contracts (see
+requirements.txt), not exercised against a live Anthropic call or a real Supabase project from
+the sandbox this was authored in. Test it against your own keys before relying on it.
 
 SUPABASE ACCESS: reads use the SERVICE ROLE key (server-side env var only, never shipped to
 the frontend, distinct from the anon key `supabaseClient.js` uses). The service role key
@@ -33,15 +39,17 @@ catch that mistake for a service-role connection the way it is for the frontend'
 from __future__ import annotations
 
 import os
-from typing import Optional
+from typing import Annotated, Optional, TypedDict
 
 from api.chat import _run_prediction_tool
 
 try:
-    from langchain_core.messages import AIMessage, HumanMessage
+    from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
     from langchain_core.tools import tool
     from langchain_anthropic import ChatAnthropic
-    from langgraph.prebuilt import create_react_agent
+    from langgraph.graph import END, StateGraph
+    from langgraph.graph.message import add_messages
+    from langgraph.prebuilt import ToolNode
     _LANGGRAPH_AVAILABLE = True
 except ImportError:
     _LANGGRAPH_AVAILABLE = False
@@ -49,6 +57,12 @@ except ImportError:
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 AGENT_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
+
+# Same cap chat.py's hand-rolled provider loops use (`for _ in range(4)`) — see module
+# docstring's "GRAPH, NOT THE PREBUILT" note.
+_MAX_TOOL_TURNS = 4
+_GIVE_UP_MESSAGE = ("I made several tool calls but couldn't reach a final answer in time — "
+                    "try a more specific question.")
 
 AGENT_SYSTEM_PROMPT = """You are Chiedza, ZivaBasa's AI assistant embedded in ChiedzaAI.
 
@@ -59,6 +73,20 @@ in the user's own data when a get_* tool is relevant to the question, instead of
 a fresh prediction from scratch. If a get_* tool comes back empty or with an error (e.g. no
 org chart saved yet, or no user is signed in), say so plainly and offer to run a fresh
 prediction instead.
+
+You also have get_skill_gap_summary, which compares current_skills against target_skills for
+every role in the user's own org chart — a plain comparison of their own saved data, not a
+prediction. Reach for this on skill-gap/training-needs questions instead of guessing at
+feature values to run a skill_match prediction. If the user then wants a full skill_match
+prediction for a specific role, ask for the remaining features it needs (recent_training_hours,
+performance_rating, avg_salary_usd, recent_ot_hours) rather than inventing them — org data alone
+never has enough to run a prediction responsibly.
+
+You also have remember_note and recall_notes: use remember_note when the user states a durable
+fact or preference about themselves or their org (e.g. "I manage the Sales dept", "always give
+me short answers") so it's available in a later session, not just this conversation. Use
+recall_notes when a question seems to depend on something said in an earlier session. Don't use
+these for one-off prediction inputs — those belong in predict_task's features.
 
 Same four tasks and feature lists as regular ZivaBasa chat: employment (automation risk),
 skills (attrition risk), productivity (standardized score), skill_match (redeployment fit).
@@ -176,7 +204,70 @@ def _build_tools(user_id: Optional[str], role: str):
         resp = client.table("batch_results").select("task, result, saved_at").eq("user_id", user_id).execute()
         return {"batch_results": resp.data}
 
-    tools = [predict_task, explain_task, get_org_chart, get_predict_history, get_batch_results]
+    @tool
+    def get_skill_gap_summary() -> dict:
+        """For every role in the signed-in user's own org chart, compute the skill gap between
+        current_skills and target_skills — a plain set comparison of their own saved data, no
+        prediction model involved."""
+        if not user_id:
+            return {"error": "No signed-in user — this request wasn't made with a user_id."}
+        client = _supabase_client()
+        if client is None:
+            return {"error": "Supabase isn't configured on this backend (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)."}
+        resp = (
+            client.table("org_nodes")
+            .select("title, current_skills, target_skills, seniority_years")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        summary = []
+        for node in resp.data or []:
+            current = set(node.get("current_skills") or [])
+            target = set(node.get("target_skills") or [])
+            summary.append({
+                "title": node.get("title"),
+                "seniority_years": node.get("seniority_years"),
+                "overlap_count": len(current & target),
+                "missing_skill_count": len(target - current),
+                "missing_skills": sorted(target - current),
+            })
+        return {"skill_gaps": summary}
+
+    @tool
+    def remember_note(note: str) -> dict:
+        """Save a durable fact or preference about the signed-in user or their org, so it's
+        available in a later conversation/session, not just this one — e.g. "manages the Sales
+        dept", "prefers short answers". Not for one-off prediction inputs."""
+        if not user_id:
+            return {"error": "No signed-in user — this request wasn't made with a user_id."}
+        client = _supabase_client()
+        if client is None:
+            return {"error": "Supabase isn't configured on this backend (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)."}
+        client.table("agent_memories").insert({"user_id": user_id, "note": note}).execute()
+        return {"status": "saved"}
+
+    @tool
+    def recall_notes(limit: int = 20) -> dict:
+        """Read the signed-in user's most recently saved notes (see remember_note), newest first."""
+        if not user_id:
+            return {"error": "No signed-in user — this request wasn't made with a user_id."}
+        client = _supabase_client()
+        if client is None:
+            return {"error": "Supabase isn't configured on this backend (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)."}
+        resp = (
+            client.table("agent_memories")
+            .select("note, created_at")
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return {"notes": resp.data}
+
+    tools = [
+        predict_task, explain_task, get_org_chart, get_predict_history, get_batch_results,
+        get_skill_gap_summary, remember_note, recall_notes,
+    ]
     if role != "admin":
         return tools
 
@@ -222,6 +313,46 @@ def _build_tools(user_id: Optional[str], role: str):
     return tools + [get_org_wide_chart, get_org_wide_predict_history, get_org_wide_batch_results]
 
 
+class _AgentState(TypedDict):
+    messages: Annotated[list, add_messages]
+    tool_turns: int
+
+
+def _build_graph(model, tools: list):
+    """Explicit two-node agent<->tools StateGraph, replacing the create_react_agent prebuilt —
+    see the module docstring's "GRAPH, NOT THE PREBUILT" note for why. Built fresh per request,
+    same as _build_tools(), since it closes over this request's bound-tools model."""
+    model_with_tools = model.bind_tools(tools) if tools else model
+
+    def call_model(state: _AgentState) -> dict:
+        ai = model_with_tools.invoke(state["messages"])
+        return {"messages": [ai], "tool_turns": state.get("tool_turns", 0) + 1}
+
+    def give_up(state: _AgentState) -> dict:
+        return {"messages": [AIMessage(content=_GIVE_UP_MESSAGE)]}
+
+    def route(state: _AgentState) -> str:
+        last = state["messages"][-1]
+        if not getattr(last, "tool_calls", None):
+            return END
+        if state.get("tool_turns", 0) >= _MAX_TOOL_TURNS:
+            return "give_up"
+        return "tools" if tools else "give_up"  # no tools bound but model hallucinated a call
+
+    graph = StateGraph(_AgentState)
+    graph.add_node("agent", call_model)
+    graph.add_node("give_up", give_up)
+    graph.set_entry_point("agent")
+    routes = {END: END, "give_up": "give_up"}
+    if tools:
+        graph.add_node("tools", ToolNode(tools))
+        graph.add_edge("tools", "agent")
+        routes["tools"] = "tools"
+    graph.add_conditional_edges("agent", route, routes)
+    graph.add_edge("give_up", END)
+    return graph.compile()
+
+
 async def run_agent(messages: list[dict], user_id: Optional[str] = None) -> dict:
     if not _LANGGRAPH_AVAILABLE:
         raise RuntimeError(
@@ -244,13 +375,13 @@ async def run_agent(messages: list[dict], user_id: Optional[str] = None) -> dict
         prompt = AGENT_SYSTEM_PROMPT + (ADMIN_ADDENDUM if role == "admin" else "")
 
     model = ChatAnthropic(model=AGENT_MODEL, api_key=api_key, max_tokens=1024)
-    agent = create_react_agent(model, tools, prompt=prompt)
+    agent = _build_graph(model, tools)
 
-    lc_messages = [
+    lc_messages = [SystemMessage(content=prompt)] + [
         HumanMessage(content=m["content"]) if m["role"] == "user" else AIMessage(content=m["content"])
         for m in messages
     ]
-    result = await agent.ainvoke({"messages": lc_messages})
+    result = await agent.ainvoke({"messages": lc_messages, "tool_turns": 0})
 
     tool_log = [
         {"name": tc["name"], "args": tc["args"]}

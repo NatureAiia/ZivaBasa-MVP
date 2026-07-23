@@ -165,6 +165,21 @@ create table if not exists predict_history (
 create index if not exists predict_history_user_id_created_idx on predict_history(user_id, created_at desc);
 
 -- ---------------------------------------------------------------------------
+-- agent_memories — durable notes Chiedza's LangGraph agent (api/agent_graph.py) saves via its
+-- remember_note tool and reads back via recall_notes, so a fact stated in one conversation
+-- ("I manage the Sales dept") is available in a later session/device, not just resent message
+-- history within the same page load. No localStorage predecessor — new in this app.
+-- ---------------------------------------------------------------------------
+create table if not exists agent_memories (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  note        text not null,
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists agent_memories_user_id_created_idx on agent_memories(user_id, created_at desc);
+
+-- ---------------------------------------------------------------------------
 -- profiles — signup-time info needed to assess a user's rights (name, org, job title,
 -- requested role). `role` is what the app actually gates on; it defaults to 'viewer' and
 -- only ever changes via manual admin action (Supabase dashboard / a direct SQL update by an
@@ -215,6 +230,7 @@ alter table usage_log        enable row level security;
 alter table cost_entries     enable row level security;
 alter table chat_sessions    enable row level security;
 alter table predict_history  enable row level security;
+alter table agent_memories   enable row level security;
 alter table profiles         enable row level security;
 
 do $$
@@ -223,7 +239,7 @@ declare
 begin
   foreach t in array array[
     'org_nodes', 'assignments', 'batch_results', 'sources',
-    'usage_log', 'cost_entries', 'chat_sessions', 'predict_history'
+    'usage_log', 'cost_entries', 'chat_sessions', 'predict_history', 'agent_memories'
   ]
   loop
     execute format('drop policy if exists "own rows only" on %I;', t);

@@ -30,7 +30,7 @@ from typing import Optional
 
 import httpx
 
-from api import image_gen as image_gen_module
+from api import image_router as image_router_module
 from api.model_registry import registry
 from src import evaluate
 
@@ -124,14 +124,32 @@ TOOLS_ANTHROPIC = [
     {
         "name": "generate_image",
         "description": "Generate an image from a text description (e.g. an org-chart illustration, a "
-                        "diagram, a role icon). Uses Google Gemini's image model regardless of which "
-                        "chat model is currently active, and is only available if GEMINI_API_KEY is "
-                        "configured on the backend. The image is shown to the person directly — you "
-                        "don't need to describe it back to them, just confirm briefly.",
+                        "diagram, a role icon). Automatically routed to whichever configured provider "
+                        "(Google Gemini or Azure OpenAI) best fits the request — you don't choose the "
+                        "provider, just call this. Only available if at least one of GEMINI_API_KEY or "
+                        "AZURE_OPENAI_API_KEY is configured on the backend. The image is shown to the "
+                        "person directly — you don't need to describe it back to them, just confirm briefly.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "prompt": {"type": "string", "description": "A clear, detailed description of the image to generate."},
+            },
+            "required": ["prompt"],
+        },
+    },
+    {
+        "name": "edit_image",
+        "description": "Edit the image the person just attached or is currently referring to (e.g. "
+                        "\"make the boxes blue\", \"add a CFO role under the CEO\", \"remove the "
+                        "background\"). Only call this when the person has actually attached/shared an "
+                        "image in this turn — if there's no attached image, tell them to attach or "
+                        "generate one first instead of calling this tool. Routed to Azure OpenAI "
+                        "(the only provider wired up here that can edit an existing image), only "
+                        "available if AZURE_OPENAI_API_KEY is configured on the backend.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "prompt": {"type": "string", "description": "A clear description of the edit to make to the attached image."},
             },
             "required": ["prompt"],
         },
@@ -200,16 +218,22 @@ def _run_prediction_tool(name: str, args: dict) -> dict:
     return {"error": f"Unknown tool '{name}'"}
 
 
-async def _run_tool(name: str, args: dict, generated_images: list) -> dict:
-    """Dispatches to the sync prediction tools or the async image-generation tool. Image bytes
-    are appended to `generated_images` (returned to the frontend directly) rather than put in
-    the result handed back to the model — a base64 PNG in the model's own context would bloat
-    every subsequent turn of the conversation for no benefit, since the model never needs to
-    see the pixels, only that generation succeeded."""
+async def _run_tool(name: str, args: dict, generated_images: list,
+                     attachment: Optional[dict] = None) -> dict:
+    """Dispatches to the sync prediction tools or the async image tools. Image bytes are
+    appended to `generated_images` (returned to the frontend directly) rather than put in the
+    result handed back to the model — a base64 PNG in the model's own context would bloat every
+    subsequent turn of the conversation for no benefit, since the model never needs to see the
+    pixels, only that generation/editing succeeded.
+
+    `attachment`, when present, is the image (image_base64 + mime_type) the frontend says the
+    person is currently referring to — either just uploaded or a previously generated image they
+    clicked "Edit" on. It's the only image edit_image has access to; there's no server-side
+    conversation image store."""
     if name == "generate_image":
         prompt = args.get("prompt", "")
         try:
-            image = await image_gen_module.generate_image(prompt)
+            image = await image_router_module.generate_image(prompt)
         except RuntimeError as e:
             return {"error": str(e)}
         image_id = f"img_{len(generated_images) + 1}"
@@ -217,13 +241,34 @@ async def _run_tool(name: str, args: dict, generated_images: list) -> dict:
             "id": image_id,
             "mime_type": image["mime_type"],
             "image_base64": image["image_base64"],
-            # Always "gemini" today (the only image-gen provider wired up), independent of
-            # whichever chat model/provider is currently active — the frontend needs this to
-            # attribute image-generation cost correctly even when chatting via Anthropic/NVIDIA/Groq.
-            "provider": "gemini",
-            "model": image_gen_module.GEMINI_IMAGE_MODEL,
+            # Which provider actually ran (image_router.py picks gemini vs azure per-request) —
+            # the frontend needs this to attribute image-generation cost correctly even when
+            # chatting via a different provider (Anthropic/NVIDIA/Groq).
+            "provider": image["provider"],
+            "model": "azure-openai" if image["provider"] == "azure" else "gemini-image",
         })
         return {"status": "success", "image_id": image_id, "message": "Image generated and shown to the user."}
+
+    if name == "edit_image":
+        if not attachment or not attachment.get("image_base64"):
+            return {"error": "No image is attached to this conversation turn — ask the person to "
+                              "attach or generate an image first."}
+        prompt = args.get("prompt", "")
+        try:
+            image = await image_router_module.edit_image(
+                prompt, attachment["image_base64"], attachment.get("mime_type", "image/png"),
+            )
+        except RuntimeError as e:
+            return {"error": str(e)}
+        image_id = f"img_{len(generated_images) + 1}"
+        generated_images.append({
+            "id": image_id,
+            "mime_type": image["mime_type"],
+            "image_base64": image["image_base64"],
+            "provider": image["provider"],
+            "model": "azure-openai",
+        })
+        return {"status": "success", "image_id": image_id, "message": "Image edited and shown to the user."}
 
     return _run_prediction_tool(name, args)
 
@@ -293,7 +338,7 @@ def active_provider(requested: Optional[str] = None) -> Optional[str]:
     return None
 
 
-async def chat_anthropic(messages: list[dict]) -> tuple[str, dict, list, list]:
+async def chat_anthropic(messages: list[dict], attachment: Optional[dict] = None) -> tuple[str, dict, list, list]:
     api_messages = list(messages)
     usage = {"input_tokens": 0, "output_tokens": 0}
     tool_log = []
@@ -331,7 +376,7 @@ async def chat_anthropic(messages: list[dict]) -> tuple[str, dict, list, list]:
             api_messages.append({"role": "assistant", "content": content})
             tool_results = []
             for tu in tool_uses:
-                result = await _run_tool(tu["name"], tu.get("input", {}), generated_images)
+                result = await _run_tool(tu["name"], tu.get("input", {}), generated_images, attachment)
                 tool_log.append({"name": tu["name"], "args": tu.get("input", {}), "result": result})
                 tool_results.append({
                     "type": "tool_result",
@@ -344,7 +389,8 @@ async def chat_anthropic(messages: list[dict]) -> tuple[str, dict, list, list]:
 
 
 async def _chat_openai_compatible(messages: list[dict], base_url: str, api_key: str, model: str,
-                                   provider_label: str) -> tuple[str, dict, list, list]:
+                                   provider_label: str,
+                                   attachment: Optional[dict] = None) -> tuple[str, dict, list, list]:
     """Shared tool-calling loop for any OpenAI-compatible chat/completions endpoint — NVIDIA NIM
     and Groq both implement this contract, so one implementation serves both rather than
     duplicating the same loop with a different base_url."""
@@ -379,7 +425,7 @@ async def _chat_openai_compatible(messages: list[dict], base_url: str, api_key: 
             api_messages.append(choice)
             for tc in tool_calls:
                 args = json.loads(tc["function"]["arguments"])
-                result = await _run_tool(tc["function"]["name"], args, generated_images)
+                result = await _run_tool(tc["function"]["name"], args, generated_images, attachment)
                 tool_log.append({"name": tc["function"]["name"], "args": args, "result": result})
                 api_messages.append({
                     "role": "tool",
@@ -390,17 +436,17 @@ async def _chat_openai_compatible(messages: list[dict], base_url: str, api_key: 
                 usage, tool_log, generated_images)
 
 
-async def chat_nvidia(messages: list[dict]) -> tuple[str, dict, list, list]:
+async def chat_nvidia(messages: list[dict], attachment: Optional[dict] = None) -> tuple[str, dict, list, list]:
     return await _chat_openai_compatible(
         messages, "https://integrate.api.nvidia.com/v1/chat/completions",
-        NVIDIA_API_KEY, NVIDIA_MODEL, "NVIDIA NIM",
+        NVIDIA_API_KEY, NVIDIA_MODEL, "NVIDIA NIM", attachment,
     )
 
 
-async def chat_groq(messages: list[dict]) -> tuple[str, dict, list, list]:
+async def chat_groq(messages: list[dict], attachment: Optional[dict] = None) -> tuple[str, dict, list, list]:
     return await _chat_openai_compatible(
         messages, "https://api.groq.com/openai/v1/chat/completions",
-        GROQ_API_KEY, GROQ_MODEL, "Groq",
+        GROQ_API_KEY, GROQ_MODEL, "Groq", attachment,
     )
 
 
@@ -409,7 +455,7 @@ def _gemini_role(role: str) -> str:
     return "model" if role == "assistant" else "user"
 
 
-async def chat_gemini(messages: list[dict]) -> tuple[str, dict, list, list]:
+async def chat_gemini(messages: list[dict], attachment: Optional[dict] = None) -> tuple[str, dict, list, list]:
     """Gemini's REST API has its own shapes for both messages (contents/parts) and function
     calling (functionCall/functionResponse parts, not a separate tool-role message) — different
     enough from both Anthropic's and the OpenAI-compatible shape that it needs its own loop
@@ -451,7 +497,7 @@ async def chat_gemini(messages: list[dict]) -> tuple[str, dict, list, list]:
             contents.append({"role": "model", "parts": parts})
             response_parts = []
             for fc in function_calls:
-                result = await _run_tool(fc["name"], fc.get("args", {}), generated_images)
+                result = await _run_tool(fc["name"], fc.get("args", {}), generated_images, attachment)
                 tool_log.append({"name": fc["name"], "args": fc.get("args", {}), "result": result})
                 response_parts.append({"functionResponse": {"name": fc["name"], "response": result}})
             contents.append({"role": "user", "parts": response_parts})
@@ -467,7 +513,8 @@ _DISPATCH = {
 }
 
 
-async def send_chat(messages: list[dict], provider: Optional[str] = None) -> dict:
+async def send_chat(messages: list[dict], provider: Optional[str] = None,
+                     attachment: Optional[dict] = None) -> dict:
     resolved = active_provider(provider)
     if resolved is None:
         if provider:
@@ -479,7 +526,7 @@ async def send_chat(messages: list[dict], provider: Optional[str] = None) -> dic
             "No chat provider configured. Set one of ANTHROPIC_API_KEY, NVIDIA_API_KEY, "
             "GROQ_API_KEY, GEMINI_API_KEY as an environment variable before starting the API."
         )
-    reply, usage, tool_calls, generated_images = await _DISPATCH[resolved](messages)
+    reply, usage, tool_calls, generated_images = await _DISPATCH[resolved](messages, attachment)
     return {
         "reply": reply, "provider": resolved, "usage": usage, "tool_calls": tool_calls,
         "generated_images": generated_images,
