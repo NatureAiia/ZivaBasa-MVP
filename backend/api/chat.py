@@ -340,53 +340,44 @@ def active_provider(requested: Optional[str] = None) -> Optional[str]:
 
 
 async def chat_anthropic(messages: list[dict], attachment: Optional[dict] = None) -> tuple[str, dict, list, list]:
+    """Uses the official `anthropic` SDK (AsyncAnthropic) instead of a hand-rolled httpx POST —
+    the other three providers (NVIDIA/Groq/Gemini) stay on raw REST calls since none of them
+    have an official async Python SDK as well-maintained as this one."""
+    client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
     api_messages = list(messages)
     usage = {"input_tokens": 0, "output_tokens": 0}
     tool_log = []
     generated_images = []
-    async with httpx.AsyncClient(timeout=60) as client:
-        for _ in range(4):  # bounded tool-use loop
-            resp = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "x-api-key": ANTHROPIC_API_KEY,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json",
-                },
-                json={
-                    "model": ANTHROPIC_MODEL,
-                    "max_tokens": 1024,
-                    "system": SYSTEM_PROMPT,
-                    "messages": api_messages,
-                    "tools": TOOLS_ANTHROPIC,
-                },
-            )
-            if resp.status_code != 200:
-                raise RuntimeError(f"Anthropic API error {resp.status_code}: {resp.text[:500]}")
-            data = resp.json()
-            call_usage = data.get("usage") or {}
-            usage["input_tokens"] += call_usage.get("input_tokens", 0)
-            usage["output_tokens"] += call_usage.get("output_tokens", 0)
-            content = data.get("content", [])
-            tool_uses = [b for b in content if b.get("type") == "tool_use"]
+    for _ in range(4):  # bounded tool-use loop
+        response = await client.messages.create(
+            model=ANTHROPIC_MODEL,
+            max_tokens=1024,
+            system=SYSTEM_PROMPT,
+            messages=api_messages,
+            tools=TOOLS_ANTHROPIC,
+        )
+        usage["input_tokens"] += response.usage.input_tokens
+        usage["output_tokens"] += response.usage.output_tokens
+        content = [block.model_dump() for block in response.content]
+        tool_uses = [b for b in content if b["type"] == "tool_use"]
 
-            if not tool_uses:
-                text = "".join(b.get("text", "") for b in content if b.get("type") == "text")
-                return text, usage, tool_log, generated_images
+        if not tool_uses:
+            text = "".join(b.get("text", "") for b in content if b["type"] == "text")
+            return text, usage, tool_log, generated_images
 
-            api_messages.append({"role": "assistant", "content": content})
-            tool_results = []
-            for tu in tool_uses:
-                result = await _run_tool(tu["name"], tu.get("input", {}), generated_images, attachment)
-                tool_log.append({"name": tu["name"], "args": tu.get("input", {}), "result": result})
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": tu["id"],
-                    "content": json.dumps(result),
-                })
-            api_messages.append({"role": "user", "content": tool_results})
-        return ("I made several tool calls but couldn't reach a final answer in time — try a more specific question.",
-                usage, tool_log, generated_images)
+        api_messages.append({"role": "assistant", "content": content})
+        tool_results = []
+        for tu in tool_uses:
+            result = await _run_tool(tu["name"], tu.get("input", {}), generated_images, attachment)
+            tool_log.append({"name": tu["name"], "args": tu.get("input", {}), "result": result})
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": tu["id"],
+                "content": json.dumps(result),
+            })
+        api_messages.append({"role": "user", "content": tool_results})
+    return ("I made several tool calls but couldn't reach a final answer in time — try a more specific question.",
+            usage, tool_log, generated_images)
 
 
 async def _chat_openai_compatible(messages: list[dict], base_url: str, api_key: str, model: str,
