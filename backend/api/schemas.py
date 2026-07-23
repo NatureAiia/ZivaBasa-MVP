@@ -30,6 +30,8 @@ class FeatureContribution(BaseModel):
     feature: str
     value: float
     shap_value: float
+    category: Optional[str] = None  # raw | ratio | index | interaction | target, from
+                                     # features.py's feature dictionary; None if unrecognized
 
 
 class LimeContribution(BaseModel):

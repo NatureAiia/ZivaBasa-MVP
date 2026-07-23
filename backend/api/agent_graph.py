@@ -38,6 +38,7 @@ catch that mistake for a service-role connection the way it is for the frontend'
 """
 from __future__ import annotations
 
+import json
 import os
 from typing import Annotated, Optional, TypedDict
 
@@ -81,6 +82,15 @@ feature values to run a skill_match prediction. If the user then wants a full sk
 prediction for a specific role, ask for the remaining features it needs (recent_training_hours,
 performance_rating, avg_salary_usd, recent_ot_hours) rather than inventing them — org data alone
 never has enough to run a prediction responsibly.
+
+You also have scan_org_risk, which runs a real skill_match prediction for every role that has
+a target_role AND its business fields (avg_salary_usd, performance_rating,
+recent_training_hours, recent_ot_hours) filled in — roles missing either are listed under
+"skipped" with why, never guessed at. This only ever covers skill_match (redeployment fit) —
+there is no honest org-wide scan for employment/skills/productivity, since those need per-role
+synthetic-dataset features (job demand index, AI tool maturity, etc.) nothing in the org chart
+captures; if asked for those org-wide, say so and offer a single role's prediction instead if
+the person can supply the numbers.
 
 You also have remember_note and recall_notes: use remember_note when the user states a durable
 fact or preference about themselves or their org (e.g. "I manage the Sales dept", "always give
@@ -234,6 +244,59 @@ def _build_tools(user_id: Optional[str], role: str):
         return {"skill_gaps": summary}
 
     @tool
+    def scan_org_risk() -> dict:
+        """Run a skill_match (redeployment-fit) prediction for every role in the signed-in
+        user's org chart that has a target_role set AND the four business fields (avg_salary_usd,
+        performance_rating, recent_training_hours, recent_ot_hours) filled in on My
+        Organization's role editor. Roles missing a target or those fields are listed under
+        "skipped" with why, never defaulted to a fabricated value. This only ever runs
+        skill_match, never employment/skills/productivity — those need abstract synthetic-dataset
+        features (ai_tool_maturity_score, job_demand_index, etc.) no real org tracks per role, so
+        there's no honest way to auto-run them from saved org data."""
+        if not user_id:
+            return {"error": "No signed-in user — this request wasn't made with a user_id."}
+        client = _supabase_client()
+        if client is None:
+            return {"error": "Supabase isn't configured on this backend (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)."}
+        resp = (
+            client.table("org_nodes")
+            .select("title, current_skills, target_skills, target_role, seniority_years, "
+                    "avg_salary_usd, performance_rating, recent_training_hours, recent_ot_hours")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        scanned, skipped = [], []
+        for node in resp.data or []:
+            title = node.get("title")
+            if not node.get("target_role"):
+                skipped.append({"title": title, "reason": "no target_role set"})
+                continue
+            required = {
+                "seniority_years": node.get("seniority_years"),
+                "recent_training_hours": node.get("recent_training_hours"),
+                "performance_rating": node.get("performance_rating"),
+                "avg_salary_usd": node.get("avg_salary_usd"),
+                "recent_ot_hours": node.get("recent_ot_hours"),
+            }
+            missing = [k for k, v in required.items() if v is None]
+            if missing:
+                skipped.append({"title": title, "reason": f"missing fields: {missing}"})
+                continue
+            current = set(node.get("current_skills") or [])
+            target = set(node.get("target_skills") or [])
+            overlap_count = len(current & target)
+            features = {
+                **required,
+                "skill_overlap_count": overlap_count,
+                "missing_skill_count": len(target - current),
+                "overlap_x_training": overlap_count * required["recent_training_hours"],
+            }
+            result = _run_prediction_tool("predict_task", {"task": "skill_match", "features": features})
+            scanned.append({"title": title, "target_role": node.get("target_role"), **result})
+
+        return {"scanned": scanned, "skipped": skipped}
+
+    @tool
     def remember_note(note: str) -> dict:
         """Save a durable fact or preference about the signed-in user or their org, so it's
         available in a later conversation/session, not just this one — e.g. "manages the Sales
@@ -266,7 +329,7 @@ def _build_tools(user_id: Optional[str], role: str):
 
     tools = [
         predict_task, explain_task, get_org_chart, get_predict_history, get_batch_results,
-        get_skill_gap_summary, remember_note, recall_notes,
+        get_skill_gap_summary, scan_org_risk, remember_note, recall_notes,
     ]
     if role != "admin":
         return tools
@@ -324,9 +387,15 @@ def _build_graph(model, tools: list):
     same as _build_tools(), since it closes over this request's bound-tools model."""
     model_with_tools = model.bind_tools(tools) if tools else model
 
-    def call_model(state: _AgentState) -> dict:
-        ai = model_with_tools.invoke(state["messages"])
-        return {"messages": [ai], "tool_turns": state.get("tool_turns", 0) + 1}
+    async def call_model(state: _AgentState) -> dict:
+        # Streamed (not .invoke()) so stream_agent()'s astream_events() actually gets
+        # "on_chat_model_stream" token events — a plain .invoke() call makes one blocking
+        # request and would only ever produce a single on_chat_model_end event, no per-token
+        # frames, regardless of how the graph itself is driven.
+        full = None
+        async for chunk in model_with_tools.astream(state["messages"]):
+            full = chunk if full is None else full + chunk
+        return {"messages": [full], "tool_turns": state.get("tool_turns", 0) + 1}
 
     def give_up(state: _AgentState) -> dict:
         return {"messages": [AIMessage(content=_GIVE_UP_MESSAGE)]}
@@ -353,14 +422,16 @@ def _build_graph(model, tools: list):
     return graph.compile()
 
 
-async def run_agent(messages: list[dict], user_id: Optional[str] = None) -> dict:
+def _prepare_run(user_id: Optional[str]) -> tuple[list, str]:
+    """Shared by run_agent() and stream_agent(): resolves role server-side, builds this
+    request's tools, and picks the right system prompt. Raises RuntimeError for the same two
+    "not configured" cases both callers need to surface identically."""
     if not _LANGGRAPH_AVAILABLE:
         raise RuntimeError(
             "Chiedza's agent mode isn't installed on this backend. Install langgraph, "
             "langchain-core and langchain-anthropic (see requirements.txt) to enable it."
         )
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
+    if not os.environ.get("ANTHROPIC_API_KEY"):
         raise RuntimeError(
             "ANTHROPIC_API_KEY isn't set — Chiedza's agent mode reuses the same key as regular chat."
         )
@@ -369,19 +440,25 @@ async def run_agent(messages: list[dict], user_id: Optional[str] = None) -> dict
     # never trusted from the request — and defaults to "viewer" if it can't be determined.
     role = _lookup_role(user_id) if user_id else None
     if role is None:
-        tools, prompt = [], ANON_SYSTEM_PROMPT
-    else:
-        tools = _build_tools(user_id, role)
-        prompt = AGENT_SYSTEM_PROMPT + (ADMIN_ADDENDUM if role == "admin" else "")
+        return [], ANON_SYSTEM_PROMPT
+    tools = _build_tools(user_id, role)
+    prompt = AGENT_SYSTEM_PROMPT + (ADMIN_ADDENDUM if role == "admin" else "")
+    return tools, prompt
 
-    model = ChatAnthropic(model=AGENT_MODEL, api_key=api_key, max_tokens=1024)
-    agent = _build_graph(model, tools)
 
-    lc_messages = [SystemMessage(content=prompt)] + [
+def _to_lc_messages(messages: list[dict], prompt: str) -> list:
+    return [SystemMessage(content=prompt)] + [
         HumanMessage(content=m["content"]) if m["role"] == "user" else AIMessage(content=m["content"])
         for m in messages
     ]
-    result = await agent.ainvoke({"messages": lc_messages, "tool_turns": 0})
+
+
+async def run_agent(messages: list[dict], user_id: Optional[str] = None) -> dict:
+    tools, prompt = _prepare_run(user_id)  # raises RuntimeError -> main.py turns into a 503
+
+    model = ChatAnthropic(model=AGENT_MODEL, api_key=os.environ["ANTHROPIC_API_KEY"], max_tokens=1024)
+    agent = _build_graph(model, tools)
+    result = await agent.ainvoke({"messages": _to_lc_messages(messages, prompt), "tool_turns": 0})
 
     tool_log = [
         {"name": tc["name"], "args": tc["args"]}
@@ -397,3 +474,72 @@ async def run_agent(messages: list[dict], user_id: Optional[str] = None) -> dict
         "tool_calls": tool_log,
         "generated_images": [],
     }
+
+
+def _sse(payload: dict) -> str:
+    return f"data: {json.dumps(payload)}\n\n"
+
+
+def _chunk_text(content) -> str:
+    """AIMessageChunk.content is a plain str for simple text streaming, but Anthropic's own
+    content-block format can hand back a list of {"type": ..., "text": ...} blocks instead —
+    handle both rather than assuming the simpler shape."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text")
+    return ""
+
+
+async def stream_agent(messages: list[dict], user_id: Optional[str] = None):
+    """Server-Sent-Events variant of run_agent(): same auth/role/tool setup, but yields frames
+    as the model actually produces them instead of waiting for the whole run to finish. Each
+    yielded string is one complete "data: {...}\\n\\n" SSE frame; POST /chat/agent/stream
+    (main.py) streams these straight through as text/event-stream.
+
+    Frame shapes: {"type":"token","text":...} (an incremental text delta), {"type":"tool_start",
+    "name":...,"args":...}, {"type":"tool_end","name":...,"result":...}, {"type":"done",
+    "provider":...,"tool_calls":[...],"generated_images":[...]} (always the last frame on
+    success), {"type":"error","message":...} (in place of "done" — since the HTTP response has
+    already started as 200 by the time an error can happen here, this is the only way an error
+    reaches the frontend; it must be handled as a distinct SSE event, not an HTTP status code).
+
+    VERSION CAVEAT: written against LangGraph 0.2.60's documented `astream_events(version="v2")`
+    contract (see module docstring), not exercised against a live Anthropic call.
+    """
+    try:
+        tools, prompt = _prepare_run(user_id)
+    except RuntimeError as e:
+        yield _sse({"type": "error", "message": str(e)})
+        return
+
+    model = ChatAnthropic(model=AGENT_MODEL, api_key=os.environ["ANTHROPIC_API_KEY"], max_tokens=1024)
+    graph = _build_graph(model, tools)
+    lc_messages = _to_lc_messages(messages, prompt)
+
+    tool_log = []
+    try:
+        async for event in graph.astream_events({"messages": lc_messages, "tool_turns": 0}, version="v2"):
+            kind = event["event"]
+            if kind == "on_chat_model_stream":
+                text = _chunk_text(event["data"]["chunk"].content)
+                if text:
+                    yield _sse({"type": "token", "text": text})
+            elif kind == "on_tool_start":
+                yield _sse({"type": "tool_start", "name": event["name"], "args": event["data"].get("input")})
+            elif kind == "on_tool_end":
+                args = event["data"].get("input") or {}
+                output = event["data"].get("output")
+                result = getattr(output, "content", output)
+                tool_log.append({"name": event["name"], "args": args})
+                yield _sse({"type": "tool_end", "name": event["name"], "result": result})
+    except Exception as e:
+        yield _sse({"type": "error", "message": f"Chiedza agent call failed: {e}"})
+        return
+
+    yield _sse({
+        "type": "done",
+        "provider": "anthropic-langgraph",
+        "tool_calls": tool_log,
+        "generated_images": [],
+    })

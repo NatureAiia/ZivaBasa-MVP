@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Command } from "cmdk";
 import {
-  LayoutGrid, Boxes, MessageSquare, History, Users, Building2, Wallet, Settings, Search, Cpu,
+  LayoutGrid, Boxes, MessageSquare, History, Users, Building2, Wallet, Settings, Search, Cpu, HeartPulse, ShieldAlert,
 } from "lucide-react";
 
 /*
@@ -18,10 +18,12 @@ const ITEMS = [
   { group: "Navigate", label: "History", to: "/app/models/zivabasa/history", icon: History, keywords: "past runs predictions" },
   { group: "Navigate", label: "Roster & Redeployment", to: "/app/models/zivabasa/roster", icon: Users, keywords: "skill match candidates" },
   { group: "Navigate", label: "My Organization", to: "/app/models/zivabasa/my-organization", icon: Building2, keywords: "org chart roles" },
+  { group: "Navigate", label: "Review Queue", to: "/app/models/zivabasa/review-queue", icon: ShieldAlert, keywords: "low confidence hitl approve override" },
   { group: "System", label: "Cost Monitoring", to: "/app/cost-monitoring", icon: Wallet, keywords: "spend budget llm" },
   { group: "System", label: "Settings", to: "/app/systems/settings", icon: Settings, keywords: "profile theme preferences" },
   { group: "System", label: "Users", to: "/app/systems/users", icon: Users, keywords: "roles admin promote" },
   { group: "System", label: "Models & API", to: "/app/systems/models", icon: Cpu, keywords: "providers budget keys" },
+  { group: "System", label: "Model Health", to: "/app/systems/model-health", icon: HeartPulse, keywords: "quality feedback flags satisfaction" },
 ];
 
 export default function CommandPalette() {

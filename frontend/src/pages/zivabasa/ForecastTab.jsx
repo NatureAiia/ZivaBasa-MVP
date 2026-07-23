@@ -7,6 +7,8 @@ import Skeleton from "../../components/common/Skeleton";
 import ForecastLineChart from "../../components/forecast/ForecastLineChart";
 import { staggerContainer, fadeUpItem } from "../../lib/motion";
 import { api } from "../../lib/api";
+import { createReviewItem } from "../../lib/reviewQueueStore";
+import { isLowConfidenceForecast } from "../../lib/reviewThresholds";
 
 const METRIC_META = {
   automation_risk_percent: { label: "Automation Risk", color: "rgb(var(--red))", unit: "%" },
@@ -39,7 +41,18 @@ export default function ForecastTab() {
     setError(null);
     api
       .forecast(industry, horizon)
-      .then(setResult)
+      .then((result) => {
+        setResult(result);
+        if (isLowConfidenceForecast(result.confidence_level)) {
+          createReviewItem({
+            task: industry,
+            source: "forecast",
+            subject: `${industry} forecast (${horizon}y horizon)`,
+            predictedValue: { industry, horizon, forecast: result.forecast },
+            confidenceScore: result.confidence_level,
+          });
+        }
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [industry, horizon]);

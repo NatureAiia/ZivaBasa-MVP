@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutGrid, Boxes, Wallet, ChevronDown, PanelLeftClose, PanelLeftOpen, X, LogOut, Settings,
-  Users as UsersIcon, Cpu, Cog,
+  Users as UsersIcon, Cpu, Cog, HeartPulse,
 } from "lucide-react";
 import clsx from "clsx";
 import ClarityRing from "../common/ClarityRing";
@@ -191,6 +191,9 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
                 <NavItem to="/app/systems/users" icon={UsersIcon} label="Users" collapsed={collapsed} onNavigate={onCloseMobile} />
               )}
               <NavItem to="/app/systems/models" icon={Cpu} label="Models & API" collapsed={collapsed} onNavigate={onCloseMobile} />
+              {isAdmin && (
+                <NavItem to="/app/systems/model-health" icon={HeartPulse} label="Model Health" collapsed={collapsed} onNavigate={onCloseMobile} />
+              )}
             </motion.div>
           )}
         </AnimatePresence>

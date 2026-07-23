@@ -7,6 +7,7 @@ import ExecutiveTaskForm from "../../components/predict/ExecutiveTaskForm";
 import PredictionResult from "../../components/predict/PredictionResult";
 import ShapLedger from "../../components/predict/ShapLedger";
 import ShapWaterfall from "../../components/predict/ShapWaterfall";
+import ShapTierTrace from "../../components/predict/ShapTierTrace";
 import OverallSummary from "../../components/predict/OverallSummary";
 import PipelineTrace from "../../components/predict/PipelineTrace";
 import DocumentAutoFill from "../../components/predict/DocumentAutoFill";
@@ -15,6 +16,8 @@ import { TASKS, TASK_LABELS, TASK_SHORT_LABELS } from "../../lib/api";
 import { fadeScale } from "../../lib/motion";
 import { logHistoryEntry } from "../../lib/history";
 import FeedbackControl from "../../components/predict/FeedbackControl";
+import { createReviewItem } from "../../lib/reviewQueueStore";
+import { isLowConfidenceClassification } from "../../lib/reviewThresholds";
 
 const PIPELINE_STEPS = [
   { key: "schema", label: "Schema" },
@@ -70,8 +73,17 @@ export default function AdvancedPredict() {
     const started = performance.now();
     markStep(activeTask, "predict", "active");
     try {
-      await predict(activeTask, values, schema.feature_names);
+      const result = await predict(activeTask, values, schema.feature_names);
       markStep(activeTask, "predict", "done", Math.round(performance.now() - started));
+      if (result.task_type === "classification" && isLowConfidenceClassification(result.probability)) {
+        const confidenceScore = Math.abs(result.probability - 0.5) * 2;
+        createReviewItem({
+          task: activeTask,
+          source: "classification",
+          predictedValue: result,
+          confidenceScore,
+        });
+      }
     } catch {
       markStep(activeTask, "predict", "error", Math.round(performance.now() - started));
     }
@@ -154,7 +166,7 @@ export default function AdvancedPredict() {
       <AnimatePresence mode="wait">
         {activeTask === "summary" ? (
           <motion.div key="summary" variants={fadeScale} initial="hidden" animate="show" exit="exit">
-            <OverallSummary results={results} onRestart={reset} />
+            <OverallSummary results={results} onRestart={reset} historyId={historyId} />
           </motion.div>
         ) : (
           <motion.div key={activeTask} variants={fadeScale} initial="hidden" animate="show" exit="exit" className="flex flex-col gap-4">
@@ -202,7 +214,7 @@ export default function AdvancedPredict() {
                   <h2 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold">What's Driving This Result</h2>
                   {current?.explain && (
                     <div className="flex items-center gap-1 bg-surface2 rounded-lg p-0.5">
-                      {[["trace", "Trace"], ["bars", "Bars"]].map(([key, label]) => (
+                      {[["trace", "Trace"], ["tiers", "Tiers"], ["bars", "Bars"]].map(([key, label]) => (
                         <button
                           key={key}
                           onClick={() => setShapView(key)}
@@ -221,9 +233,14 @@ export default function AdvancedPredict() {
                   <>
                     {shapView === "trace" ? (
                       <ShapWaterfall result={current.explain} task={activeTask} />
+                    ) : shapView === "tiers" ? (
+                      <ShapTierTrace result={current.explain} task={activeTask} />
                     ) : (
                       <ShapLedger result={current.explain} task={activeTask} />
                     )}
+                    <div className="mt-4 pt-4 border-t border-border">
+                      <FeedbackControl predictHistoryId={historyId} task={activeTask} />
+                    </div>
                     <div className="mt-4 pt-4 border-t border-border flex items-center justify-between gap-3">
                       <span className="text-[11px] text-ink-faint">
                         {TASK_LABELS[activeTask]} complete.

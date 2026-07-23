@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Upload, FileSpreadsheet, AlertTriangle, TrendingDown, TrendingUp, Users, Building2, Shuffle } from "lucide-react";
+import { Upload, FileSpreadsheet, AlertTriangle, TrendingDown, TrendingUp, Users, Building2, Shuffle, Fingerprint } from "lucide-react";
 import clsx from "clsx";
 import Card from "../common/Card";
 import ClarityRing from "../common/ClarityRing";
@@ -79,6 +79,20 @@ export default function BatchUpload({ task, onResult }) {
                 .map((f) => f.feature)
                 .join(", ")}
               . Predictions are still returned, but treat them with more caution than usual.
+            </span>
+          </motion.div>
+        )}
+        {result.provenance && (
+          <motion.div
+            variants={fadeUpItem}
+            className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-[11px] border text-ink-muted bg-surface2/60 border-border"
+          >
+            <Fingerprint size={13} className="shrink-0 text-teal" />
+            <span>
+              {Math.round(result.provenance.completeness_score * 100)}% of uploaded rows were
+              complete ({result.provenance.n_total - result.provenance.n_dropped} of{" "}
+              {result.provenance.n_total}) · fingerprint{" "}
+              <span className="font-mono">{result.provenance.content_sha256.slice(0, 12)}…</span>
             </span>
           </motion.div>
         )}

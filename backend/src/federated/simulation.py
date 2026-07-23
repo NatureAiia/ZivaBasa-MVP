@@ -20,13 +20,13 @@ STILL A SIMULATION, regardless of the above: there are no real institutions, no 
 boundary, no real privacy guarantee enforced by anything outside this code. See the federated/
 package docstring.
 """
+
 from __future__ import annotations
 
 import logging
 from typing import Dict, List
 
 import numpy as np
-from flwr.server.strategy.aggregate import aggregate as fedavg_aggregate
 
 from .. import config, evaluate, features
 from . import model as federated_model
@@ -48,20 +48,34 @@ def run_federated_simulation(
     coordinator would evaluate a global model) alongside a centralized-baseline comparison."""
     df = features.load_processed(task_name)
     if df is None:
-        raise RuntimeError(f"[{task_name}] no processed features found — run features.run_pipeline first.")
+        raise RuntimeError(
+            f"[{task_name}] no processed features found — run features.run_pipeline first."
+        )
     splits = evaluate.make_splits(df, task_name, val_split=True, seed=seed)
     input_dim = splits["input_dim"]
     task_type = config.TASK_CONFIGS[task_name].task_type
 
     partitions = partition_module.partition_splits(splits, num_institutions, seed=seed)
-    institution_ids = [f"simulated_institution_{i + 1}" for i in range(num_institutions)]
+    institution_ids = [
+        f"simulated_institution_{i + 1}" for i in range(num_institutions)
+    ]
     clients = [
-        InstitutionClient(institution_ids[i], partitions[i], input_dim, task_type, local_epochs)
+        InstitutionClient(
+            institution_ids[i], partitions[i], input_dim, task_type, local_epochs
+        )
         for i in range(num_institutions)
     ]
 
     global_model = federated_model.build_federated_task_model(input_dim, task_type)
     global_weights = global_model.get_weights()
+
+    try:
+        from flwr.server.strategy.aggregate import aggregate as fedavg_aggregate
+    except ImportError as e:
+        raise RuntimeError(
+            "Federated simulation requires the flwr package. "
+            "Install it with `pip install flwr`."
+        ) from e
 
     round_history: List[Dict] = []
     for round_num in range(1, num_rounds + 1):
@@ -71,24 +85,46 @@ def run_federated_simulation(
             fit_results.append((weights, num_examples))
             logger.info(
                 "[round %d] [%s] trained on %d local rows (never shared).",
-                round_num, metrics["institution_id"], num_examples,
+                round_num,
+                metrics["institution_id"],
+                num_examples,
             )
 
-        global_weights = fedavg_aggregate(fit_results)  # Flower's real FedAvg weighted average
+        global_weights = fedavg_aggregate(
+            fit_results
+        )  # Flower's real FedAvg weighted average
         global_model.set_weights(global_weights)
-        val_loss, val_metric = global_model.evaluate(splits["X_val"], splits["y_val"], verbose=0)
-        round_history.append({"round": round_num, "val_loss": float(val_loss), "val_metric": float(val_metric)})
-        logger.info("[round %d] global model val_loss=%.4f val_metric=%.4f", round_num, val_loss, val_metric)
+        val_loss, val_metric = global_model.evaluate(
+            splits["X_val"], splits["y_val"], verbose=0
+        )
+        round_history.append(
+            {
+                "round": round_num,
+                "val_loss": float(val_loss),
+                "val_metric": float(val_metric),
+            }
+        )
+        logger.info(
+            "[round %d] global model val_loss=%.4f val_metric=%.4f",
+            round_num,
+            val_loss,
+            val_metric,
+        )
 
     # Centralized baseline: same architecture, trained on ALL institutions' data pooled together
     # in one place — the thing federated learning exists to let you approach WITHOUT any
     # institution's raw data ever leaving its own boundary.
     centralized_model = federated_model.build_federated_task_model(input_dim, task_type)
     centralized_model.fit(
-        splits["X_train"], splits["y_train"],
-        epochs=num_rounds * local_epochs, batch_size=32, verbose=0,
+        splits["X_train"],
+        splits["y_train"],
+        epochs=num_rounds * local_epochs,
+        batch_size=32,
+        verbose=0,
     )
-    centralized_loss, centralized_metric = centralized_model.evaluate(splits["X_val"], splits["y_val"], verbose=0)
+    centralized_loss, centralized_metric = centralized_model.evaluate(
+        splits["X_val"], splits["y_val"], verbose=0
+    )
 
     return {
         "task": task_name,

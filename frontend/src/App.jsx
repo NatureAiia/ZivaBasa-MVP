@@ -10,6 +10,7 @@ import SystemsLayout from "./pages/system/SystemsLayout";
 import SettingsTab from "./pages/system/SettingsTab";
 import UsersTab from "./pages/system/UsersTab";
 import ModelsTab from "./pages/system/ModelsTab";
+import ModelHealthTab from "./pages/system/ModelHealthTab";
 import ZivaBasaLayout from "./pages/zivabasa/ZivaBasaLayout";
 import DashboardTab from "./pages/zivabasa/DashboardTab";
 import ChatTab from "./pages/zivabasa/ChatTab";
@@ -19,6 +20,7 @@ import RosterTab from "./pages/zivabasa/RosterTab";
 import EmployeeMirrorView from "./pages/zivabasa/EmployeeMirrorView";
 import NationalEvidenceView from "./pages/zivabasa/NationalEvidenceView";
 import MyOrganizationTab from "./pages/zivabasa/MyOrganizationTab";
+import ReviewQueueTab from "./pages/zivabasa/ReviewQueueTab";
 import { MODELS } from "./components/layout/Sidebar";
 import ChiedzaWidget from "./components/chat/ChiedzaWidget";
 
@@ -52,6 +54,7 @@ export default function App() {
             <Route path="my-view" element={<EmployeeMirrorView />} />
             <Route path="national-view" element={<NationalEvidenceView />} />
             <Route path="my-organization" element={<MyOrganizationTab />} />
+            <Route path="review-queue" element={<ReviewQueueTab />} />
           </Route>
 
           {OTHER_MODELS.map((slug) => (
@@ -65,6 +68,7 @@ export default function App() {
             <Route path="settings" element={<SettingsTab />} />
             <Route path="users" element={<UsersTab />} />
             <Route path="models" element={<ModelsTab />} />
+            <Route path="model-health" element={<ModelHealthTab />} />
           </Route>
           {/* Old standalone /app/settings kept working as a redirect, not a dead link. */}
           <Route path="settings" element={<Navigate to="/app/systems/settings" replace />} />

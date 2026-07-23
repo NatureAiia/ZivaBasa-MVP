@@ -12,6 +12,7 @@ const TABS = [
   { to: "chat", label: "Chat" },
   { to: "predict", label: "Predict" },
   { to: "my-organization", label: "My Organization" },
+  { to: "review-queue", label: "Review Queue" },
   { to: "history", label: "History" },
 ];
 

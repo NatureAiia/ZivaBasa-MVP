@@ -31,19 +31,38 @@ $$ language plpgsql;
 -- org_nodes — was orgStore.js (My Organization / org chart)
 -- ---------------------------------------------------------------------------
 create table if not exists org_nodes (
-  id                uuid primary key default gen_random_uuid(),
-  user_id           uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  title             text not null,
-  department        text,
-  parent_id         uuid references org_nodes(id) on delete set null,
-  current_skills    text[] not null default '{}',
-  target_role       text,
-  target_skills     text[] not null default '{}',
-  seniority_years   numeric,
-  headcount         integer not null default 1,
-  created_at        timestamptz not null default now(),
-  updated_at        timestamptz not null default now()
+  id                     uuid primary key default gen_random_uuid(),
+  user_id                uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  title                  text not null,
+  department             text,
+  parent_id              uuid references org_nodes(id) on delete set null,
+  current_skills         text[] not null default '{}',
+  target_role            text,
+  target_skills          text[] not null default '{}',
+  seniority_years        numeric,
+  headcount              integer not null default 1,
+  -- The four fields below are optional and exist only to support agent_graph.py's
+  -- scan_org_risk tool (an org-wide skill_match redeployment-fit scan) — see that tool's
+  -- docstring for why they're scoped to skill_match specifically and not the other three
+  -- prediction tasks: employment/skills/productivity need abstract synthetic-dataset features
+  -- (ai_tool_maturity_score, job_demand_index, etc.) no real org tracks per role, so adding
+  -- matching form fields here would just invite fabricated inputs. These four are ordinary
+  -- business quantities a manager can plausibly enter per role; left null means "not scanned"
+  -- rather than defaulted to a fabricated number.
+  avg_salary_usd         numeric,
+  performance_rating     numeric,
+  recent_training_hours  numeric,
+  recent_ot_hours        numeric,
+  created_at             timestamptz not null default now(),
+  updated_at             timestamptz not null default now()
 );
+
+-- Idempotent widen for an already-deployed project whose org_nodes predates these columns —
+-- same convention as profiles' phone/department/avatar_url widen above.
+alter table org_nodes add column if not exists avg_salary_usd numeric;
+alter table org_nodes add column if not exists performance_rating numeric;
+alter table org_nodes add column if not exists recent_training_hours numeric;
+alter table org_nodes add column if not exists recent_ot_hours numeric;
 
 create index if not exists org_nodes_user_id_idx on org_nodes(user_id);
 create index if not exists org_nodes_parent_id_idx on org_nodes(parent_id);

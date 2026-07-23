@@ -178,16 +178,51 @@ export default function ChatPane() {
     setSending(true);
     try {
       let replyText, replyProvider, replyImages;
+      let streamed = false;
       if (selection.mode === "chiedza") {
-        const res = await api.chatAgent(nextMessages.map((m) => ({ role: m.role, content: m.text })), user?.id);
-        replyText = res.reply;
-        replyProvider = res.provider;
-        if (res.tool_calls?.length) {
-          setToolCallLog((log) => [...log, ...res.tool_calls]);
-        }
+        // Streamed variant of api.chatAgent() (backend/api/agent_graph.py's stream_agent()) —
+        // appends a growing assistant bubble token-by-token instead of waiting for the whole
+        // reply. The bubble is pushed here and mutated in place by each "token" frame; the
+        // final setMessages() call below is skipped for this branch (see `streamed`).
+        let liveText = "";
+        setMessages((m) => [...m, { role: "assistant", text: "", provider: "anthropic-langgraph", streaming: true }]);
+        streamed = true; // set before awaiting: a thrown error must edit this placeholder in the
+                         // catch block below, not append a second, duplicate error bubble
+        await api.chatAgentStream(
+          nextMessages.map((m) => ({ role: m.role, content: m.text })),
+          user?.id,
+          (frame) => {
+            if (frame.type === "token") {
+              liveText += frame.text;
+              setMessages((m) => {
+                const copy = [...m];
+                copy[copy.length - 1] = { ...copy[copy.length - 1], text: liveText };
+                return copy;
+              });
+            } else if (frame.type === "done") {
+              if (frame.tool_calls?.length) setToolCallLog((log) => [...log, ...frame.tool_calls]);
+              setMessages((m) => {
+                const copy = [...m];
+                copy[copy.length - 1] = { ...copy[copy.length - 1], streaming: false };
+                return copy;
+              });
+            } else if (frame.type === "error") {
+              setMessages((m) => {
+                const copy = [...m];
+                copy[copy.length - 1] = {
+                  ...copy[copy.length - 1],
+                  text: `Couldn't get a response: ${frame.message}`,
+                  isError: true,
+                  streaming: false,
+                };
+                return copy;
+              });
+            }
+          },
+        );
         // No token usage reported by agent_graph.py today (LangGraph's ChatAnthropic wrapper
-        // doesn't surface it through create_react_agent's return shape) — nothing to log here,
-        // unlike the backend branch below.
+        // doesn't surface it through the graph's return shape) — nothing to log here, unlike
+        // the backend branch below.
       } else if (selection.mode === "puter") {
         const history = [
           { role: "system", content: PUTER_SYSTEM },
@@ -239,9 +274,26 @@ export default function ChatPane() {
           }
         }
       }
-      setMessages((m) => [...m, { role: "assistant", text: replyText, provider: replyProvider, images: replyImages }]);
+      if (!streamed) {
+        setMessages((m) => [...m, { role: "assistant", text: replyText, provider: replyProvider, images: replyImages }]);
+      }
     } catch (e) {
-      setMessages((m) => [...m, { role: "assistant", text: `Couldn't get a response: ${e.message}`, isError: true }]);
+      if (streamed) {
+        // The streaming placeholder bubble is already in `messages` — edit it in place rather
+        // than appending a second, duplicate error bubble underneath it.
+        setMessages((m) => {
+          const copy = [...m];
+          copy[copy.length - 1] = {
+            ...copy[copy.length - 1],
+            text: `Couldn't get a response: ${e.message}`,
+            isError: true,
+            streaming: false,
+          };
+          return copy;
+        });
+      } else {
+        setMessages((m) => [...m, { role: "assistant", text: `Couldn't get a response: ${e.message}`, isError: true }]);
+      }
     } finally {
       setSending(false);
     }

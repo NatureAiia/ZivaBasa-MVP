@@ -124,6 +124,48 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messages, user_id: userId }),
     }),
+  // Server-Sent-Events variant of chatAgent() above (backend/api/agent_graph.py's
+  // stream_agent()) — same request shape, but calls onEvent(frame) as each SSE frame arrives
+  // instead of resolving once with the full reply. Frame .type is one of "token" (incremental
+  // text — append to the in-progress reply), "tool_start"/"tool_end" (status only), "done"
+  // (final frame on success — .tool_calls/.generated_images match chatAgent()'s response
+  // shape), or "error" (in place of "done" — streaming responses can't carry an HTTP error
+  // status once they've started, so failures surface as this frame instead of a rejected
+  // promise). Not built on EventSource: EventSource can't send a POST body or an Authorization
+  // header, both of which this call needs.
+  chatAgentStream: async (messages, userId, onEvent) => {
+    const base = getBase();
+    const auth = await authHeaders();
+    let res;
+    try {
+      res = await fetch(`${base}/chat/agent/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...auth },
+        body: JSON.stringify({ messages, user_id: userId }),
+      });
+    } catch (e) {
+      throw new Error(`Could not reach API at ${base}. Is uvicorn running? (${e.message})`);
+    }
+    if (!res.ok || !res.body) {
+      throw new Error(`${res.status}: ${res.statusText}`);
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      // SSE frames are separated by a blank line; each frame's payload is one "data: ..." line.
+      let sep;
+      while ((sep = buffer.indexOf("\n\n")) !== -1) {
+        const frame = buffer.slice(0, sep);
+        buffer = buffer.slice(sep + 2);
+        const line = frame.split("\n").find((l) => l.startsWith("data: "));
+        if (line) onEvent(JSON.parse(line.slice(6)));
+      }
+    }
+  },
   chatModels: () => request("/chat/models"),
   chatBudget: () => request("/chat/budget"),
   orgExtractProviders: () => request("/organization/extract/providers"),

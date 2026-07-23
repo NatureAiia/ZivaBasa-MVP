@@ -12,6 +12,7 @@ const TABS = [
   { to: "settings", label: "Settings" },
   { to: "users", label: "Users" },
   { to: "models", label: "Models & API" },
+  { to: "model-health", label: "Model Health" },
 ];
 
 export default function SystemsLayout() {

@@ -107,6 +107,12 @@ def parse_and_validate(file_bytes: bytes, task: str, feature_names: list[str]) -
     label_col = _find_column(df, LABEL_CANDIDATES.get(task, []))
     segment_col = _find_column(df, SEGMENT_CANDIDATES.get(task, []))
 
+    # Pre-training confidence signal: what fraction of uploaded rows survived required-column
+    # validation intact. 1.0 = every row usable, 0.0 = nothing usable. Doesn't score
+    # plausibility of the values themselves, only completeness of the required columns.
+    n_total = len(df)
+    completeness_score = (n_total - n_dropped) / n_total if n_total else 0.0
+
     return {
         "df": df_valid,
         "feature_matrix": feature_matrix,
@@ -114,6 +120,8 @@ def parse_and_validate(file_bytes: bytes, task: str, feature_names: list[str]) -
         "segment_col": segment_col,
         "n_rows": len(df_valid),
         "n_dropped": n_dropped,
+        "n_total": n_total,
+        "completeness_score": completeness_score,
     }
 
 

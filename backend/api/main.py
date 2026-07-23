@@ -18,6 +18,7 @@ meant to prove the trained multi-task model + SHAP pipeline can actually be serv
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -37,6 +38,7 @@ load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 import numpy as np
 from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 from api.schemas import (
     PredictRequest, PredictResponse, SchemaResponse,
@@ -59,6 +61,7 @@ from api import field_extract as field_extract_module
 from api import image_router as image_router_module
 from api import redact as redact_module
 from src import evaluate
+from src import features as features_module
 from src import config as src_config
 from src import drift as drift_module
 from src import forecast as forecast_module
@@ -257,8 +260,12 @@ def explain(
     )
     prediction = float(artifacts.keras_model(X, training=False).numpy().squeeze())
 
+    categories = features_module.get_feature_categories(task)
     contributions = [
-        FeatureContribution(feature=name, value=float(val), shap_value=float(sv))
+        FeatureContribution(
+            feature=name, value=float(val), shap_value=float(sv),
+            category=categories.get(name),
+        )
         for name, val, sv in zip(artifacts.feature_names, request.features, shap_values)
     ]
     contributions.sort(key=lambda c: abs(c.shap_value), reverse=True)
@@ -310,6 +317,9 @@ async def predict_batch(task: str, file: UploadFile = File(...), _role: str = De
         raise HTTPException(status_code=422, detail="Only .csv files are supported right now.")
 
     file_bytes = await file.read()
+    # Tamper-evidence fingerprint of exactly what was uploaded, independent of any row-level
+    # transforms below — computed before parsing so it always reflects the raw bytes received.
+    content_sha256 = hashlib.sha256(file_bytes).hexdigest()
     try:
         parsed = batch_module.parse_and_validate(file_bytes, task, artifacts.feature_names)
     except ValueError as e:
@@ -370,6 +380,12 @@ async def predict_batch(task: str, file: UploadFile = File(...), _role: str = De
         "top_rows": top_risk,
         "rows": rows,
         "drift": drift_report,
+        "provenance": {
+            "content_sha256": content_sha256,
+            "completeness_score": parsed["completeness_score"],
+            "n_total": parsed["n_total"],
+            "n_dropped": parsed["n_dropped"],
+        },
     }
 
 
@@ -407,6 +423,20 @@ async def chat_agent(request: ChatRequest, _role: str = Depends(auth.require_rol
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Chiedza agent call failed: {e}")
     return ChatResponse(**result)
+
+
+@app.post("/chat/agent/stream")
+async def chat_agent_stream(request: ChatRequest, _role: str = Depends(auth.require_role("viewer"))):
+    """Server-Sent Events variant of POST /chat/agent (api/agent_graph.py's stream_agent) — same
+    auth/role/tool logic, but streams token deltas and tool-call status as they happen instead of
+    waiting for the whole reply. Unlike the endpoint above, failures can't become an HTTP status
+    code once streaming has started (the response is already a 200), so stream_agent() yields an
+    {"type": "error", ...} SSE frame instead — the frontend must handle that as a distinct event,
+    not rely on a non-2xx response."""
+    return StreamingResponse(
+        agent_graph.stream_agent([m.model_dump() for m in request.messages], user_id=request.user_id),
+        media_type="text/event-stream",
+    )
 
 
 @app.get("/chat/budget")
