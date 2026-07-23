@@ -73,6 +73,14 @@ def _confounder_features(all_features: List[str]) -> List[str]:
 def train_uplift_model(
     task_name: str = "skills", seed: int = config.RANDOM_STATE
 ) -> Dict:
+    try:
+        from econml.dml import CausalForestDML
+    except ImportError as e:
+        raise RuntimeError(
+            "Uplift model training requires the econml Python package. "
+            "Install it with `pip install econml`."
+        ) from e
+
     df = features.load_processed(task_name)
     if df is None:
         raise RuntimeError(
