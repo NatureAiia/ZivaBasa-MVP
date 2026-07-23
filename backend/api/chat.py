@@ -29,6 +29,7 @@ import os
 from typing import Optional
 
 import httpx
+from anthropic import AsyncAnthropic
 
 from api import image_router as image_router_module
 from api.model_registry import registry

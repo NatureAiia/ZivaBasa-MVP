@@ -35,6 +35,7 @@ export default function AdvancedPredict() {
   // doesn't leak one task's extracted values into another's form.
   const [appliedValues, setAppliedValues] = useState({});
   const [shapView, setShapView] = useState("trace");
+  const [historyId, setHistoryId] = useState(null);
 
   useEffect(() => {
     if (activeTask !== "summary" && !schemas[activeTask]) loadSchema(activeTask);
@@ -55,7 +56,11 @@ export default function AdvancedPredict() {
   };
 
   useEffect(() => {
-    if (allComplete) logHistoryEntry(results).catch((e) => console.error("logHistoryEntry failed:", e.message));
+    if (allComplete) {
+      logHistoryEntry(results)
+        .then(setHistoryId)
+        .catch((e) => console.error("logHistoryEntry failed:", e.message));
+    }
   }, [allComplete]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const schema = schemas[activeTask];
