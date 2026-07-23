@@ -88,6 +88,9 @@ pydantic==2.13.4  # bumped from 2.7.4 — langchain-core==0.3.33 (below) require
 python-multipart==0.0.9  # required by FastAPI's UploadFile/File() — used by the batch CSV
                           # upload endpoint (/predict/batch/{task})
 httpx==0.27.0             # async HTTP client used by api/chat.py to call Anthropic/NVIDIA
+openai==1.54.4            # official SDK, used by api/azure_image.py for Azure OpenAI image
+                          # generation/editing (AsyncAzureOpenAI) — NOT used for the other four
+                          # chat providers, which stay on hand-rolled httpx calls in chat.py
 
 # NOTE: Puter.js (the free/keyless DeepSeek chat option) is a frontend-only <script> include
 # (https://js.puter.com/v2/) — not a Python package, and was previously an invalid line here

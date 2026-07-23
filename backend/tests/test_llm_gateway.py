@@ -57,10 +57,10 @@ def test_budget_status_reports_configured_and_remaining(monkeypatch):
 
 @pytest.mark.anyio
 async def test_send_chat_with_fallback_falls_through_on_error(monkeypatch):
-    async def failing_anthropic(messages):
+    async def failing_anthropic(messages, attachment=None):
         raise RuntimeError("simulated 429 rate limit")
 
-    async def working_groq(messages):
+    async def working_groq(messages, attachment=None):
         return "groq reply", {"input_tokens": 5, "output_tokens": 5}, [], []
 
     monkeypatch.setattr(chat_module, "_KEY_LOOKUP", {
@@ -81,7 +81,7 @@ async def test_send_chat_with_fallback_falls_through_on_error(monkeypatch):
 
 @pytest.mark.anyio
 async def test_send_chat_with_fallback_skips_over_budget_provider(monkeypatch):
-    async def working_anthropic(messages):
+    async def working_anthropic(messages, attachment=None):
         return "anthropic reply", {"input_tokens": 5, "output_tokens": 5}, [], []
 
     monkeypatch.setattr(chat_module, "_KEY_LOOKUP", {
@@ -100,7 +100,7 @@ async def test_send_chat_with_fallback_skips_over_budget_provider(monkeypatch):
 
 @pytest.mark.anyio
 async def test_send_chat_with_fallback_raises_when_all_exhausted(monkeypatch):
-    async def failing(messages):
+    async def failing(messages, attachment=None):
         raise RuntimeError("down")
 
     monkeypatch.setattr(chat_module, "_KEY_LOOKUP", {
