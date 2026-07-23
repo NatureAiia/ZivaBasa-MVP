@@ -226,6 +226,7 @@ begin
     'usage_log', 'cost_entries', 'chat_sessions', 'predict_history'
   ]
   loop
+    execute format('drop policy if exists "own rows only" on %I;', t);
     execute format(
       'create policy "own rows only" on %I for all using (user_id = auth.uid()) with check (user_id = auth.uid());',
       t
