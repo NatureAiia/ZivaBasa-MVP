@@ -48,6 +48,7 @@ from api.schemas import (
     ForecastSchemaResponse, ForecastResponse, ForecastPoint,
     SkillGapRequest, SkillGapResponse, UpliftResponse,
     FederatedSimulateRequest, FederatedSimulationResponse,
+    EntityResolutionRequest, EntityResolutionResponse,
 )
 from api.model_registry import registry, forecast_registry
 from api import auth
@@ -66,6 +67,7 @@ from src import config as src_config
 from src import drift as drift_module
 from src import forecast as forecast_module
 from src import skill_matching
+from src import entity_resolution as entity_resolution_module
 from src import uplift as uplift_module
 from src.federated import simulation as federated_module
 
@@ -453,6 +455,17 @@ async def skill_match_recommend(request: SkillGapRequest, _role: str = Depends(a
     pair, returns the same match score skill_matching.match_score() computes plus a recommended
     training resource for each missing skill (Master Checklist §5, Day 10 item)."""
     return skill_matching.recommend_training_path(request.current_skills, request.required_skills)
+
+
+@app.post("/entity-resolution/match", response_model=EntityResolutionResponse)
+async def entity_resolution_match(request: EntityResolutionRequest, _role: str = Depends(auth.require_role("viewer"))):
+    """Cross-dataset row-level identity matching (src/entity_resolution.py) — proposes candidate
+    matches between rows of different already-uploaded batch results (e.g. this turnover-risk
+    row and this automation-risk row are probably the same person/role), from identifier
+    strings the caller already has (batch result rows' `_name` field). Stateless: confirming a
+    match is the frontend's job, persisted to Supabase's entity_links table, not this API."""
+    sets = {task: [{"row_index": r.row_index, "label": r.label} for r in rows] for task, rows in request.sets.items()}
+    return entity_resolution_module.match_entities(sets, threshold=request.threshold)
 
 
 @app.post("/federated/simulate", response_model=FederatedSimulationResponse)

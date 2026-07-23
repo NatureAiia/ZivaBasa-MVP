@@ -67,6 +67,7 @@ alter table org_nodes add column if not exists recent_ot_hours numeric;
 create index if not exists org_nodes_user_id_idx on org_nodes(user_id);
 create index if not exists org_nodes_parent_id_idx on org_nodes(parent_id);
 
+drop trigger if exists org_nodes_set_updated_at on org_nodes;
 create trigger org_nodes_set_updated_at
   before update on org_nodes
   for each row execute function set_updated_at();
@@ -165,6 +166,7 @@ create table if not exists chat_sessions (
   updated_at     timestamptz not null default now()
 );
 
+drop trigger if exists chat_sessions_set_updated_at on chat_sessions;
 create trigger chat_sessions_set_updated_at
   before update on chat_sessions
   for each row execute function set_updated_at();
@@ -276,6 +278,7 @@ end $$;
 -- 'viewer' regardless of what a hand-crafted request claims; update is locked to prevent
 -- role changes at the RLS layer, reinforced by a trigger below (belt and suspenders — the
 -- trigger also protects against any future policy edit that loosens this).
+drop policy if exists "own profile select" on profiles;
 create policy "own profile select" on profiles
   for select using (user_id = auth.uid());
 
@@ -283,6 +286,7 @@ create policy "own profile select" on profiles
 -- their own, to approve pending signups and manage roles. A self-referential subquery on the
 -- caller's OWN row (not the row being read) — this does not let anyone escalate what they can
 -- SEE based on the target row's contents, only based on who the caller already is.
+drop policy if exists "admins can view all profiles" on profiles;
 create policy "admins can view all profiles" on profiles
   for select using (
     exists (
@@ -291,9 +295,11 @@ create policy "admins can view all profiles" on profiles
     )
   );
 
+drop policy if exists "own profile insert" on profiles;
 create policy "own profile insert" on profiles
   for insert with check (user_id = auth.uid() and role = 'viewer');
 
+drop policy if exists "own profile update" on profiles;
 create policy "own profile update" on profiles
   for update using (user_id = auth.uid()) with check (user_id = auth.uid());
 
@@ -311,6 +317,7 @@ begin
 end;
 $$ language plpgsql;
 
+drop trigger if exists profiles_lock_role on profiles;
 create trigger profiles_lock_role
   before update on profiles
   for each row execute function lock_profile_role();
@@ -380,6 +387,34 @@ create policy "admins can view all feedback" on prediction_feedback
   );
 
 -- ---------------------------------------------------------------------------
+-- entity_links — confirmed "golden record" links between rows of different uploaded batch
+-- results (e.g. this turnover-risk row and this automation-risk row are the same
+-- person/role). src/entity_resolution.py's /entity-resolution/match endpoint only PROPOSES
+-- candidate matches (stateless); a row lands here once a reviewer confirms one, keyed by
+-- golden_id so every task-row that belongs to the same real-world entity shares one value.
+-- ---------------------------------------------------------------------------
+create table if not exists entity_links (
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  golden_id    uuid not null default gen_random_uuid(),
+  task         text not null,
+  row_label    text not null,
+  match_score  numeric,
+  created_at   timestamptz not null default now(),
+  -- one confirmed link per (task, row_label) per user — re-confirming updates match_score/golden_id
+  unique (user_id, task, row_label)
+);
+
+create index if not exists entity_links_user_id_idx on entity_links(user_id);
+create index if not exists entity_links_golden_id_idx on entity_links(golden_id);
+
+alter table entity_links enable row level security;
+
+drop policy if exists "own rows only" on entity_links;
+create policy "own rows only" on entity_links
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- ---------------------------------------------------------------------------
 -- avatars storage bucket — profile photo uploads (Settings page, added alongside the
 -- phone/department/avatar_url profile columns above). Public-read (so <img src={avatar_url}>
 -- works directly, no signed URL needed), but writes are scoped to the uploader's own folder
@@ -390,14 +425,18 @@ insert into storage.buckets (id, name, public)
 values ('avatars', 'avatars', true)
 on conflict (id) do nothing;
 
+drop policy if exists "avatar public read" on storage.objects;
 create policy "avatar public read" on storage.objects
   for select using (bucket_id = 'avatars');
 
+drop policy if exists "avatar owner write" on storage.objects;
 create policy "avatar owner write" on storage.objects
   for insert with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
 
+drop policy if exists "avatar owner update" on storage.objects;
 create policy "avatar owner update" on storage.objects
   for update using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
 
+drop policy if exists "avatar owner delete" on storage.objects;
 create policy "avatar owner delete" on storage.objects
   for delete using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);

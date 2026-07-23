@@ -216,3 +216,37 @@ class ForecastResponse(BaseModel):
                                     # confidence_level/uncertainty_method for what they mean
     confidence_level: float = 0.90
     uncertainty_method: str = ""
+
+
+class EntityResolutionRow(BaseModel):
+    row_index: int
+    label: str
+
+
+class EntityResolutionRequest(BaseModel):
+    # {task_name: [rows]} — one entry per already-uploaded batch result the caller wants
+    # cross-matched. At least two tasks are expected (matching within one task is a no-op).
+    sets: dict[str, List[EntityResolutionRow]]
+    threshold: float = 0.82
+
+
+class EntityResolutionMember(BaseModel):
+    task: str
+    row_index: int
+    label: str
+    match_score: float
+
+
+class EntityResolutionCluster(BaseModel):
+    members: List[EntityResolutionMember]
+
+
+class EntityResolutionUnmatched(BaseModel):
+    task: str
+    row_index: int
+    label: str
+
+
+class EntityResolutionResponse(BaseModel):
+    clusters: List[EntityResolutionCluster]
+    unmatched: List[EntityResolutionUnmatched]

@@ -274,6 +274,15 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ task, num_institutions: numInstitutions, num_rounds: numRounds }),
     }),
+  // Cross-dataset row-level identity matching (src/entity_resolution.py) — proposes candidate
+  // matches between rows of different already-uploaded batch results. `sets` is
+  // {task: [{row_index, label}, ...]}; see entityLinksStore.js for persisting confirmed matches.
+  matchEntities: (sets, threshold = 0.82) =>
+    request("/entity-resolution/match", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sets, threshold }),
+    }),
 };
 
 export const TASKS = ["employment", "skills", "productivity", "skill_match", "human_capital"];

@@ -21,10 +21,13 @@ const LANDING_CSS = `
   --land-ink-faint: #6E6A5F;
   --land-hairline: rgba(243,238,227,0.10);
   --land-hairline-strong: rgba(243,238,227,0.18);
-  --land-gold: #E7A23A;
-  --land-gold-dim: #B77E2C;
-  --land-gold-wash: rgba(231,162,58,0.12);
-  --land-ember: #C24A2B;
+  /* Matched exactly to the app shell's .zivabasa-scope --gold/--red (frontend/src/index.css) —
+     the landing page and the authenticated app must read as one continuous brand, not a
+     marketing-site palette that happens to be adjacent to the product's. */
+  --land-gold: #E8834D;
+  --land-gold-dim: #BA683A;
+  --land-gold-wash: rgba(232,131,77,0.12);
+  --land-ember: #D14B45;
   --land-font-display: 'Fraunces', serif;
   --land-font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   --land-font-mono: 'IBM Plex Mono', monospace;
@@ -52,10 +55,10 @@ const LANDING_CSS = `
   --land-ink-faint: #8C8574;
   --land-hairline: rgba(26,23,18,0.08);
   --land-hairline-strong: rgba(26,23,18,0.14);
-  --land-gold: #B9791F;
-  --land-gold-dim: #8F5D18;
-  --land-gold-wash: rgba(185,121,31,0.10);
-  --land-ember: #A83D22;
+  --land-gold: #C56F41;
+  --land-gold-dim: #8F5230;
+  --land-gold-wash: rgba(197,111,65,0.10);
+  --land-ember: #C82D32;
 }
 
 .landing-page *{ box-sizing: border-box; margin: 0; padding: 0; }
@@ -217,7 +220,7 @@ const LANDING_CSS = `
   width: 640px;
   height: 640px;
   max-width: 160vw;
-  background: radial-gradient(circle, rgba(231,162,58,0.14) 0%, rgba(231,162,58,0.04) 34%, rgba(231,162,58,0) 62%);
+  background: radial-gradient(circle, rgba(232,131,77,0.14) 0%, rgba(232,131,77,0.04) 34%, rgba(232,131,77,0) 62%);
   pointer-events: none;
 }
 .landing-page .hero-inner{ position: relative; z-index: 1; }
@@ -346,7 +349,7 @@ const LANDING_CSS = `
   opacity: 0;
   transition: opacity .25s ease;
 }
-.landing-page .agent-card:hover{ border-color: var(--land-gold-dim); transform: translateY(-3px); box-shadow: 0 16px 40px -20px rgba(231,162,58,0.35); }
+.landing-page .agent-card:hover{ border-color: var(--land-gold-dim); transform: translateY(-3px); box-shadow: 0 16px 40px -20px rgba(232,131,77,0.35); }
 .landing-page .agent-card:hover::before{ opacity: 1; }
 .landing-page .agent-card .tag{ position: relative; z-index: 1; font-family: var(--land-font-mono); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--land-gold); }
 .landing-page .agent-card h3{ position: relative; z-index: 1; font-family: var(--land-font-display); font-weight: 500; font-size: 1.1rem; margin: 10px 0 8px; }
@@ -363,7 +366,7 @@ const LANDING_CSS = `
   overflow: hidden;
   transition: border-color .25s ease, transform .25s ease, box-shadow .25s ease;
 }
-.landing-page .eco-card:hover{ border-color: var(--land-gold-dim); transform: translateY(-3px); box-shadow: 0 16px 40px -20px rgba(231,162,58,0.35); }
+.landing-page .eco-card:hover{ border-color: var(--land-gold-dim); transform: translateY(-3px); box-shadow: 0 16px 40px -20px rgba(232,131,77,0.35); }
 .landing-page .eco-card.flagship{ border-color: var(--land-gold-dim); }
 .landing-page .eco-card.flagship::before{
   content:"";
@@ -386,8 +389,8 @@ const LANDING_CSS = `
 
 /* ---------- AMBIENT BLOBS ---------- */
 .landing-page .ambient-blob{ position: absolute; border-radius: 50%; filter: blur(60px); pointer-events: none; z-index: 0; opacity: 0.4; }
-.landing-page .ambient-blob.gold{ background: radial-gradient(circle, rgba(231,162,58,0.22) 0%, rgba(231,162,58,0) 70%); }
-.landing-page .ambient-blob.ember{ background: radial-gradient(circle, rgba(194,74,43,0.18) 0%, rgba(194,74,43,0) 70%); }
+.landing-page .ambient-blob.gold{ background: radial-gradient(circle, rgba(232,131,77,0.22) 0%, rgba(232,131,77,0) 70%); }
+.landing-page .ambient-blob.ember{ background: radial-gradient(circle, rgba(209,75,69,0.18) 0%, rgba(209,75,69,0) 70%); }
 
 /* ---------- GLOBE ---------- */
 .landing-page .globe-frame{ position: relative; }
@@ -444,7 +447,7 @@ const LANDING_CSS = `
   margin: 0 auto 22px;
   border-radius: 50%;
   overflow: hidden;
-  background: radial-gradient(circle at 35% 30%, rgba(231,162,58,0.08), transparent 65%);
+  background: radial-gradient(circle at 35% 30%, rgba(232,131,77,0.08), transparent 65%);
   cursor: grab;
 }
 .landing-page .globe-fallback{
@@ -614,7 +617,7 @@ function BrandMark({ className }) {
         fillRule="evenodd"
         clipRule="evenodd"
         d="M13 1.5C19.3513 1.5 24.5 6.64873 24.5 13C24.5 19.3513 19.3513 24.5 13 24.5C10.2822 24.5 7.78552 23.5546 5.82178 21.9756C10.9767 21.4954 15 17.1682 15 11.9502C15 7.7663 12.3765 4.19453 8.68115 2.79102C10.0248 2.03855 11.5647 1.5 13 1.5Z"
-        fill="#E7A23A"
+        fill="#E8834D"
       />
     </svg>
   );
@@ -927,8 +930,8 @@ export default function Landing() {
 
                 <div className="mini-trend" aria-hidden="true">
                   <svg width="96" height="40" viewBox="0 0 96 40" fill="none">
-                    <path className="trend-path" d="M2 32 C 16 30, 22 20, 32 22 C 44 24, 46 10, 58 12 C 70 14, 74 4, 94 3" stroke="#E7A23A" strokeWidth="2" strokeLinecap="round" fill="none" />
-                    <circle cx="94" cy="3" r="3" fill="#E7A23A" />
+                    <path className="trend-path" d="M2 32 C 16 30, 22 20, 32 22 C 44 24, 46 10, 58 12 C 70 14, 74 4, 94 3" stroke="#E8834D" strokeWidth="2" strokeLinecap="round" fill="none" />
+                    <circle cx="94" cy="3" r="3" fill="#E8834D" />
                   </svg>
                   <div className="mini-trend-copy">
                     <div className="num">2026 – 2030</div>
@@ -945,7 +948,7 @@ export default function Landing() {
                 <div className="globe-starburst" aria-hidden="true">
                   <StarBurst
                     starCount={22}
-                    color="#E7A23A"
+                    color="#E8834D"
                     opacity={45}
                     speed={5}
                     starSize={5}
@@ -1027,9 +1030,9 @@ export default function Landing() {
           <div className="auth-rising" aria-hidden="true">
             <RisingLines
               particles={90}
-              color="#E7A23A"
+              color="#E8834D"
               showHorizon={true}
-              horizonColor="#C24A2B"
+              horizonColor="#D14B45"
               riseSpeed={14}
               opacity={40}
               horizonOpacity={22}

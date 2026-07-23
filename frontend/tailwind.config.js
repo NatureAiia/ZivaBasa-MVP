@@ -23,6 +23,10 @@ export default {
         display: ["'Space Grotesk'", "sans-serif"],
         body: ["Inter", "sans-serif"],
         mono: ["'IBM Plex Mono'", "monospace"],
+        /* Authority serif — reserved for the one deliberate "signature" moment per screen:
+           report titles, the landing headline, hero stat figures. Never body copy, never UI
+           chrome. Restraint is the point; overuse turns it into just another display font. */
+        serif: ["Fraunces", "'Iowan Old Style'", "serif"],
       },
       boxShadow: {
         card: "0 1px 2px rgb(0 0 0 / 0.04), 0 1px 12px rgb(0 0 0 / 0.03)",

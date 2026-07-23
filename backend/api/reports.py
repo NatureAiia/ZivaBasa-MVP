@@ -53,12 +53,14 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-# ZivaBasa's own gold/teal/red palette, matched to the frontend's Tailwind theme colors, so a
-# chart embedded in a report doesn't look like it came from an unrelated tool.
-GOLD = "#D4AF37"
-TEAL = "#2FBF9F"
-RED = "#D1495B"
-INK = "#1F2430"
+# ZivaBasa's own gold/teal/red palette, matched exactly to the frontend's --gold/--teal/--red
+# CSS vars under the .zivabasa-scope module override (frontend/src/index.css), light-theme
+# values since reports render on white. A report and the in-app screen it was generated from
+# must never show two different "gold"s.
+GOLD = "#C56F41"  # matches .zivabasa-scope --gold, light theme (frontend/src/index.css)
+TEAL = "#0C8A70"  # matches --teal, light theme
+RED = "#C82D32"   # matches --red, light theme
+INK = "#12172B"   # matches --ink, light theme
 
 TASK_LABELS = {
     "employment": "Job & Automation Risk",
@@ -157,7 +159,7 @@ def _workflow_diagram(title: str, stages: list[str]) -> io.BytesIO:
     x_positions = [0.07 + i * (0.86 / max(len(stages), 1)) for i in range(len(stages))]
     for i, (x, stage) in enumerate(zip(x_positions, stages)):
         box = plt.Rectangle(
-            (x, 0.32), 0.16, 0.28, facecolor="#F7F4EA", edgecolor=INK, linewidth=1.0
+            (x, 0.32), 0.16, 0.28, facecolor="#F0F2F7", edgecolor=INK, linewidth=1.0
         )
         ax.add_patch(box)
         ax.text(
@@ -652,7 +654,7 @@ def _pdf_table(headers: list[str], rows: list[list[str]]) -> RLTable:
     table.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (-1, 0), rl_colors.HexColor("#F2EFE4")),
+                ("BACKGROUND", (0, 0), (-1, 0), rl_colors.HexColor("#F0F2F7")),
                 ("TEXTCOLOR", (0, 0), (-1, 0), rl_colors.HexColor(INK)),
                 ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                 ("FONTSIZE", (0, 0), (-1, -1), 9),
@@ -1055,7 +1057,7 @@ def build_chat_report_pdf(messages: list[dict], tool_calls: list[dict]) -> bytes
 # numbers rather than read a narrative document.
 # ---------------------------------------------------------------------------
 
-_XL_HEADER_FILL = PatternFill(start_color="F2EFE4", end_color="F2EFE4", fill_type="solid")
+_XL_HEADER_FILL = PatternFill(start_color="F0F2F7", end_color="F0F2F7", fill_type="solid")
 _XL_HEADER_FONT = Font(bold=True, color=INK.lstrip("#"))
 
 
