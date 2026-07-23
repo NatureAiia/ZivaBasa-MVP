@@ -22,6 +22,7 @@ frontend can show what's actually usable vs. what still needs a key, without har
 logic on the frontend. POST /chat accepts an optional `provider` field to pick explicitly;
 omitting it falls back to auto-detect (first configured key, in MODEL_CATALOG order).
 """
+
 from __future__ import annotations
 
 import json
@@ -29,7 +30,6 @@ import os
 from typing import Optional
 
 import httpx
-from anthropic import AsyncAnthropic
 
 from api import image_router as image_router_module
 from api.model_registry import registry
@@ -43,7 +43,9 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
-CHAT_PROVIDER = os.environ.get("CHAT_PROVIDER")  # explicit override if multiple keys are set
+CHAT_PROVIDER = os.environ.get(
+    "CHAT_PROVIDER"
+)  # explicit override if multiple keys are set
 
 SYSTEM_PROMPT = """You are the ZivaBasa workforce intelligence assistant, embedded in ChiedzaAI.
 You have two tools: predict_task and explain_task, covering four tasks:
@@ -101,7 +103,10 @@ TOOLS_ANTHROPIC = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "task": {"type": "string", "enum": ["employment", "skills", "productivity", "skill_match"]},
+                "task": {
+                    "type": "string",
+                    "enum": ["employment", "skills", "productivity", "skill_match"],
+                },
                 "features": {
                     "type": "object",
                     "description": "Feature name -> numeric value. Use GET /schema/{task} names.",
@@ -116,8 +121,14 @@ TOOLS_ANTHROPIC = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "task": {"type": "string", "enum": ["employment", "skills", "productivity", "skill_match"]},
-                "features": {"type": "object", "description": "Feature name -> numeric value."},
+                "task": {
+                    "type": "string",
+                    "enum": ["employment", "skills", "productivity", "skill_match"],
+                },
+                "features": {
+                    "type": "object",
+                    "description": "Feature name -> numeric value.",
+                },
             },
             "required": ["task", "features"],
         },
@@ -125,15 +136,18 @@ TOOLS_ANTHROPIC = [
     {
         "name": "generate_image",
         "description": "Generate an image from a text description (e.g. an org-chart illustration, a "
-                        "diagram, a role icon). Automatically routed to whichever configured provider "
-                        "(Google Gemini or Azure OpenAI) best fits the request — you don't choose the "
-                        "provider, just call this. Only available if at least one of GEMINI_API_KEY or "
-                        "AZURE_OPENAI_API_KEY is configured on the backend. The image is shown to the "
-                        "person directly — you don't need to describe it back to them, just confirm briefly.",
+        "diagram, a role icon). Automatically routed to whichever configured provider "
+        "(Google Gemini or Azure OpenAI) best fits the request — you don't choose the "
+        "provider, just call this. Only available if at least one of GEMINI_API_KEY or "
+        "AZURE_OPENAI_API_KEY is configured on the backend. The image is shown to the "
+        "person directly — you don't need to describe it back to them, just confirm briefly.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "prompt": {"type": "string", "description": "A clear, detailed description of the image to generate."},
+                "prompt": {
+                    "type": "string",
+                    "description": "A clear, detailed description of the image to generate.",
+                },
             },
             "required": ["prompt"],
         },
@@ -141,16 +155,19 @@ TOOLS_ANTHROPIC = [
     {
         "name": "edit_image",
         "description": "Edit the image the person just attached or is currently referring to (e.g. "
-                        "\"make the boxes blue\", \"add a CFO role under the CEO\", \"remove the "
-                        "background\"). Only call this when the person has actually attached/shared an "
-                        "image in this turn — if there's no attached image, tell them to attach or "
-                        "generate one first instead of calling this tool. Routed to Azure OpenAI "
-                        "(the only provider wired up here that can edit an existing image), only "
-                        "available if AZURE_OPENAI_API_KEY is configured on the backend.",
+        '"make the boxes blue", "add a CFO role under the CEO", "remove the '
+        'background"). Only call this when the person has actually attached/shared an '
+        "image in this turn — if there's no attached image, tell them to attach or "
+        "generate one first instead of calling this tool. Routed to Azure OpenAI "
+        "(the only provider wired up here that can edit an existing image), only "
+        "available if AZURE_OPENAI_API_KEY is configured on the backend.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "prompt": {"type": "string", "description": "A clear description of the edit to make to the attached image."},
+                "prompt": {
+                    "type": "string",
+                    "description": "A clear description of the edit to make to the attached image.",
+                },
             },
             "required": ["prompt"],
         },
@@ -160,17 +177,30 @@ TOOLS_ANTHROPIC = [
 # Same two tools, OpenAI-style function-calling shape (NVIDIA NIM's and Groq's chat/completions
 # endpoints are both OpenAI-compatible).
 TOOLS_OPENAI = [
-    {"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}}
+    {
+        "type": "function",
+        "function": {
+            "name": t["name"],
+            "description": t["description"],
+            "parameters": t["input_schema"],
+        },
+    }
     for t in TOOLS_ANTHROPIC
 ]
 
 # Gemini's function-calling shape: functionDeclarations with "parameters" instead of
 # "input_schema", no "type": "function" wrapper.
 TOOLS_GEMINI = [
-    {"functionDeclarations": [
-        {"name": t["name"], "description": t["description"], "parameters": t["input_schema"]}
-        for t in TOOLS_ANTHROPIC
-    ]}
+    {
+        "functionDeclarations": [
+            {
+                "name": t["name"],
+                "description": t["description"],
+                "parameters": t["input_schema"],
+            }
+            for t in TOOLS_ANTHROPIC
+        ]
+    }
 ]
 
 
@@ -181,12 +211,16 @@ def _run_prediction_tool(name: str, args: dict) -> dict:
     features_by_name = args.get("features", {})
     artifacts = registry.get(task)
     if artifacts is None:
-        return {"error": f"Task '{task}' not loaded. Available: {registry.task_names()}"}
+        return {
+            "error": f"Task '{task}' not loaded. Available: {registry.task_names()}"
+        }
 
     missing = [f for f in artifacts.feature_names if f not in features_by_name]
     if missing:
-        return {"error": f"Missing required features for '{task}': {missing}. "
-                          f"Required (any order): {artifacts.feature_names}"}
+        return {
+            "error": f"Missing required features for '{task}': {missing}. "
+            f"Required (any order): {artifacts.feature_names}"
+        }
 
     ordered = [float(features_by_name[f]) for f in artifacts.feature_names]
 
@@ -208,19 +242,28 @@ def _run_prediction_tool(name: str, args: dict) -> dict:
         except Exception as e:
             return {"error": f"SHAP explanation failed: {e}"}
         import numpy as np
+
         shap_values = np.atleast_1d(np.squeeze(shap_values))
         contributions = sorted(
-            [{"feature": f, "value": v, "shap_value": float(sv)}
-             for f, v, sv in zip(artifacts.feature_names, ordered, shap_values)],
-            key=lambda c: abs(c["shap_value"]), reverse=True,
+            [
+                {"feature": f, "value": v, "shap_value": float(sv)}
+                for f, v, sv in zip(artifacts.feature_names, ordered, shap_values)
+            ],
+            key=lambda c: abs(c["shap_value"]),
+            reverse=True,
         )
-        return {"task": task, "top_contributions": contributions[:8], "explainer_used": explainer_name}
+        return {
+            "task": task,
+            "top_contributions": contributions[:8],
+            "explainer_used": explainer_name,
+        }
 
     return {"error": f"Unknown tool '{name}'"}
 
 
-async def _run_tool(name: str, args: dict, generated_images: list,
-                     attachment: Optional[dict] = None) -> dict:
+async def _run_tool(
+    name: str, args: dict, generated_images: list, attachment: Optional[dict] = None
+) -> dict:
     """Dispatches to the sync prediction tools or the async image tools. Image bytes are
     appended to `generated_images` (returned to the frontend directly) rather than put in the
     result handed back to the model — a base64 PNG in the model's own context would bloat every
@@ -238,38 +281,56 @@ async def _run_tool(name: str, args: dict, generated_images: list,
         except RuntimeError as e:
             return {"error": str(e)}
         image_id = f"img_{len(generated_images) + 1}"
-        generated_images.append({
-            "id": image_id,
-            "mime_type": image["mime_type"],
-            "image_base64": image["image_base64"],
-            # Which provider actually ran (image_router.py picks gemini vs azure per-request) —
-            # the frontend needs this to attribute image-generation cost correctly even when
-            # chatting via a different provider (Anthropic/NVIDIA/Groq).
-            "provider": image["provider"],
-            "model": "azure-openai" if image["provider"] == "azure" else "gemini-image",
-        })
-        return {"status": "success", "image_id": image_id, "message": "Image generated and shown to the user."}
+        generated_images.append(
+            {
+                "id": image_id,
+                "mime_type": image["mime_type"],
+                "image_base64": image["image_base64"],
+                # Which provider actually ran (image_router.py picks gemini vs azure per-request) —
+                # the frontend needs this to attribute image-generation cost correctly even when
+                # chatting via a different provider (Anthropic/NVIDIA/Groq).
+                "provider": image["provider"],
+                "model": "azure-openai"
+                if image["provider"] == "azure"
+                else "gemini-image",
+            }
+        )
+        return {
+            "status": "success",
+            "image_id": image_id,
+            "message": "Image generated and shown to the user.",
+        }
 
     if name == "edit_image":
         if not attachment or not attachment.get("image_base64"):
-            return {"error": "No image is attached to this conversation turn — ask the person to "
-                              "attach or generate an image first."}
+            return {
+                "error": "No image is attached to this conversation turn — ask the person to "
+                "attach or generate an image first."
+            }
         prompt = args.get("prompt", "")
         try:
             image = await image_router_module.edit_image(
-                prompt, attachment["image_base64"], attachment.get("mime_type", "image/png"),
+                prompt,
+                attachment["image_base64"],
+                attachment.get("mime_type", "image/png"),
             )
         except RuntimeError as e:
             return {"error": str(e)}
         image_id = f"img_{len(generated_images) + 1}"
-        generated_images.append({
-            "id": image_id,
-            "mime_type": image["mime_type"],
-            "image_base64": image["image_base64"],
-            "provider": image["provider"],
-            "model": "azure-openai",
-        })
-        return {"status": "success", "image_id": image_id, "message": "Image edited and shown to the user."}
+        generated_images.append(
+            {
+                "id": image_id,
+                "mime_type": image["mime_type"],
+                "image_base64": image["image_base64"],
+                "provider": image["provider"],
+                "model": "azure-openai",
+            }
+        )
+        return {
+            "status": "success",
+            "image_id": image_id,
+            "message": "Image edited and shown to the user.",
+        }
 
     return _run_prediction_tool(name, args)
 
@@ -322,7 +383,10 @@ _KEY_LOOKUP = {
 
 def list_models() -> list[dict]:
     return [
-        {**{k: v for k, v in m.items() if k != "key_env"}, "key_present": bool(_KEY_LOOKUP.get(m["key_env"]))}
+        {
+            **{k: v for k, v in m.items() if k != "key_env"},
+            "key_present": bool(_KEY_LOOKUP.get(m["key_env"])),
+        }
         for m in MODEL_CATALOG
     ]
 
@@ -339,10 +403,19 @@ def active_provider(requested: Optional[str] = None) -> Optional[str]:
     return None
 
 
-async def chat_anthropic(messages: list[dict], attachment: Optional[dict] = None) -> tuple[str, dict, list, list]:
+async def chat_anthropic(
+    messages: list[dict], attachment: Optional[dict] = None
+) -> tuple[str, dict, list, list]:
     """Uses the official `anthropic` SDK (AsyncAnthropic) instead of a hand-rolled httpx POST —
     the other three providers (NVIDIA/Groq/Gemini) stay on raw REST calls since none of them
     have an official async Python SDK as well-maintained as this one."""
+    try:
+        from anthropic import AsyncAnthropic
+    except ImportError as e:
+        raise RuntimeError(
+            "Anthropic chat support requires the anthropic Python package. "
+            "Install it in your backend environment with `pip install anthropic`."
+        ) from e
     client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
     api_messages = list(messages)
     usage = {"input_tokens": 0, "output_tokens": 0}
@@ -368,21 +441,36 @@ async def chat_anthropic(messages: list[dict], attachment: Optional[dict] = None
         api_messages.append({"role": "assistant", "content": content})
         tool_results = []
         for tu in tool_uses:
-            result = await _run_tool(tu["name"], tu.get("input", {}), generated_images, attachment)
-            tool_log.append({"name": tu["name"], "args": tu.get("input", {}), "result": result})
-            tool_results.append({
-                "type": "tool_result",
-                "tool_use_id": tu["id"],
-                "content": json.dumps(result),
-            })
+            result = await _run_tool(
+                tu["name"], tu.get("input", {}), generated_images, attachment
+            )
+            tool_log.append(
+                {"name": tu["name"], "args": tu.get("input", {}), "result": result}
+            )
+            tool_results.append(
+                {
+                    "type": "tool_result",
+                    "tool_use_id": tu["id"],
+                    "content": json.dumps(result),
+                }
+            )
         api_messages.append({"role": "user", "content": tool_results})
-    return ("I made several tool calls but couldn't reach a final answer in time — try a more specific question.",
-            usage, tool_log, generated_images)
+    return (
+        "I made several tool calls but couldn't reach a final answer in time — try a more specific question.",
+        usage,
+        tool_log,
+        generated_images,
+    )
 
 
-async def _chat_openai_compatible(messages: list[dict], base_url: str, api_key: str, model: str,
-                                   provider_label: str,
-                                   attachment: Optional[dict] = None) -> tuple[str, dict, list, list]:
+async def _chat_openai_compatible(
+    messages: list[dict],
+    base_url: str,
+    api_key: str,
+    model: str,
+    provider_label: str,
+    attachment: Optional[dict] = None,
+) -> tuple[str, dict, list, list]:
     """Shared tool-calling loop for any OpenAI-compatible chat/completions endpoint — NVIDIA NIM
     and Groq both implement this contract, so one implementation serves both rather than
     duplicating the same loop with a different base_url."""
@@ -394,7 +482,10 @@ async def _chat_openai_compatible(messages: list[dict], base_url: str, api_key: 
         for _ in range(4):
             resp = await client.post(
                 base_url,
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
                 json={
                     "model": model,
                     "messages": api_messages,
@@ -403,7 +494,9 @@ async def _chat_openai_compatible(messages: list[dict], base_url: str, api_key: 
                 },
             )
             if resp.status_code != 200:
-                raise RuntimeError(f"{provider_label} API error {resp.status_code}: {resp.text[:500]}")
+                raise RuntimeError(
+                    f"{provider_label} API error {resp.status_code}: {resp.text[:500]}"
+                )
             data = resp.json()
             call_usage = data.get("usage") or {}
             usage["input_tokens"] += call_usage.get("prompt_tokens", 0)
@@ -417,28 +510,50 @@ async def _chat_openai_compatible(messages: list[dict], base_url: str, api_key: 
             api_messages.append(choice)
             for tc in tool_calls:
                 args = json.loads(tc["function"]["arguments"])
-                result = await _run_tool(tc["function"]["name"], args, generated_images, attachment)
-                tool_log.append({"name": tc["function"]["name"], "args": args, "result": result})
-                api_messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc["id"],
-                    "content": json.dumps(result),
-                })
-        return ("I made several tool calls but couldn't reach a final answer in time — try a more specific question.",
-                usage, tool_log, generated_images)
+                result = await _run_tool(
+                    tc["function"]["name"], args, generated_images, attachment
+                )
+                tool_log.append(
+                    {"name": tc["function"]["name"], "args": args, "result": result}
+                )
+                api_messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tc["id"],
+                        "content": json.dumps(result),
+                    }
+                )
+        return (
+            "I made several tool calls but couldn't reach a final answer in time — try a more specific question.",
+            usage,
+            tool_log,
+            generated_images,
+        )
 
 
-async def chat_nvidia(messages: list[dict], attachment: Optional[dict] = None) -> tuple[str, dict, list, list]:
+async def chat_nvidia(
+    messages: list[dict], attachment: Optional[dict] = None
+) -> tuple[str, dict, list, list]:
     return await _chat_openai_compatible(
-        messages, "https://integrate.api.nvidia.com/v1/chat/completions",
-        NVIDIA_API_KEY, NVIDIA_MODEL, "NVIDIA NIM", attachment,
+        messages,
+        "https://integrate.api.nvidia.com/v1/chat/completions",
+        NVIDIA_API_KEY,
+        NVIDIA_MODEL,
+        "NVIDIA NIM",
+        attachment,
     )
 
 
-async def chat_groq(messages: list[dict], attachment: Optional[dict] = None) -> tuple[str, dict, list, list]:
+async def chat_groq(
+    messages: list[dict], attachment: Optional[dict] = None
+) -> tuple[str, dict, list, list]:
     return await _chat_openai_compatible(
-        messages, "https://api.groq.com/openai/v1/chat/completions",
-        GROQ_API_KEY, GROQ_MODEL, "Groq", attachment,
+        messages,
+        "https://api.groq.com/openai/v1/chat/completions",
+        GROQ_API_KEY,
+        GROQ_MODEL,
+        "Groq",
+        attachment,
     )
 
 
@@ -447,14 +562,21 @@ def _gemini_role(role: str) -> str:
     return "model" if role == "assistant" else "user"
 
 
-async def chat_gemini(messages: list[dict], attachment: Optional[dict] = None) -> tuple[str, dict, list, list]:
+async def chat_gemini(
+    messages: list[dict], attachment: Optional[dict] = None
+) -> tuple[str, dict, list, list]:
     """Gemini's REST API has its own shapes for both messages (contents/parts) and function
     calling (functionCall/functionResponse parts, not a separate tool-role message) — different
     enough from both Anthropic's and the OpenAI-compatible shape that it needs its own loop
     rather than reusing either helper above."""
-    contents = [{"role": _gemini_role(m["role"]), "parts": [{"text": m["content"]}]} for m in messages]
-    url = (f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
-           f"?key={GEMINI_API_KEY}")
+    contents = [
+        {"role": _gemini_role(m["role"]), "parts": [{"text": m["content"]}]}
+        for m in messages
+    ]
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+        f"?key={GEMINI_API_KEY}"
+    )
     usage = {"input_tokens": 0, "output_tokens": 0}
     tool_log = []
     generated_images = []
@@ -471,30 +593,51 @@ async def chat_gemini(messages: list[dict], attachment: Optional[dict] = None) -
                 },
             )
             if resp.status_code != 200:
-                raise RuntimeError(f"Gemini API error {resp.status_code}: {resp.text[:500]}")
+                raise RuntimeError(
+                    f"Gemini API error {resp.status_code}: {resp.text[:500]}"
+                )
             data = resp.json()
             call_usage = data.get("usageMetadata") or {}
             usage["input_tokens"] += call_usage.get("promptTokenCount", 0)
             usage["output_tokens"] += call_usage.get("candidatesTokenCount", 0)
             candidates = data.get("candidates") or []
             if not candidates:
-                return ("No response from Gemini (empty candidates — possibly blocked by safety filters).",
-                        usage, tool_log, generated_images)
+                return (
+                    "No response from Gemini (empty candidates — possibly blocked by safety filters).",
+                    usage,
+                    tool_log,
+                    generated_images,
+                )
             parts = candidates[0].get("content", {}).get("parts", [])
             function_calls = [p["functionCall"] for p in parts if "functionCall" in p]
 
             if not function_calls:
-                return "".join(p.get("text", "") for p in parts), usage, tool_log, generated_images
+                return (
+                    "".join(p.get("text", "") for p in parts),
+                    usage,
+                    tool_log,
+                    generated_images,
+                )
 
             contents.append({"role": "model", "parts": parts})
             response_parts = []
             for fc in function_calls:
-                result = await _run_tool(fc["name"], fc.get("args", {}), generated_images, attachment)
-                tool_log.append({"name": fc["name"], "args": fc.get("args", {}), "result": result})
-                response_parts.append({"functionResponse": {"name": fc["name"], "response": result}})
+                result = await _run_tool(
+                    fc["name"], fc.get("args", {}), generated_images, attachment
+                )
+                tool_log.append(
+                    {"name": fc["name"], "args": fc.get("args", {}), "result": result}
+                )
+                response_parts.append(
+                    {"functionResponse": {"name": fc["name"], "response": result}}
+                )
             contents.append({"role": "user", "parts": response_parts})
-        return ("I made several tool calls but couldn't reach a final answer in time — try a more specific question.",
-                usage, tool_log, generated_images)
+        return (
+            "I made several tool calls but couldn't reach a final answer in time — try a more specific question.",
+            usage,
+            tool_log,
+            generated_images,
+        )
 
 
 _DISPATCH = {
@@ -505,8 +648,11 @@ _DISPATCH = {
 }
 
 
-async def send_chat(messages: list[dict], provider: Optional[str] = None,
-                     attachment: Optional[dict] = None) -> dict:
+async def send_chat(
+    messages: list[dict],
+    provider: Optional[str] = None,
+    attachment: Optional[dict] = None,
+) -> dict:
     resolved = active_provider(provider)
     if resolved is None:
         if provider:
@@ -518,8 +664,13 @@ async def send_chat(messages: list[dict], provider: Optional[str] = None,
             "No chat provider configured. Set one of ANTHROPIC_API_KEY, NVIDIA_API_KEY, "
             "GROQ_API_KEY, GEMINI_API_KEY as an environment variable before starting the API."
         )
-    reply, usage, tool_calls, generated_images = await _DISPATCH[resolved](messages, attachment)
+    reply, usage, tool_calls, generated_images = await _DISPATCH[resolved](
+        messages, attachment
+    )
     return {
-        "reply": reply, "provider": resolved, "usage": usage, "tool_calls": tool_calls,
+        "reply": reply,
+        "provider": resolved,
+        "usage": usage,
+        "tool_calls": tool_calls,
         "generated_images": generated_images,
     }

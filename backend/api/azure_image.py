@@ -13,16 +13,17 @@ This is the ONLY provider wired up here that can edit an existing image (send pi
 edited image back) — image_gen.py's Gemini path is generation-only. image_router.py picks
 between this and Gemini automatically; nothing in the frontend needs to know which one ran.
 """
+
 from __future__ import annotations
 
 import base64
 import os
 
-from openai import AsyncAzureOpenAI
-
 AZURE_OPENAI_API_KEY = os.environ.get("AZURE_OPENAI_API_KEY")
 AZURE_OPENAI_ENDPOINT = os.environ.get("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_IMAGE_DEPLOYMENT = os.environ.get("AZURE_OPENAI_IMAGE_DEPLOYMENT", "gpt-image-1")
+AZURE_OPENAI_IMAGE_DEPLOYMENT = os.environ.get(
+    "AZURE_OPENAI_IMAGE_DEPLOYMENT", "gpt-image-1"
+)
 AZURE_OPENAI_API_VERSION = os.environ.get("AZURE_OPENAI_API_VERSION", "2024-10-21")
 
 
@@ -30,7 +31,7 @@ def available() -> bool:
     return bool(AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT)
 
 
-def _client() -> AsyncAzureOpenAI:
+def _client():
     if not available():
         raise RuntimeError(
             "Azure OpenAI isn't configured on the backend — set AZURE_OPENAI_API_KEY, "
@@ -38,6 +39,13 @@ def _client() -> AsyncAzureOpenAI:
             "and complex/detailed generation requests need this even when chatting with a "
             "different provider."
         )
+    try:
+        from openai import AsyncAzureOpenAI
+    except ImportError as e:
+        raise RuntimeError(
+            "Azure OpenAI image support requires the openai Python package. "
+            "Install it in your backend environment with `pip install openai`."
+        ) from e
     return AsyncAzureOpenAI(
         api_key=AZURE_OPENAI_API_KEY,
         api_version=AZURE_OPENAI_API_VERSION,
@@ -63,15 +71,28 @@ async def generate_image(prompt: str, size: str = "1024x1024") -> dict:
     Azure isn't configured or returns no image data."""
     client = _client()
     response = await client.images.generate(
-        model=AZURE_OPENAI_IMAGE_DEPLOYMENT, prompt=prompt, size=size, n=1,
+        model=AZURE_OPENAI_IMAGE_DEPLOYMENT,
+        prompt=prompt,
+        size=size,
+        n=1,
     )
     if not response.data:
-        raise RuntimeError("Azure OpenAI didn't return image data for this prompt — try rephrasing it.")
-    return {"image_base64": _extract_base64(response.data[0]), "mime_type": "image/png", "text": None}
+        raise RuntimeError(
+            "Azure OpenAI didn't return image data for this prompt — try rephrasing it."
+        )
+    return {
+        "image_base64": _extract_base64(response.data[0]),
+        "mime_type": "image/png",
+        "text": None,
+    }
 
 
-async def edit_image(prompt: str, image_base64: str, mime_type: str = "image/png",
-                      size: str = "1024x1024") -> dict:
+async def edit_image(
+    prompt: str,
+    image_base64: str,
+    mime_type: str = "image/png",
+    size: str = "1024x1024",
+) -> dict:
     """Edits an existing image given a base64-encoded source image and a text instruction.
     Returns the same shape as generate_image()."""
     client = _client()
@@ -85,5 +106,11 @@ async def edit_image(prompt: str, image_base64: str, mime_type: str = "image/png
         n=1,
     )
     if not response.data:
-        raise RuntimeError("Azure OpenAI didn't return an edited image — try rephrasing the instruction.")
-    return {"image_base64": _extract_base64(response.data[0]), "mime_type": "image/png", "text": None}
+        raise RuntimeError(
+            "Azure OpenAI didn't return an edited image — try rephrasing the instruction."
+        )
+    return {
+        "image_base64": _extract_base64(response.data[0]),
+        "mime_type": "image/png",
+        "text": None,
+    }

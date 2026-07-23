@@ -41,6 +41,7 @@ treatment feature's scaler.scale_) so the reported number means "per one additio
 training session," not "per one standard deviation of a z-score" — the latter is correct but
 useless to say out loud in a demo.
 """
+
 from __future__ import annotations
 
 import logging
@@ -49,7 +50,6 @@ from typing import Dict, List
 
 import joblib
 import numpy as np
-from econml.dml import CausalForestDML
 from sklearn.ensemble import RandomForestRegressor
 
 from . import config, evaluate, features
@@ -63,13 +63,21 @@ DERIVED_FROM_TREATMENT = {"training_intensity_index", "training_x_satisfaction"}
 
 
 def _confounder_features(all_features: List[str]) -> List[str]:
-    return [f for f in all_features if f != TREATMENT_FEATURE and f not in DERIVED_FROM_TREATMENT]
+    return [
+        f
+        for f in all_features
+        if f != TREATMENT_FEATURE and f not in DERIVED_FROM_TREATMENT
+    ]
 
 
-def train_uplift_model(task_name: str = "skills", seed: int = config.RANDOM_STATE) -> Dict:
+def train_uplift_model(
+    task_name: str = "skills", seed: int = config.RANDOM_STATE
+) -> Dict:
     df = features.load_processed(task_name)
     if df is None:
-        raise RuntimeError(f"[{task_name}] no processed features found — run features.run_pipeline first.")
+        raise RuntimeError(
+            f"[{task_name}] no processed features found — run features.run_pipeline first."
+        )
     splits = evaluate.make_splits(df, task_name, val_split=False, seed=seed)
     feature_names = splits["feature_names"]
     if TREATMENT_FEATURE not in feature_names:
@@ -79,7 +87,9 @@ def train_uplift_model(task_name: str = "skills", seed: int = config.RANDOM_STAT
 
     scaler_path = os.path.join(config.SCALER_DIR, f"{task_name}_scaler.pkl")
     if not os.path.exists(scaler_path):
-        raise FileNotFoundError(f"No saved scaler at {scaler_path} — run features.run_pipeline('{task_name}') first.")
+        raise FileNotFoundError(
+            f"No saved scaler at {scaler_path} — run features.run_pipeline('{task_name}') first."
+        )
     scaler = joblib.load(scaler_path)
     scaler_names = list(getattr(scaler, "feature_names_in_", []))
     scaler_index = [scaler_names.index(name) for name in feature_names]
@@ -115,7 +125,9 @@ def train_uplift_model(task_name: str = "skills", seed: int = config.RANDOM_STAT
 
     logger.info(
         "[%s] uplift model trained. treatment=%s confounders=%s",
-        task_name, TREATMENT_FEATURE, confounders,
+        task_name,
+        TREATMENT_FEATURE,
+        confounders,
     )
 
     return {
@@ -152,10 +164,12 @@ def _scale_row(bundle: Dict, raw_features_ordered: List[float]) -> np.ndarray:
     since the scaler was fit on more columns than survive into the modeling matrix)."""
     scaler, scaler_index = bundle["scaler"], bundle["scaler_index"]
     mean_, scale_ = scaler.mean_, scaler.scale_
-    return np.asarray([
-        (raw_features_ordered[i] - mean_[scaler_index[i]]) / scale_[scaler_index[i]]
-        for i in range(len(raw_features_ordered))
-    ])
+    return np.asarray(
+        [
+            (raw_features_ordered[i] - mean_[scaler_index[i]]) / scale_[scaler_index[i]]
+            for i in range(len(raw_features_ordered))
+        ]
+    )
 
 
 def estimate_treatment_effect(bundle: Dict, raw_features_ordered: List[float]) -> Dict:
@@ -177,8 +191,14 @@ def estimate_treatment_effect(bundle: Dict, raw_features_ordered: List[float]) -
     effect_scaled = float(bundle["model"].effect(X_row)[0])
     lower_scaled, upper_scaled = bundle["model"].effect_interval(X_row, alpha=0.10)
     effect = effect_scaled / treatment_scale
-    lower, upper = float(lower_scaled[0]) / treatment_scale, float(upper_scaled[0]) / treatment_scale
-    lower, upper = min(lower, upper), max(lower, upper)  # dividing by a positive scale keeps order, but be safe
+    lower, upper = (
+        float(lower_scaled[0]) / treatment_scale,
+        float(upper_scaled[0]) / treatment_scale,
+    )
+    lower, upper = (
+        min(lower, upper),
+        max(lower, upper),
+    )  # dividing by a positive scale keeps order, but be safe
 
     direction = "reduces" if effect < 0 else "increases"
     significant = not (lower <= 0 <= upper)  # 90% interval excludes zero
@@ -192,7 +212,11 @@ def estimate_treatment_effect(bundle: Dict, raw_features_ordered: List[float]) -
             f"Estimated causal effect: each additional unit of {bundle['treatment_feature']} "
             f"{direction} attrition probability by {abs(effect):.4f} on average for an employee "
             f"with these characteristics (90% interval: [{lower:.4f}, {upper:.4f}])."
-            + ("" if significant else " This interval includes zero — not distinguishable from "
-                                       "no effect at this confidence level for this employee.")
+            + (
+                ""
+                if significant
+                else " This interval includes zero — not distinguishable from "
+                "no effect at this confidence level for this employee."
+            )
         ),
     }
