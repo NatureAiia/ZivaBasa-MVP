@@ -14,6 +14,7 @@ import { usePredictionFlow } from "../../hooks/usePredictionFlow";
 import { TASKS, TASK_LABELS, TASK_SHORT_LABELS } from "../../lib/api";
 import { fadeScale } from "../../lib/motion";
 import { logHistoryEntry } from "../../lib/history";
+import FeedbackControl from "../../components/predict/FeedbackControl";
 
 const PIPELINE_STEPS = [
   { key: "schema", label: "Schema" },
