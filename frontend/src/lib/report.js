@@ -1,3 +1,7 @@
+import { markOnboardingStep } from "./onboardingStore";
+import { checkAndFireMilestone, MILESTONES, MILESTONE_COPY } from "./milestoneStore";
+import { emitMilestoneToast } from "../components/common/Toast";
+
 export function downloadReport(filename, content, mime = "text/markdown") {
   const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
@@ -27,13 +31,8 @@ export function downloadBlob(filename, blob) {
   notifyReportExported();
 }
 
-// Dynamically imported so report.js (a plain download utility) doesn't take a hard, always-on
-// dependency on the onboarding/milestone stores — a failure there should never break an actual
-// file download.
 async function notifyReportExported() {
   try {
-    const [{ markOnboardingStep }, { checkAndFireMilestone, MILESTONES, MILESTONE_COPY }, { emitMilestoneToast }] =
-      await Promise.all([import("./onboardingStore"), import("./milestoneStore"), import("../components/common/Toast")]);
     await markOnboardingStep("exported_first_report");
     const justFired = await checkAndFireMilestone(MILESTONES.FIRST_REPORT_EXPORT);
     if (justFired) emitMilestoneToast(MILESTONE_COPY[MILESTONES.FIRST_REPORT_EXPORT]);

@@ -53,6 +53,12 @@ async function throwApiError(res) {
     const body = await res.json();
     detail = body.detail || JSON.stringify(body);
     if (res.status === 402 && detail && detail.error === "insufficient_tokens") {
+      // Fire the global upgrade modal regardless of which call site hit the gate — dynamic
+      // import keeps this plain HTTP-client module from taking a hard dependency on a UI
+      // component tree. A failure here should never stop the real error from still throwing.
+      import("../components/tokens/UpgradeModal")
+        .then(({ triggerUpgradeModal }) => triggerUpgradeModal(detail))
+        .catch(() => {});
       throw new InsufficientTokensError(detail);
     }
   } catch (e) {

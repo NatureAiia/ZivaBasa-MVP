@@ -10,6 +10,7 @@ import { api } from "../../lib/api";
 import { getOrgNodes, upsertNode, removeNode } from "../../lib/orgStore";
 import { markOnboardingStep } from "../../lib/onboardingStore";
 import { checkAndFireMilestone, MILESTONES, MILESTONE_COPY } from "../../lib/milestoneStore";
+import { recordDepartmentView } from "../../lib/departmentEngagement";
 import { useToast, showMilestoneToast } from "../../components/common/Toast";
 import { getAssignments, recommendAssignment, decideAssignment } from "../../lib/assignmentStore";
 import { redeploymentTrend, aiOverrideShare } from "../../lib/governanceStats";
@@ -114,6 +115,12 @@ export default function OrganizationalStructureTab() {
 
   const selected = nodes.find((n) => n.id === selectedId);
   const editingNode = editingId && editingId !== "new" ? nodes.find((n) => n.id === editingId) : null;
+
+  // "Viewed this department's skills-gap analysis" — fires when a role's gap panel (below)
+  // actually renders, i.e. a role with a target role set was selected and inspected.
+  useEffect(() => {
+    if (selected?.targetRole) recordDepartmentView(selected.department);
+  }, [selected?.id, selected?.targetRole, selected?.department]);
 
   const pendingAssignments = useMemo(() => assignments.filter((a) => a.status === "pending"), [assignments]);
   const decidedAssignments = useMemo(() => assignments.filter((a) => a.status !== "pending"), [assignments]);

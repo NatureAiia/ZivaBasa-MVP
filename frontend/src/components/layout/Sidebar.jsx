@@ -9,6 +9,7 @@ import clsx from "clsx";
 import ClarityRing from "../common/ClarityRing";
 import ShinyPill from "../effects/ShinyPill";
 import ThemeToggle from "./ThemeToggle";
+import TokenBalanceBar from "../tokens/TokenBalanceBar";
 import { useAuth } from "../../lib/authStore";
 
 export const MODELS = [
@@ -201,6 +202,11 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
 
       {/* Footer */}
       <div className="border-t border-border flex flex-col">
+        {!collapsed && (
+          <div className="px-4 pt-3">
+            <TokenBalanceBar compact />
+          </div>
+        )}
         {!collapsed && <AccountRow />}
         <div className="px-4 py-3 flex items-center justify-between">
           {!collapsed && (

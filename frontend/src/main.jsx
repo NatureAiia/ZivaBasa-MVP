@@ -5,6 +5,7 @@ import { ThemeProvider } from "./lib/theme";
 import { AuthProvider } from "./lib/authStore";
 import { LowBandwidthProvider } from "./lib/lowBandwidthStore";
 import { ToastProvider } from "./components/common/Toast";
+import UpgradeModalHost from "./components/tokens/UpgradeModal";
 import App from "./App.jsx";
 import "./index.css";
 
@@ -17,6 +18,7 @@ createRoot(document.getElementById("root")).render(
             <BrowserRouter>
               <App />
             </BrowserRouter>
+            <UpgradeModalHost />
           </ToastProvider>
         </AuthProvider>
       </LowBandwidthProvider>

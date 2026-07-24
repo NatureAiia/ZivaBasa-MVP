@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Loader2, Save, Settings as SettingsIcon, Upload, User, Wifi, WifiOff } from "lucide-react";
+import { Loader2, Save, Settings as SettingsIcon, Upload, User, Wifi, WifiOff, UserPlus } from "lucide-react";
 import Card from "../../components/common/Card";
 import Button from "../../components/common/Button";
 import Badge from "../../components/common/Badge";
@@ -10,6 +10,8 @@ import { useTheme } from "../../lib/theme";
 import { useLowBandwidth } from "../../lib/lowBandwidthStore";
 import { updateProfile, uploadAvatar } from "../../lib/profileStore";
 import { api, setApiBase } from "../../lib/api";
+import { getMyInvites, sendInvite } from "../../lib/inviteStore";
+import { markOnboardingStep } from "../../lib/onboardingStore";
 
 /*
   Settings — one place for the two things that were previously scattered: personal profile
@@ -249,9 +251,88 @@ export default function SettingsTab() {
               )}
             </div>
           </Card>
+
+          <InviteTeammatePanel />
         </motion.div>
       </div>
     </div>
+  );
+}
+
+// Referral/expansion (growth mechanic 7) — invite a teammate, earn bonus tokens once they
+// accept. See lib/inviteStore.js's module docstring for the real limitation this UI must be
+// honest about: an accepted invite gets its own separate workspace today, not shared org data.
+function InviteTeammatePanel() {
+  const [email, setEmail] = useState("");
+  const [invites, setInvites] = useState([]);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState(null);
+  const [sent, setSent] = useState(false);
+
+  useEffect(() => {
+    getMyInvites().then(setInvites);
+  }, []);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!email.trim()) return;
+    setSending(true);
+    setError(null);
+    setSent(false);
+    try {
+      await sendInvite(email.trim());
+      setInvites(await getMyInvites());
+      setEmail("");
+      setSent(true);
+      markOnboardingStep("invited_teammate");
+      setTimeout(() => setSent(false), 2500);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <Card animated={false} className="flex flex-col gap-4">
+      <div className="flex items-center gap-2">
+        <UserPlus size={15} className="text-gold" />
+        <h2 className="text-sm font-semibold text-ink">Invite a teammate</h2>
+      </div>
+      <p className="text-[11px] text-ink-faint leading-relaxed">
+        Invite another HR admin to ZivaBasa and earn bonus tokens once they accept. Invited
+        teammates get their own workspace to start in today — shared access to the same org
+        chart is coming in a future update.
+      </p>
+      <form onSubmit={submit} className="flex items-center gap-2">
+        <input
+          type="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="colleague@yourbank.com"
+          className="flex-1 bg-surface2 border border-border rounded-lg px-3 py-2 text-xs outline-none focus:border-gold/50 transition-colors"
+        />
+        <Button variant="primary" disabled={sending}>
+          {sending ? <Loader2 size={13} className="animate-spin" /> : <UserPlus size={13} />}
+          {sending ? "Sending…" : "Invite"}
+        </Button>
+      </form>
+      {error && <p className="text-[11px] text-red">{error}</p>}
+      {sent && <p className="text-[11px] text-teal">Invite created.</p>}
+      {invites.length > 0 && (
+        <div className="flex flex-col gap-1.5 border-t border-border pt-3">
+          {invites.map((inv) => (
+            <div key={inv.id} className="flex items-center justify-between text-xs">
+              <span className="text-ink-muted truncate">{inv.email}</span>
+              <Badge tone={inv.status === "accepted" ? "teal" : inv.status === "revoked" ? "red" : "neutral"}>
+                {inv.status}
+              </Badge>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
   );
 }
 
