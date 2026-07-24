@@ -191,3 +191,5 @@ ios/.xcode.env.local
 android/.gradle/
 android/app/build/
 android/local.properties
+supabase/
+supabase/token-gate
