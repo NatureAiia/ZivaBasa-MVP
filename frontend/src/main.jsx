@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import { ThemeProvider } from "./lib/theme";
 import { AuthProvider } from "./lib/authStore";
 import { LowBandwidthProvider } from "./lib/lowBandwidthStore";
+import { ToastProvider } from "./components/common/Toast";
 import App from "./App.jsx";
 import "./index.css";
 
@@ -12,9 +13,11 @@ createRoot(document.getElementById("root")).render(
     <ThemeProvider>
       <LowBandwidthProvider>
         <AuthProvider>
-          <BrowserRouter>
-            <App />
-          </BrowserRouter>
+          <ToastProvider>
+            <BrowserRouter>
+              <App />
+            </BrowserRouter>
+          </ToastProvider>
         </AuthProvider>
       </LowBandwidthProvider>
     </ThemeProvider>

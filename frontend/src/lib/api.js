@@ -5,6 +5,20 @@
 */
 import { supabase } from "./supabaseClient";
 
+// Thrown instead of a generic Error whenever the backend's token gate (backend/api/tokens.py)
+// returns its structured 402 body — lets call sites catch this specifically and show the
+// "what you'd unlock" upgrade prompt instead of a generic error toast.
+export class InsufficientTokensError extends Error {
+  constructor(detail) {
+    super(detail?.upgrade_hint || "Out of tokens.");
+    this.name = "InsufficientTokensError";
+    this.balance = detail?.balance;
+    this.required = detail?.required;
+    this.reason = detail?.reason;
+    this.upgradeHint = detail?.upgrade_hint;
+  }
+}
+
 const DEFAULT_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 
 function getBase() {
@@ -28,6 +42,26 @@ async function authHeaders() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+// Shared by every call site that turns a non-ok Response into a thrown error (request(),
+// requestBlob(), and the raw-fetch multipart uploads below that don't go through either). A
+// 402 with the token gate's structured { error: "insufficient_tokens", ... } body becomes an
+// InsufficientTokensError so upgrade-prompt UI can catch it specifically; every other error
+// stays a plain Error, unchanged from before.
+async function throwApiError(res) {
+  let detail = res.statusText;
+  try {
+    const body = await res.json();
+    detail = body.detail || JSON.stringify(body);
+    if (res.status === 402 && detail && detail.error === "insufficient_tokens") {
+      throw new InsufficientTokensError(detail);
+    }
+  } catch (e) {
+    if (e instanceof InsufficientTokensError) throw e;
+    /* non-JSON error body, keep statusText */
+  }
+  throw new Error(`${res.status}: ${typeof detail === "string" ? detail : JSON.stringify(detail)}`);
+}
+
 async function request(path, options) {
   const base = getBase();
   const auth = await authHeaders();
@@ -38,16 +72,7 @@ async function request(path, options) {
   } catch (e) {
     throw new Error(`Could not reach API at ${base}. Is uvicorn running? (${e.message})`);
   }
-  if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const body = await res.json();
-      detail = body.detail || JSON.stringify(body);
-    } catch (_) {
-      /* non-JSON error body, keep statusText */
-    }
-    throw new Error(`${res.status}: ${detail}`);
-  }
+  if (!res.ok) await throwApiError(res);
   return res.json();
 }
 
@@ -59,16 +84,7 @@ async function requestBlob(path, options) {
   } catch (e) {
     throw new Error(`Could not reach API at ${base}. Is uvicorn running? (${e.message})`);
   }
-  if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const body = await res.json();
-      detail = body.detail || JSON.stringify(body);
-    } catch {
-      /* non-JSON error body, keep statusText */
-    }
-    throw new Error(`${res.status}: ${detail}`);
-  }
+  if (!res.ok) await throwApiError(res);
   return res.blob();
 }
 
@@ -99,14 +115,7 @@ export const api = {
     } catch (e) {
       throw new Error(`Could not reach API at ${base}. Is uvicorn running? (${e.message})`);
     }
-    if (!res.ok) {
-      let detail = res.statusText;
-      try {
-        const body = await res.json();
-        detail = body.detail || JSON.stringify(body);
-      } catch (_) {}
-      throw new Error(`${res.status}: ${detail}`);
-    }
+    if (!res.ok) await throwApiError(res);
     return res.json();
   },
   chat: (messages, provider = null, attachment = null) =>
@@ -146,7 +155,8 @@ export const api = {
     } catch (e) {
       throw new Error(`Could not reach API at ${base}. Is uvicorn running? (${e.message})`);
     }
-    if (!res.ok || !res.body) {
+    if (!res.ok) await throwApiError(res);
+    if (!res.body) {
       throw new Error(`${res.status}: ${res.statusText}`);
     }
     const reader = res.body.getReader();
@@ -181,14 +191,7 @@ export const api = {
     } catch (e) {
       throw new Error(`Could not reach API at ${base}. Is uvicorn running? (${e.message})`);
     }
-    if (!res.ok) {
-      let detail = res.statusText;
-      try {
-        const body = await res.json();
-        detail = body.detail || JSON.stringify(body);
-      } catch (_) {}
-      throw new Error(`${res.status}: ${detail}`);
-    }
+    if (!res.ok) await throwApiError(res);
     return res.json();
   },
   fieldExtractProviders: () => request("/extract/task-fields/providers"),
@@ -204,14 +207,7 @@ export const api = {
     } catch (e) {
       throw new Error(`Could not reach API at ${base}. Is uvicorn running? (${e.message})`);
     }
-    if (!res.ok) {
-      let detail = res.statusText;
-      try {
-        const body = await res.json();
-        detail = body.detail || JSON.stringify(body);
-      } catch (_) {}
-      throw new Error(`${res.status}: ${detail}`);
-    }
+    if (!res.ok) await throwApiError(res);
     return res.json();
   },
   imageProviders: () => request("/images/providers"),

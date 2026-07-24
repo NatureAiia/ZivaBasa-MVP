@@ -9,6 +9,9 @@ import CorporateKPIGrid from "../../components/dashboard/CorporateKPIGrid";
 import DepartmentBreakdown from "../../components/dashboard/DepartmentBreakdown";
 import ChatUsageSummary from "../../components/dashboard/ChatUsageSummary";
 import FutureSkillsTable from "../../components/dashboard/FutureSkillsTable";
+import AIReadinessCard from "../../components/dashboard/AIReadinessCard";
+import DepartmentEngagement from "../../components/dashboard/DepartmentEngagement";
+import OnboardingChecklist from "../../components/onboarding/OnboardingChecklist";
 import Typewriter from "../../components/effects/Typewriter";
 import ShinyPill from "../../components/effects/ShinyPill";
 import { staggerContainer, fadeUpItem } from "../../lib/motion";
@@ -68,6 +71,10 @@ export default function DashboardTab() {
         </motion.div>
 
         <motion.div variants={fadeUpItem}>
+          <OnboardingChecklist />
+        </motion.div>
+
+        <motion.div variants={fadeUpItem}>
           <Card className="flex items-center gap-4" animated={false}>
             <ClarityRing mode={health ? "confidence" : "loading"} value={health ? 1 : 0} size={44} color={error ? "red" : "teal"} />
             <div className="flex-1">
@@ -99,11 +106,19 @@ export default function DashboardTab() {
         </motion.div>
 
         <motion.div variants={fadeUpItem}>
+          <AIReadinessCard />
+        </motion.div>
+
+        <motion.div variants={fadeUpItem}>
           <FutureSkillsTable />
         </motion.div>
 
         <motion.div variants={fadeUpItem}>
           <DepartmentBreakdown />
+        </motion.div>
+
+        <motion.div variants={fadeUpItem}>
+          <DepartmentEngagement />
         </motion.div>
 
         <motion.div variants={fadeUpItem}>

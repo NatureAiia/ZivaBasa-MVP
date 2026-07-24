@@ -36,12 +36,14 @@ def configured() -> bool:
     return bool(_supabase_url() and _service_role_key())
 
 
-async def resolve_role_from_token(token: str) -> Optional[str]:
+async def resolve_identity_from_token(token: str) -> Optional[tuple[str, str]]:
     """Validates a Supabase access token against Supabase Auth, then looks up that user's
     profiles.role via the service role key (bypassing RLS, which is the point — RLS scopes a
-    normal user to their own row, but the backend needs to resolve *the caller's* role to
-    enforce access control in the first place). Returns None if the token is invalid, the
-    profile doesn't exist, or this backend isn't configured for Supabase auth at all."""
+    normal user to their own row, but the backend needs to resolve *the caller's* identity to
+    enforce access control and, e.g., debit their token balance). Returns (user_id, role), or
+    None if the token is invalid, the profile doesn't exist, or this backend isn't configured
+    for Supabase auth at all. resolve_role_from_token() below is a thin wrapper kept for
+    call sites that only need the role."""
     url, service_key = _supabase_url(), _service_role_key()
     if not (url and service_key):
         return None
@@ -66,4 +68,11 @@ async def resolve_role_from_token(token: str) -> Optional[str]:
         rows = profile_resp.json()
         if not rows:
             return None
-        return rows[0].get("role")
+        return user_id, rows[0].get("role")
+
+
+async def resolve_role_from_token(token: str) -> Optional[str]:
+    """Back-compat wrapper around resolve_identity_from_token() for call sites that only need
+    the role, not the user_id (api/auth.py's require_role())."""
+    identity = await resolve_identity_from_token(token)
+    return identity[1] if identity else None

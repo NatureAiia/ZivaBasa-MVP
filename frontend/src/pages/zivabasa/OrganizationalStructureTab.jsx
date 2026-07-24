@@ -8,6 +8,9 @@ import EmptyState from "../../components/common/EmptyState";
 import { staggerContainer, fadeUpItem } from "../../lib/motion";
 import { api } from "../../lib/api";
 import { getOrgNodes, upsertNode, removeNode } from "../../lib/orgStore";
+import { markOnboardingStep } from "../../lib/onboardingStore";
+import { checkAndFireMilestone, MILESTONES, MILESTONE_COPY } from "../../lib/milestoneStore";
+import { useToast, showMilestoneToast } from "../../components/common/Toast";
 import { getAssignments, recommendAssignment, decideAssignment } from "../../lib/assignmentStore";
 import { redeploymentTrend, aiOverrideShare } from "../../lib/governanceStats";
 import { matchScore, SKILL_LABELS } from "../../lib/skillMatchClient";
@@ -102,6 +105,7 @@ export default function OrganizationalStructureTab() {
   const [illustration, setIllustration] = useState(null); // { status, mimeType, imageBase64, provider, error }
   const [editPrompt, setEditPrompt] = useState("");
   const [showHeatmap, setShowHeatmap] = useState(false);
+  const { show } = useToast();
 
   useEffect(() => {
     getOrgNodes().then(setNodes);
@@ -113,6 +117,21 @@ export default function OrganizationalStructureTab() {
 
   const pendingAssignments = useMemo(() => assignments.filter((a) => a.status === "pending"), [assignments]);
   const decidedAssignments = useMemo(() => assignments.filter((a) => a.status !== "pending"), [assignments]);
+
+  // Fires once, ever, the first time this month has at least one decided assignment — cheap
+  // check on load, no background job needed (see milestoneStore.js's unique-constraint dedup).
+  useEffect(() => {
+    const now = new Date();
+    const decidedThisMonth = decidedAssignments.some((a) => {
+      if (!a.decidedAt) return false;
+      const d = new Date(a.decidedAt);
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    });
+    if (!decidedThisMonth) return;
+    checkAndFireMilestone(MILESTONES.FIRST_MONTH_ASSIGNMENT_DECIDED).then((justFired) => {
+      if (justFired) showMilestoneToast(show, MILESTONE_COPY[MILESTONES.FIRST_MONTH_ASSIGNMENT_DECIDED]);
+    });
+  }, [decidedAssignments, show]);
   const trend = useMemo(() => redeploymentTrend(assignments), [assignments]);
   const governance = useMemo(() => aiOverrideShare(assignments), [assignments]);
 
@@ -120,6 +139,7 @@ export default function OrganizationalStructureTab() {
     await upsertNode(node);
     setNodes(await getOrgNodes());
     setEditingId(null);
+    markOnboardingStep("connected_data_source");
   };
   const deleteNode = async (id) => {
     await removeNode(id);
@@ -155,6 +175,9 @@ export default function OrganizationalStructureTab() {
         missingSkills: gap.missingSkills,
       })
     );
+    if (await checkAndFireMilestone(MILESTONES.FIRST_SKILL_MATCH)) {
+      showMilestoneToast(show, MILESTONE_COPY[MILESTONES.FIRST_SKILL_MATCH]);
+    }
   };
 
   const decide = async (id, status) => setAssignments(await decideAssignment(id, status));
@@ -247,7 +270,10 @@ export default function OrganizationalStructureTab() {
             {(referenceFile.kind === "image" || referenceFile.kind === "pdf") && referenceFile.file && (
               <OrgExtractPanel
                 file={referenceFile.file}
-                onImported={() => getOrgNodes().then(setNodes)}
+                onImported={() => {
+                  getOrgNodes().then(setNodes);
+                  markOnboardingStep("connected_data_source");
+                }}
               />
             )}
           </motion.div>

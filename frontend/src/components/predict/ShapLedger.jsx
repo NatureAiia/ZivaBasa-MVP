@@ -1,8 +1,10 @@
+import { useEffect } from "react";
 import { motion } from "framer-motion";
 import { staggerContainer, fadeUpItem } from "../../lib/motion";
 import { formatRaw } from "../../lib/format";
 import { metaFor } from "../../lib/fieldMeta";
 import { LEDGER_GRID_COLS, LedgerHeader, LedgerLegend } from "./shapLedgerShared";
+import { markOnboardingStep } from "../../lib/onboardingStore";
 
 /*
   Renamed from raw SHAP jargon to plain language: each bar is "a factor that pushed the
@@ -12,6 +14,12 @@ import { LEDGER_GRID_COLS, LedgerHeader, LedgerLegend } from "./shapLedgerShared
   keep in sync.
 */
 export default function ShapLedger({ result, task }) {
+  // Fires once per mount that actually has a result — i.e. the first time a real SHAP
+  // explanation renders, not on every re-render while still loading (result is null then).
+  useEffect(() => {
+    if (result) markOnboardingStep("opened_first_shap");
+  }, [result]);
+
   if (!result) return null;
   const maxAbs = Math.max(...result.top_contributions.map((c) => Math.abs(c.shap_value)), 1e-9);
   const hasLime = result.lime_top_contributions != null && result.agreement_score != null;
