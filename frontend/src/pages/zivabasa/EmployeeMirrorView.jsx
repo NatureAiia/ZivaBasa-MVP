@@ -4,10 +4,20 @@ import { ShieldCheck, Sparkles } from "lucide-react";
 import Card from "../../components/common/Card";
 import ExecutiveTaskForm from "../../components/predict/ExecutiveTaskForm";
 import ShapLedger from "../../components/predict/ShapLedger";
+import CausalPanel from "../../components/predict/CausalPanel";
 import { staggerContainer, fadeUpItem } from "../../lib/motion";
 import { api } from "../../lib/api";
 import { formatPercent } from "../../lib/format";
 import { metaFor } from "../../lib/fieldMeta";
+
+// training_intensity_index = TrainingTimesLastYear / YearsAtCompany, the same formula
+// fieldMeta.js's derived-field `compute()` uses to build this engineered feature for
+// /predict and /explain — duplicated here (not imported) because fieldMeta's compute() takes a
+// {featureName: value} object keyed by RAW field names, not this file's ordered array + index
+// convention; recomputing inline is simpler than reshaping one for the other's sake.
+function trainingIntensityIndex(trainingTimesLastYear, yearsAtCompany) {
+  return trainingTimesLastYear / Math.max(1, yearsAtCompany);
+}
 
 const TASK = "skills";
 const LEVER_FEATURE = "TrainingTimesLastYear";
@@ -39,6 +49,7 @@ export default function EmployeeMirrorView() {
   const [leverValue, setLeverValue] = useState(null);
   const [leverEstimate, setLeverEstimate] = useState(null);
   const [leverLoading, setLeverLoading] = useState(false);
+  const [causalEstimate, setCausalEstimate] = useState(null);
   const debounceRef = useRef(null);
 
   useEffect(() => {
@@ -47,6 +58,14 @@ export default function EmployeeMirrorView() {
 
   const leverIdx = useMemo(
     () => (schema ? schema.feature_names.indexOf(LEVER_FEATURE) : -1),
+    [schema]
+  );
+  const yearsAtCompanyIdx = useMemo(
+    () => (schema ? schema.feature_names.indexOf("YearsAtCompany") : -1),
+    [schema]
+  );
+  const intensityIdx = useMemo(
+    () => (schema ? schema.feature_names.indexOf("training_intensity_index") : -1),
     [schema]
   );
 
@@ -60,6 +79,7 @@ export default function EmployeeMirrorView() {
       setLeverValue(orderedValues[leverIdx] ?? 0);
       setExplainResult(null);
       setLeverEstimate(null);
+      setCausalEstimate(null);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -94,6 +114,24 @@ export default function EmployeeMirrorView() {
         setLeverEstimate({ error: e.message });
       } finally {
         setLeverLoading(false);
+      }
+
+      // Do-calculus counterpart to the uplift estimate above (src/causal_xai.py's
+      // simulate_intervention, via /causal/skills/intervene) — an actual do(X:=x) on the
+      // discovered causal DAG's fitted structural model, not a learned heterogeneous-effect
+      // estimate. The DAG's direct parent of target_attrition is training_intensity_index
+      // (TrainingTimesLastYear / YearsAtCompany), not TrainingTimesLastYear itself, so the
+      // intervention is expressed on that engineered feature, computed the same way
+      // fieldMeta.js's derived-field logic does.
+      if (yearsAtCompanyIdx >= 0 && intensityIdx >= 0) {
+        setCausalEstimate({ loading: true });
+        try {
+          const newIntensity = trainingIntensityIndex(newLeverValue, values[yearsAtCompanyIdx]);
+          const result = await api.causalIntervene(TASK, values, "training_intensity_index", newIntensity);
+          setCausalEstimate(result);
+        } catch (e) {
+          setCausalEstimate({ error: e.message });
+        }
       }
     }, 300);
   };
@@ -166,6 +204,11 @@ export default function EmployeeMirrorView() {
             <Card animated={false}>
               <p className="text-sm text-ink font-medium mb-3">{riskSentence(explainResult)}</p>
               <ShapLedger result={explainResult} task={TASK} />
+              {values && (
+                <div className="mt-4">
+                  <CausalPanel task={TASK} features={values} />
+                </div>
+              )}
             </Card>
           )}
 
@@ -211,6 +254,35 @@ export default function EmployeeMirrorView() {
                 </div>
               ) : (
                 <p className="text-[11px] text-ink-faint">Move the slider to see a projected effect.</p>
+              )}
+
+              {intensityIdx >= 0 && (
+                <div className="border-t border-border pt-3 mt-1">
+                  <p className="text-[11px] text-ink-faint mb-2">
+                    Causal do-calculus counterpart (src/causal_xai.py's linear-SCM intervention on the
+                    discovered DAG's direct cause, not a learned correlational estimate):
+                  </p>
+                  {causalEstimate?.loading ? (
+                    <p className="text-xs text-ink-faint">Recalculating…</p>
+                  ) : causalEstimate?.error ? (
+                    <p className="text-xs text-red">{causalEstimate.error}</p>
+                  ) : causalEstimate ? (
+                    <div className="rounded-xl bg-surface2/60 p-3 flex flex-col gap-1.5">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-[11px] text-ink-faint">do(training intensity := this level):</span>
+                        <span className="font-mono text-lg font-semibold text-ink">
+                          {formatPercent(causalEstimate.predicted_target_after)}
+                        </span>
+                        <span className="text-[11px] text-ink-faint">
+                          (from {formatPercent(causalEstimate.predicted_target_before)})
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-ink-faint leading-relaxed">{causalEstimate.data_caveat}</p>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-ink-faint">Move the slider to see the causal-model projection.</p>
+                  )}
+                </div>
               )}
             </Card>
           )}

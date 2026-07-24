@@ -31,12 +31,16 @@ validated claim about real banking-sector causal structure.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Dict, List, Optional, Tuple
 
+import joblib
 import networkx as nx
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
+
+from . import config, evaluate, features
 
 logger = logging.getLogger(__name__)
 
@@ -226,3 +230,144 @@ def verbalize_explanation(
             f"prediction; raw SHAP={raw_val:.4f}, causally-reweighted SHAP={causal_val:.4f}. {note}"
         )
     return "\n".join(lines)
+
+
+# --------------------------------------------------------------------------- #
+# 6. Persisted bundle — mirrors src/uplift.py's train/save/load shape. Causal discovery (PC
+#    algorithm) is the slow step here; running it per-request would make every explain/intervene
+#    call pay that cost, so it's done once (this bundle) and reused, same as uplift's trained
+#    CausalForestDML or model_registry's loaded Keras models.
+# --------------------------------------------------------------------------- #
+CAUSAL_XAI_DIR = os.path.join(config.MODELS_DIR, "causal_xai")
+
+
+def build_causal_bundle(
+    task_name: str,
+    expected_parents: Optional[Dict[str, List[str]]] = None,
+    alpha: float = 0.05,
+) -> Dict:
+    """Runs PC discovery + fits the linear-SCM once for task_name, over the same processed/
+    scaled feature matrix model_registry.py's TaskArtifacts already trains on (see that module's
+    ModelRegistry.load_all) — so a bundle's `dag`/`scm` operate in the SAME standardized units a
+    caller's already-scaled feature vector is in, no separate scaling step needed here."""
+    df = features.load_processed(task_name)
+    if df is None:
+        raise RuntimeError(f"[{task_name}] no processed features found — run features.run_pipeline first.")
+    splits = evaluate.make_splits(df, task_name, val_split=False)
+    feature_names = splits["feature_names"]
+    target_col = config.TASK_CONFIGS[task_name].target
+
+    discovery_df = pd.DataFrame(splits["X_train"], columns=feature_names).astype("float64")
+    discovery_df[target_col] = np.asarray(splits["y_train"]).astype("float64")
+
+    logger.info("[%s] running PC algorithm over %d columns, %d rows...", task_name, discovery_df.shape[1], len(discovery_df))
+    dag = discover_dag(discovery_df, alpha=alpha)
+    sanity_check = plausibility_sanity_check(dag, expected_parents or {})
+    scm = fit_linear_scm(discovery_df, dag)
+
+    return {
+        "task_name": task_name,
+        "feature_names": feature_names,
+        "target_col": target_col,
+        "dag": dag,
+        "scm": scm,
+        "discovery_df": discovery_df,
+        "sanity_check": sanity_check,
+    }
+
+
+def save_causal_bundle(bundle: Dict, directory: str = CAUSAL_XAI_DIR) -> str:
+    os.makedirs(directory, exist_ok=True)
+    path = os.path.join(directory, f"{bundle['task_name']}_causal_bundle.pkl")
+    joblib.dump(bundle, path)
+    logger.info("Causal XAI bundle saved -> %s", path)
+    return path
+
+
+def load_causal_bundle(task_name: str, directory: str = CAUSAL_XAI_DIR) -> Dict:
+    path = os.path.join(directory, f"{task_name}_causal_bundle.pkl")
+    if not os.path.exists(path):
+        raise FileNotFoundError(
+            f"No saved causal XAI bundle for '{task_name}' at {path}. Run scripts/train_causal_xai_model.py first."
+        )
+    return joblib.load(path)
+
+
+# --------------------------------------------------------------------------- #
+# 7. Per-instance API helpers — combine a cached bundle with one live prediction/SHAP result.
+#    `scaled_features` must already be in the bundle's standardized units (i.e. the same array
+#    api/model_registry.py's TaskArtifacts.transform() produces) — these helpers do no scaling
+#    of their own.
+# --------------------------------------------------------------------------- #
+def explain_instance(
+    bundle: Dict,
+    scaled_features: np.ndarray,
+    raw_shap_values: np.ndarray,
+) -> Dict:
+    """Causal-reweights one instance's already-computed ordinary SHAP values against the
+    bundle's cached DAG, and verbalizes the raw-vs-causal comparison. Returns
+    {feature: raw_shap}, {feature: causal_shap}, the set of the target's direct causal parents,
+    and the template-based verbalization text."""
+    feature_names = bundle["feature_names"]
+    target_col = bundle["target_col"]
+    dag = bundle["dag"]
+
+    feature_values = dict(zip(feature_names, np.atleast_1d(scaled_features).tolist()))
+    raw_shap = dict(zip(feature_names, np.atleast_1d(raw_shap_values).tolist()))
+    causal_shap = causal_reweight_shap(raw_shap_values, feature_names, target_col, dag)
+    verbalization = verbalize_explanation(feature_values, raw_shap, causal_shap)
+    direct_parents = list(dag.predecessors(target_col)) if target_col in dag else []
+
+    return {
+        "raw_shap": raw_shap,
+        "causal_shap": causal_shap,
+        "direct_causal_parents": direct_parents,
+        "verbalization": verbalization,
+    }
+
+
+def intervene_instance(
+    bundle: Dict,
+    scaled_features: np.ndarray,
+    prediction: float,
+    intervene_feature: str,
+    intervene_value: float,
+) -> Dict:
+    """Runs simulate_intervention() for one instance: do(intervene_feature := intervene_value),
+    propagated through the bundle's cached DAG/SCM. `prediction` is the model's own output for
+    this instance, plugged in as the target column's pre-intervention observed value.
+    `intervene_value` must already be in the bundle's standardized units, same as
+    scaled_features."""
+    feature_names = bundle["feature_names"]
+    target_col = bundle["target_col"]
+    dag = bundle["dag"]
+    scm = bundle["scm"]
+    discovery_df = bundle["discovery_df"]
+
+    if intervene_feature not in dag:
+        raise ValueError(
+            f"'{intervene_feature}' is not a feature in this task's discovered causal DAG. "
+            f"Known features: {feature_names}."
+        )
+
+    instance = pd.Series(dict(zip(feature_names, np.atleast_1d(scaled_features).tolist())))
+    instance[target_col] = float(prediction)
+
+    intervened = simulate_intervention(
+        discovery_df, dag, scm, instance, intervene_feature, intervene_value,
+    )
+
+    downstream_effects = {}
+    for node in nx.descendants(dag, intervene_feature):
+        if node == target_col or node not in scm:
+            continue
+        downstream_effects[node] = {
+            "before": float(instance.get(node, float("nan"))),
+            "after": float(intervened[node]),
+        }
+
+    return {
+        "predicted_target_before": float(instance[target_col]),
+        "predicted_target_after": float(intervened[target_col]),
+        "downstream_effects": downstream_effects,
+    }

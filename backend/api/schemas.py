@@ -250,3 +250,73 @@ class EntityResolutionUnmatched(BaseModel):
 class EntityResolutionResponse(BaseModel):
     clusters: List[EntityResolutionCluster]
     unmatched: List[EntityResolutionUnmatched]
+
+
+_CAUSAL_DATA_CAVEAT = (
+    "Discovered over Kaggle-proxy/synthetic engineered features (PC algorithm, causal-learn), "
+    "not real bank data, and the plausibility sanity check is self-authored reasoning about "
+    "known feature semantics, NOT a domain-expert-validated causal graph. Treat this DAG as "
+    "illustrative of the mechanism, not a validated claim about real causal structure."
+)
+
+
+class CausalDagEdge(BaseModel):
+    source: str
+    target: str
+
+
+class CausalDagResponse(BaseModel):
+    task: str
+    nodes: List[str]
+    edges: List[CausalDagEdge]
+    target: str
+    sanity_check: str
+    data_caveat: str = _CAUSAL_DATA_CAVEAT
+
+
+class CausalFeatureAttribution(BaseModel):
+    feature: str
+    value: float
+    raw_shap: float
+    causal_shap: float
+    is_direct_causal_parent: bool
+
+
+class CausalExplainResponse(BaseModel):
+    task: str
+    base_value: float
+    prediction: float
+    attributions: List[CausalFeatureAttribution]
+    verbalization: str
+    data_caveat: str = _CAUSAL_DATA_CAVEAT
+
+
+class CausalInterventionRequest(BaseModel):
+    features: List[float] = Field(
+        ..., description="Feature vector in the exact order returned by GET /schema/{task}"
+    )
+    intervene_feature: str = Field(..., description="One of GET /schema/{task}'s feature_names.")
+    intervene_value: float = Field(..., description="Raw (unscaled) value to set intervene_feature to.")
+
+
+class CausalDownstreamEffect(BaseModel):
+    feature: str
+    before: float
+    after: float
+
+
+class CausalInterventionResponse(BaseModel):
+    task: str
+    intervened_feature: str
+    intervened_from: float
+    intervened_to: float
+    predicted_target_before: float
+    predicted_target_after: float
+    downstream_effects: List[CausalDownstreamEffect]
+    note: str = (
+        "Linear-SCM approximation of do-calculus: one linear regression per node on its "
+        "discovered causal parents, propagated through the DAG's topological order. This is "
+        "Pearl's do-calculus in its simplest linear-SCM form, not a general nonlinear/"
+        "nonparametric causal model."
+    )
+    data_caveat: str = _CAUSAL_DATA_CAVEAT

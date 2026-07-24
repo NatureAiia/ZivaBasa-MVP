@@ -8,11 +8,12 @@ import PredictionResult from "../../components/predict/PredictionResult";
 import ShapLedger from "../../components/predict/ShapLedger";
 import ShapWaterfall from "../../components/predict/ShapWaterfall";
 import ShapTierTrace from "../../components/predict/ShapTierTrace";
+import CausalPanel from "../../components/predict/CausalPanel";
 import OverallSummary from "../../components/predict/OverallSummary";
 import PipelineTrace from "../../components/predict/PipelineTrace";
 import DocumentAutoFill from "../../components/predict/DocumentAutoFill";
 import { usePredictionFlow } from "../../hooks/usePredictionFlow";
-import { TASKS, TASK_LABELS, TASK_SHORT_LABELS } from "../../lib/api";
+import { TASKS, TASK_LABELS, TASK_SHORT_LABELS, CAUSAL_ENABLED_TASKS } from "../../lib/api";
 import { fadeScale } from "../../lib/motion";
 import { logHistoryEntry } from "../../lib/history";
 import FeedbackControl from "../../components/predict/FeedbackControl";
@@ -237,6 +238,14 @@ export default function AdvancedPredict() {
                       <ShapTierTrace result={current.explain} task={activeTask} />
                     ) : (
                       <ShapLedger result={current.explain} task={activeTask} />
+                    )}
+                    {CAUSAL_ENABLED_TASKS.includes(activeTask) && (
+                      <div className="mt-4">
+                        <CausalPanel
+                          task={activeTask}
+                          features={schema.feature_names.map((n) => current.features[n])}
+                        />
+                      </div>
                     )}
                     <div className="mt-4 pt-4 border-t border-border">
                       <FeedbackControl predictHistoryId={historyId} task={activeTask} />

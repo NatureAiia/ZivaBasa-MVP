@@ -49,6 +49,8 @@ from api.schemas import (
     SkillGapRequest, SkillGapResponse, UpliftResponse,
     FederatedSimulateRequest, FederatedSimulationResponse,
     EntityResolutionRequest, EntityResolutionResponse,
+    CausalDagEdge, CausalDagResponse, CausalFeatureAttribution, CausalExplainResponse,
+    CausalInterventionRequest, CausalDownstreamEffect, CausalInterventionResponse,
 )
 from api.model_registry import registry, forecast_registry
 from api import auth
@@ -70,6 +72,7 @@ from src import forecast as forecast_module
 from src import skill_matching
 from src import entity_resolution as entity_resolution_module
 from src import uplift as uplift_module
+from src import causal_xai
 from src.federated import simulation as federated_module
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s [%(name)s] %(message)s")
@@ -544,6 +547,149 @@ def uplift_endpoint(task: str, request: PredictRequest, _role: str = Depends(aut
         )
     result = uplift_module.estimate_treatment_effect(bundle, request.features)
     return UpliftResponse(task=task, **result)
+
+
+_causal_cache: dict = {}
+
+
+def _get_causal_bundle_or_503(task: str) -> dict:
+    if task not in _causal_cache:
+        try:
+            _causal_cache[task] = causal_xai.load_causal_bundle(task)
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=503, detail=str(e))
+    return _causal_cache[task]
+
+
+@app.get("/causal/{task}/dag", response_model=CausalDagResponse)
+def causal_dag(task: str, _role: str = Depends(auth.require_role("viewer"))):
+    """Discovered causal DAG (src/causal_xai.py's PC-algorithm search, precomputed by
+    scripts/train_causal_xai_model.py) for one task. Currently only 'skill_match' has a saved
+    bundle — see that script's EXPECTED_PARENTS scoping note."""
+    bundle = _get_causal_bundle_or_503(task)
+    dag = bundle["dag"]
+    return CausalDagResponse(
+        task=task,
+        nodes=list(dag.nodes()),
+        edges=[CausalDagEdge(source=s, target=t) for s, t in causal_xai.dag_edge_list(dag)],
+        target=bundle["target_col"],
+        sanity_check=bundle["sanity_check"],
+    )
+
+
+@app.post("/causal/{task}/explain", response_model=CausalExplainResponse)
+def causal_explain(
+    task: str, request: PredictRequest,
+    _role: str = Depends(auth.require_role("viewer")),
+):
+    """Causal-consistent explanation layer on top of POST /explain/{task}: reruns SHAP for this
+    instance, then reweights it against the precomputed DAG (down-weighting features that are
+    not the target's direct causal parents) and verbalizes the raw-vs-causal comparison — see
+    src/causal_xai.py's causal_reweight_shap()/verbalize_explanation()."""
+    artifacts = _get_task_or_404(task)
+    bundle = _get_causal_bundle_or_503(task)
+
+    if len(request.features) != artifacts.input_dim:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Expected {artifacts.input_dim} features for task '{task}', "
+                f"got {len(request.features)}. Check GET /schema/{task} for the expected order."
+            ),
+        )
+
+    X = artifacts.transform(request.features)
+    try:
+        shap_values, _explainer_name = evaluate.compute_shap_values(
+            artifacts.keras_model, artifacts.shap_background, X
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"SHAP explanation failed: {e}")
+    shap_values = np.atleast_1d(np.squeeze(shap_values))
+
+    base_value = float(
+        artifacts.keras_model(artifacts.shap_background, training=False).numpy().mean()
+    )
+    prediction = float(artifacts.keras_model(X, training=False).numpy().squeeze())
+
+    result = causal_xai.explain_instance(bundle, X.squeeze(), shap_values)
+    direct_parents = set(result["direct_causal_parents"])
+
+    attributions = [
+        CausalFeatureAttribution(
+            feature=name,
+            value=float(val),
+            raw_shap=result["raw_shap"][name],
+            causal_shap=result["causal_shap"][name],
+            is_direct_causal_parent=name in direct_parents,
+        )
+        for name, val in zip(artifacts.feature_names, request.features)
+    ]
+    attributions.sort(key=lambda a: abs(a.raw_shap), reverse=True)
+
+    return CausalExplainResponse(
+        task=task, base_value=base_value, prediction=prediction,
+        attributions=attributions, verbalization=result["verbalization"],
+    )
+
+
+@app.post("/causal/{task}/intervene", response_model=CausalInterventionResponse)
+def causal_intervene(
+    task: str, request: CausalInterventionRequest,
+    _role: str = Depends(auth.require_role("viewer")),
+):
+    """Simplified do-calculus intervention (src/causal_xai.py's simulate_intervention, a linear-
+    SCM approximation): sets intervene_feature to intervene_value and propagates the effect
+    through the discovered DAG's downstream nodes, including the prediction target. This is the
+    causal-consistency counterpart to POST /uplift/{task}'s learned heterogeneous-effect estimate
+    — an actual do(X:=x) operation on the fitted structural model, not a correlational estimate."""
+    artifacts = _get_task_or_404(task)
+    bundle = _get_causal_bundle_or_503(task)
+
+    if len(request.features) != artifacts.input_dim:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Expected {artifacts.input_dim} features for task '{task}', "
+                f"got {len(request.features)}. Check GET /schema/{task} for the expected order."
+            ),
+        )
+    if request.intervene_feature not in artifacts.feature_names:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown feature '{request.intervene_feature}'. Known: {artifacts.feature_names}",
+        )
+
+    X = artifacts.transform(request.features)
+    prediction = float(artifacts.keras_model(X, training=False).numpy().squeeze())
+    scaled_intervene_value = artifacts.transform_named(request.intervene_feature, request.intervene_value)
+
+    try:
+        result = causal_xai.intervene_instance(
+            bundle, X.squeeze(), prediction,
+            request.intervene_feature, float(scaled_intervene_value),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    downstream_effects = [
+        CausalDownstreamEffect(
+            feature=name,
+            before=request.features[artifacts.feature_names.index(name)],
+            after=artifacts.inverse_transform_named(name, effect["after"]),
+        )
+        for name, effect in result["downstream_effects"].items()
+    ]
+
+    return CausalInterventionResponse(
+        task=task,
+        intervened_feature=request.intervene_feature,
+        intervened_from=request.features[artifacts.feature_names.index(request.intervene_feature)],
+        intervened_to=request.intervene_value,
+        predicted_target_before=result["predicted_target_before"],
+        predicted_target_after=result["predicted_target_after"],
+        downstream_effects=downstream_effects,
+    )
 
 
 @app.get("/mlops/status")

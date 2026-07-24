@@ -270,6 +270,25 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ features }),
     }),
+  // Causal-consistent XAI layer (backend/src/causal_xai.py) — a discovered DAG + causally-
+  // reweighted SHAP + a linear-SCM do-calculus intervention, on top of the ordinary SHAP
+  // /explain/{task} already returns. Only tasks with a saved bundle respond (currently
+  // 'skill_match' and 'skills' — see backend/scripts/train_causal_xai_model.py); others 503.
+  causalDag: (task) => request(`/causal/${task}/dag`),
+  causalExplain: (task, features) =>
+    request(`/causal/${task}/explain`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ features }),
+    }),
+  causalIntervene: (task, features, interveneFeature, interveneValue) =>
+    request(`/causal/${task}/intervene`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        features, intervene_feature: interveneFeature, intervene_value: interveneValue,
+      }),
+    }),
   federatedSimulate: (task = "skills", numInstitutions = 3, numRounds = 5) =>
     request("/federated/simulate", {
       method: "POST",
@@ -286,6 +305,11 @@ export const api = {
       body: JSON.stringify({ sets, threshold }),
     }),
 };
+
+// Tasks with a saved causal-XAI bundle (backend/scripts/train_causal_xai_model.py) — gates
+// whether call sites show the causal DAG/explain/intervene UI at all, since /causal/{task}/*
+// 503s for any task without one rather than silently returning empty data.
+export const CAUSAL_ENABLED_TASKS = ["skill_match", "skills"];
 
 export const TASKS = ["employment", "skills", "productivity", "skill_match", "human_capital"];
 export const TASK_LABELS = {
