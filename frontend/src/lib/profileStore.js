@@ -1,11 +1,14 @@
 /*
   User profile (Postgres `profiles` table) — the signup-time info used to assess a user's
   rights: full name, organization, job title, and requested role, plus the Settings page's own
-  additions (phone, department, avatar). `role` is what the app actually gates on and only ever
-  changes via manual admin action (see schema.sql); this store never writes it — the "own
-  profile update" RLS policy allows updating any OTHER column on your own row, enforced at the
-  database layer by a trigger that rejects a `role` change from an authenticated (non-admin)
-  session regardless of what a client sends.
+  additions (phone, department, avatar). The row itself is created automatically by a database
+  trigger on signup (see backend/supabase/migration_demo_open_access.sql's handle_new_user()),
+  not by this store.
+
+  DEMO MODE: that same migration also dropped the trigger that used to block a signed-in user
+  from changing their own `role` — updateProfile() below accepts it accordingly. Revert the
+  migration (re-enable RLS + restore the role-lock trigger, see schema.sql) and remove `role`
+  from updateProfile()'s accepted fields to go back to admin-only role changes.
 */
 import { supabase } from "./supabaseClient";
 
@@ -44,21 +47,11 @@ export async function promoteUserRole(targetUserId, newRole) {
   if (error) throw error;
 }
 
-export async function createProfile({ fullName, organization, jobTitle, requestedRole }) {
-  const { error } = await supabase.from("profiles").insert({
-    full_name: fullName || null,
-    organization: organization || null,
-    job_title: jobTitle || null,
-    requested_role: requestedRole || "viewer",
-  });
-  if (error) throw error;
-}
-
-// Settings page — updates the editable subset of the caller's own profile row. `role` is
-// deliberately not an accepted field here (see module docstring); passing it would be silently
-// rejected by the database trigger anyway, but keeping it out of this function's signature
-// means that's not even something a future caller could attempt from this store.
-export async function updateProfile({ fullName, organization, jobTitle, phone, department }) {
+// Settings page — updates the caller's own profile row. DEMO MODE: `role` is now accepted and
+// editable here, since migration_demo_open_access.sql dropped the trigger that used to block a
+// signed-in user from changing their own role. Revert that migration to restore admin-only role
+// changes, and remove `role` from this function's accepted fields again to match.
+export async function updateProfile({ fullName, organization, jobTitle, phone, department, role }) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in.");
   const { error } = await supabase
@@ -69,6 +62,7 @@ export async function updateProfile({ fullName, organization, jobTitle, phone, d
       job_title: jobTitle || null,
       phone: phone || null,
       department: department || null,
+      ...(role ? { role } : {}),
     })
     .eq("user_id", user.id);
   if (error) throw error;

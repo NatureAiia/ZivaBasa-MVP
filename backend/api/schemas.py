@@ -252,6 +252,44 @@ class EntityResolutionResponse(BaseModel):
     unmatched: List[EntityResolutionUnmatched]
 
 
+class UpskillingCourse(BaseModel):
+    id: str
+    title: str
+    provider: str
+    url: str
+    format: str   # course | video | article | micro_lesson
+    tier: str     # free | paid
+    topics: List[str]
+
+
+class UpskillingRecommendResponse(BaseModel):
+    task: str
+    topics: List[str]
+    free: List[UpskillingCourse]
+    paid_preview_count: int   # count only — this route is ungated, paid entries stay locked
+
+
+class UpskillingPremiumRequest(BaseModel):
+    feature_names: List[str] = Field(
+        ..., description="Top SHAP-contributing feature names for this task, ordered by magnitude."
+    )
+
+
+class MicroLesson(BaseModel):
+    title: str
+    body_markdown: str
+    topics: List[str]
+    reviewed_by: str = "ZivaBasa's AI board"
+    cached: bool
+
+
+class UpskillingPremiumResponse(BaseModel):
+    task: str
+    topics: List[str]
+    paid: List[UpskillingCourse]
+    micro_lesson: MicroLesson
+
+
 _CAUSAL_DATA_CAVEAT = (
     "Discovered over Kaggle-proxy/synthetic engineered features (PC algorithm, causal-learn), "
     "not real bank data, and the plausibility sanity check is self-authored reasoning about "

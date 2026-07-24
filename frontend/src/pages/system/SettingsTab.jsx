@@ -29,7 +29,7 @@ export default function SettingsTab() {
   const { theme, toggle: toggleTheme } = useTheme();
   const { lowBandwidth, toggle: toggleLowBandwidth } = useLowBandwidth();
 
-  const [form, setForm] = useState({ fullName: "", organization: "", jobTitle: "", phone: "", department: "" });
+  const [form, setForm] = useState({ fullName: "", organization: "", jobTitle: "", phone: "", department: "", role: "viewer" });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const [saved, setSaved] = useState(false);
@@ -49,6 +49,7 @@ export default function SettingsTab() {
       jobTitle: profile.job_title || "",
       phone: profile.phone || "",
       department: profile.department || "",
+      role: profile.role || "viewer",
     });
   }, [profile]);
 
@@ -164,12 +165,23 @@ export default function SettingsTab() {
               <Field label="Phone" value={form.phone} onChange={(v) => updateField("phone", v)} className="sm:col-span-2" />
             </div>
 
-            <div className="flex items-center gap-2">
-              <Badge tone={ROLE_TONE[profile?.role] || "neutral"}>
-                {ROLE_LABEL[profile?.role] || "Viewer"} role
-              </Badge>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] text-ink-faint">Role</label>
+              <div className="flex items-center gap-2">
+                <select
+                  value={form.role}
+                  onChange={(e) => updateField("role", e.target.value)}
+                  className="bg-surface2 border border-border rounded-lg px-3 py-2 text-sm text-ink outline-none focus:border-gold/50 transition-colors capitalize"
+                >
+                  {Object.keys(ROLE_LABEL).map((r) => (
+                    <option key={r} value={r}>{ROLE_LABEL[r]}</option>
+                  ))}
+                </select>
+                <Badge tone={ROLE_TONE[form.role] || "neutral"}>{ROLE_LABEL[form.role] || "Viewer"}</Badge>
+              </div>
               <span className="text-[11px] text-ink-faint">
-                Role changes require admin action — see Systems → Users, not editable here.
+                Demo mode: role is self-editable here. In production this requires admin action
+                (Systems → Users).
               </span>
             </div>
 

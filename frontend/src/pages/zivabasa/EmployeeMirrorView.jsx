@@ -5,6 +5,7 @@ import Card from "../../components/common/Card";
 import ExecutiveTaskForm from "../../components/predict/ExecutiveTaskForm";
 import ShapLedger from "../../components/predict/ShapLedger";
 import CausalPanel from "../../components/predict/CausalPanel";
+import UpskillingSection from "../../components/predict/UpskillingSection";
 import { staggerContainer, fadeUpItem } from "../../lib/motion";
 import { api } from "../../lib/api";
 import { formatPercent } from "../../lib/format";
@@ -209,6 +210,7 @@ export default function EmployeeMirrorView() {
                   <CausalPanel task={TASK} features={values} />
                 </div>
               )}
+              <UpskillingSection result={explainResult} task={TASK} />
             </Card>
           )}
 

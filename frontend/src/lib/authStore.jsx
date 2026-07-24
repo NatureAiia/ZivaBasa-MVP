@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { supabase, isSupabaseConfigured } from "./supabaseClient";
-import { getProfile, createProfile } from "./profileStore";
+import { getProfile } from "./profileStore";
 
 const AuthContext = createContext(null);
 
@@ -27,47 +27,35 @@ export function AuthProvider({ children }) {
   }, []);
 
   // Profile carries `role`, which gates admin-only UI — fetched separately from the session
-  // since it lives in its own table, not the Supabase auth user object. If signup happened
-  // with email confirmation on, there was no session yet to write the profile row under (RLS
-  // requires auth.uid()), so the fields were stashed in localStorage — write them now that a
-  // real session (post-confirmation sign-in) exists, then clear the stash either way so a
-  // later sign-in by a different account never reuses stale fields.
+  // since it lives in its own table, not the Supabase auth user object. DEMO MODE
+  // (migration_demo_open_access.sql): a database trigger now creates the profile row
+  // automatically on signup (reading the metadata signUp() below passes via options.data), so
+  // this just reads it back — no client-side creation/stash-in-localStorage path needed
+  // anymore.
   useEffect(() => {
     if (!session) {
       setProfile(null);
       return;
     }
-    (async () => {
-      const existing = await getProfile();
-      if (existing) {
-        setProfile(existing);
-        return;
-      }
-      const pendingRaw = localStorage.getItem("zivabasa_pending_profile");
-      if (pendingRaw) {
-        localStorage.removeItem("zivabasa_pending_profile");
-        try {
-          await createProfile(JSON.parse(pendingRaw));
-        } catch (e) {
-          console.error("createProfile failed:", e.message);
-        }
-      }
-      setProfile(await getProfile());
-    })();
+    getProfile().then(setProfile);
   }, [session]);
 
+  // profileFields keys (fullName/organization/jobTitle/requestedRole) map onto the same
+  // snake_case metadata keys handle_new_user() reads in migration_demo_open_access.sql.
   const signUp = (email, password, profileFields) =>
-    supabase.auth.signUp({ email, password }).then(async (result) => {
-      if (result.error || !profileFields) return result;
-      if (result.data.session) {
-        // Email confirmation is off — a session exists immediately, write the row now.
-        await createProfile(profileFields).catch((e) => console.error("createProfile failed:", e.message));
-      } else {
-        // No session until the user confirms their email and signs in — stash the fields for
-        // the effect above to pick up at that point.
-        localStorage.setItem("zivabasa_pending_profile", JSON.stringify(profileFields));
-      }
-      return result;
+    supabase.auth.signUp({
+      email,
+      password,
+      options: profileFields
+        ? {
+            data: {
+              full_name: profileFields.fullName || null,
+              organization: profileFields.organization || null,
+              job_title: profileFields.jobTitle || null,
+              requested_role: profileFields.requestedRole || "viewer",
+            },
+          }
+        : undefined,
     });
 
   const signIn = (email, password) => supabase.auth.signInWithPassword({ email, password });

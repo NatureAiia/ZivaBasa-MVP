@@ -41,6 +41,7 @@ TOKEN_COSTS = {
     "skill_match": 1,
     "chat_agent": 3,
     "report": 2,
+    "upskilling_premium": 2,
 }
 PREDICT_BATCH_COST_PER_ROW = 1
 
@@ -50,6 +51,7 @@ UPGRADE_HINTS = {
     "skill_match": "Upgrade your plan or buy more tokens to keep matching skills.",
     "chat_agent": "Upgrade your plan or buy more tokens to keep chatting with Chiedza.",
     "report": "Upgrade your plan or buy more tokens to export more reports.",
+    "upskilling_premium": "Upgrade your plan or buy more tokens to unlock premium courses and your AI micro-lesson.",
 }
 
 _BYPASS_ROLES = {"admin", "superadmin"}

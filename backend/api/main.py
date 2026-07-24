@@ -51,6 +51,8 @@ from api.schemas import (
     EntityResolutionRequest, EntityResolutionResponse,
     CausalDagEdge, CausalDagResponse, CausalFeatureAttribution, CausalExplainResponse,
     CausalInterventionRequest, CausalDownstreamEffect, CausalInterventionResponse,
+    UpskillingCourse, UpskillingRecommendResponse, UpskillingPremiumRequest,
+    MicroLesson, UpskillingPremiumResponse,
 )
 from api.model_registry import registry, forecast_registry
 from api import auth
@@ -64,6 +66,7 @@ from api import org_extract as org_extract_module
 from api import field_extract as field_extract_module
 from api import image_router as image_router_module
 from api import redact as redact_module
+from api import upskilling_ai
 from src import evaluate
 from src import features as features_module
 from src import config as src_config
@@ -73,6 +76,7 @@ from src import skill_matching
 from src import entity_resolution as entity_resolution_module
 from src import uplift as uplift_module
 from src import causal_xai
+from src import upskilling as upskilling_module
 from src.federated import simulation as federated_module
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s [%(name)s] %(message)s")
@@ -689,6 +693,50 @@ def causal_intervene(
         predicted_target_before=result["predicted_target_before"],
         predicted_target_after=result["predicted_target_after"],
         downstream_effects=downstream_effects,
+    )
+
+
+@app.get("/upskilling/recommend/{task}", response_model=UpskillingRecommendResponse)
+def upskilling_recommend(
+    task: str, features: str = "",
+    _role: str = Depends(auth.require_role("viewer")),
+):
+    """Free-tier course recommendations (src/upskilling.py) — ungated, no token cost. `features`
+    is a comma-separated ordered list of the given task's top SHAP-contributing feature names,
+    exactly as the frontend already has them from POST /explain/{task}'s top_contributions."""
+    if task not in src_config.TASK_NAMES:
+        raise HTTPException(status_code=404, detail=f"Unknown task '{task}'. Known: {src_config.TASK_NAMES}")
+    feature_names = [f.strip() for f in features.split(",") if f.strip()]
+    result = upskilling_module.recommend_courses(task, feature_names)
+    return UpskillingRecommendResponse(
+        task=task,
+        topics=result["topics"],
+        free=[UpskillingCourse(**c) for c in result["free"]],
+        paid_preview_count=len(result["paid"]),
+    )
+
+
+@app.post("/upskilling/premium/{task}", response_model=UpskillingPremiumResponse)
+async def upskilling_premium(
+    task: str, request: UpskillingPremiumRequest,
+    _role: str = Depends(auth.require_role("viewer")),
+    _tokens=Depends(tokens.require_tokens("upskilling_premium")),
+):
+    """Paid-tier catalog matches + an AI-generated, board-verified micro-lesson
+    (api/upskilling_ai.py), gated by the existing token-spend system — same shape as
+    /skill_match/recommend."""
+    if task not in src_config.TASK_NAMES:
+        raise HTTPException(status_code=404, detail=f"Unknown task '{task}'. Known: {src_config.TASK_NAMES}")
+    result = upskilling_module.recommend_courses(task, request.feature_names)
+    try:
+        lesson = await upskilling_ai.get_or_build_verified_micro_lesson(task, request.feature_names)
+    except (RuntimeError, ValueError) as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    return UpskillingPremiumResponse(
+        task=task,
+        topics=result["topics"],
+        paid=[UpskillingCourse(**c) for c in result["paid"]],
+        micro_lesson=MicroLesson(**lesson),
     )
 
 

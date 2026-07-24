@@ -289,6 +289,18 @@ export const api = {
         features, intervene_feature: interveneFeature, intervene_value: interveneValue,
       }),
     }),
+  // Upskilling/courses (backend/src/upskilling.py + backend/api/upskilling_ai.py) — free tier is
+  // ungated (no token cost); premium is gated by the existing token-spend system. A 402 from
+  // upskillingPremium already becomes an InsufficientTokensError via throwApiError() above and
+  // auto-opens the global UpgradeModal — call sites need no special handling for that case.
+  upskillingRecommend: (task, featureNames = []) =>
+    request(`/upskilling/recommend/${task}?features=${encodeURIComponent(featureNames.join(","))}`),
+  upskillingPremium: (task, featureNames) =>
+    request(`/upskilling/premium/${task}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ feature_names: featureNames }),
+    }),
   federatedSimulate: (task = "skills", numInstitutions = 3, numRounds = 5) =>
     request("/federated/simulate", {
       method: "POST",

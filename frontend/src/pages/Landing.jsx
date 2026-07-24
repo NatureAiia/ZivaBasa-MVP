@@ -21,12 +21,13 @@ const LANDING_CSS = `
   --land-ink-faint: #6E6A5F;
   --land-hairline: rgba(243,238,227,0.10);
   --land-hairline-strong: rgba(243,238,227,0.18);
-  /* Matched exactly to the app shell's .zivabasa-scope --gold/--red (frontend/src/index.css) —
-     the landing page and the authenticated app must read as one continuous brand, not a
-     marketing-site palette that happens to be adjacent to the product's. */
-  --land-gold: #E8834D;
-  --land-gold-dim: #BA683A;
-  --land-gold-wash: rgba(232,131,77,0.12);
+  /* Matched exactly to the app shell's BASE --gold (frontend/src/index.css :root, not the
+     .zivabasa-scope override) — that base gold is what the always-visible Chiedza assistant
+     button uses (it renders outside any module scope), so the landing page and that widget
+     must read as the same brand color, not two different golds. */
+  --land-gold: #E8A33D;
+  --land-gold-dim: #B37426;
+  --land-gold-wash: rgba(232,163,61,0.12);
   --land-ember: #D14B45;
   --land-font-display: 'Fraunces', serif;
   --land-font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -55,9 +56,9 @@ const LANDING_CSS = `
   --land-ink-faint: #8C8574;
   --land-hairline: rgba(26,23,18,0.08);
   --land-hairline-strong: rgba(26,23,18,0.14);
-  --land-gold: #C56F41;
-  --land-gold-dim: #8F5230;
-  --land-gold-wash: rgba(197,111,65,0.10);
+  --land-gold: #C58116;
+  --land-gold-dim: #8F5F10;
+  --land-gold-wash: rgba(197,129,22,0.10);
   --land-ember: #C82D32;
 }
 
@@ -617,7 +618,7 @@ function BrandMark({ className }) {
         fillRule="evenodd"
         clipRule="evenodd"
         d="M13 1.5C19.3513 1.5 24.5 6.64873 24.5 13C24.5 19.3513 19.3513 24.5 13 24.5C10.2822 24.5 7.78552 23.5546 5.82178 21.9756C10.9767 21.4954 15 17.1682 15 11.9502C15 7.7663 12.3765 4.19453 8.68115 2.79102C10.0248 2.03855 11.5647 1.5 13 1.5Z"
-        fill="#E8834D"
+        fill="#E8A33D"
       />
     </svg>
   );
@@ -930,8 +931,8 @@ export default function Landing() {
 
                 <div className="mini-trend" aria-hidden="true">
                   <svg width="96" height="40" viewBox="0 0 96 40" fill="none">
-                    <path className="trend-path" d="M2 32 C 16 30, 22 20, 32 22 C 44 24, 46 10, 58 12 C 70 14, 74 4, 94 3" stroke="#E8834D" strokeWidth="2" strokeLinecap="round" fill="none" />
-                    <circle cx="94" cy="3" r="3" fill="#E8834D" />
+                    <path className="trend-path" d="M2 32 C 16 30, 22 20, 32 22 C 44 24, 46 10, 58 12 C 70 14, 74 4, 94 3" stroke="#E8A33D" strokeWidth="2" strokeLinecap="round" fill="none" />
+                    <circle cx="94" cy="3" r="3" fill="#E8A33D" />
                   </svg>
                   <div className="mini-trend-copy">
                     <div className="num">2026 – 2030</div>
@@ -948,7 +949,7 @@ export default function Landing() {
                 <div className="globe-starburst" aria-hidden="true">
                   <StarBurst
                     starCount={22}
-                    color="#E8834D"
+                    color="#E8A33D"
                     opacity={45}
                     speed={5}
                     starSize={5}
@@ -1030,7 +1031,7 @@ export default function Landing() {
           <div className="auth-rising" aria-hidden="true">
             <RisingLines
               particles={90}
-              color="#E8834D"
+              color="#E8A33D"
               showHorizon={true}
               horizonColor="#D14B45"
               riseSpeed={14}

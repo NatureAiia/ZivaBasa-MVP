@@ -9,6 +9,7 @@ import ShapLedger from "../../components/predict/ShapLedger";
 import ShapWaterfall from "../../components/predict/ShapWaterfall";
 import ShapTierTrace from "../../components/predict/ShapTierTrace";
 import CausalPanel from "../../components/predict/CausalPanel";
+import UpskillingSection from "../../components/predict/UpskillingSection";
 import OverallSummary from "../../components/predict/OverallSummary";
 import PipelineTrace from "../../components/predict/PipelineTrace";
 import DocumentAutoFill from "../../components/predict/DocumentAutoFill";
@@ -247,6 +248,7 @@ export default function AdvancedPredict() {
                         />
                       </div>
                     )}
+                    <UpskillingSection result={current.explain} task={activeTask} />
                     <div className="mt-4 pt-4 border-t border-border">
                       <FeedbackControl predictHistoryId={historyId} task={activeTask} />
                     </div>
