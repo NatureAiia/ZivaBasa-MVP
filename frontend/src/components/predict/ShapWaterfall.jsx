@@ -2,6 +2,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { formatRaw } from "../../lib/format";
 import { metaFor } from "../../lib/fieldMeta";
+import { LedgerHeader, LedgerLegend } from "./shapLedgerShared";
 
 /*
   Waterfall/trace view of the same top_contributions ShapLedger renders as independent bars —
@@ -53,6 +54,7 @@ export default function ShapWaterfall({ result, task }) {
         </div>
       </div>
 
+      <LedgerHeader />
       <div className="flex flex-col gap-1.5">
         {rows.map((row, i) => {
           if (row.kind === "anchor") {
@@ -112,10 +114,10 @@ export default function ShapWaterfall({ result, task }) {
         })}
       </div>
 
+      <LedgerLegend />
       <p className="text-[11px] text-ink-faint leading-relaxed border-t border-border pt-3">
         Each step applies one factor's effect to the running total, left to right, starting from
-        the typical case and ending at this case's prediction. Teal steps push the total up, red
-        steps pull it down.
+        the typical case and ending at this case's prediction.
       </p>
     </div>
   );

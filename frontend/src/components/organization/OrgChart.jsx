@@ -45,9 +45,9 @@ function layoutTree(nodes) {
 // palette already used for Badge tones elsewhere in this app. Interpolates in RGB space between
 // three stops rather than a library scale, since this is the only place in the app that needs one.
 const HEATMAP_STOPS = [
-  { at: 0, rgb: [47, 191, 159] },   // teal — matches this app's --teal
-  { at: 0.5, rgb: [212, 175, 55] }, // gold — matches --gold
-  { at: 1, rgb: [209, 73, 91] },    // red — matches --red
+  { at: 0, rgb: [47, 191, 159] },  // teal — matches this app's --teal
+  { at: 0.5, rgb: [232, 131, 77] }, // gold — matches --gold under .zivabasa-scope
+  { at: 1, rgb: [229, 72, 77] },    // red — matches this app's --red
 ];
 
 function heatmapRgb(ratio) {
@@ -100,6 +100,8 @@ export default function OrgChart({ nodes, onSelect, selectedId, heatmapValues, s
       height={maxY + 20}
       className="shrink-0"
       style={{ minWidth: Math.min(maxX + 20, 320) }}
+      role="group"
+      aria-label={`Organization chart, ${nodes.length} role${nodes.length === 1 ? "" : "s"}${showHeatmap ? ", colored by skills-gap size" : ""}`}
     >
       {/* Connector lines, drawn first so nodes sit on top */}
       {positioned.map((p) =>
@@ -123,14 +125,29 @@ export default function OrgChart({ nodes, onSelect, selectedId, heatmapValues, s
       {positioned.map((p) => {
         const gapRatio = showHeatmap ? heatmapValues?.[p.id] : null;
         const hasGapData = gapRatio != null;
+        const gapLabel = hasGapData ? `, ${Math.round(gapRatio * 100)}% skills gap to ${p.targetRole}` : "";
         return (
-        <g key={p.id} onClick={() => onSelect?.(p.id)} style={{ cursor: onSelect ? "pointer" : "default" }}>
+        <g
+          key={p.id}
+          onClick={() => onSelect?.(p.id)}
+          onKeyDown={(e) => {
+            if (onSelect && (e.key === "Enter" || e.key === " ")) {
+              e.preventDefault();
+              onSelect(p.id);
+            }
+          }}
+          style={{ cursor: onSelect ? "pointer" : "default" }}
+          tabIndex={onSelect ? 0 : undefined}
+          role={onSelect ? "button" : undefined}
+          aria-label={onSelect ? `${p.title}, ${p.department || "no department"}${gapLabel}` : undefined}
+          className={onSelect ? "focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold" : undefined}
+        >
           <rect
             x={p.x} y={p.y} width={NODE_W} height={NODE_H} rx={12}
             fill={
               hasGapData
                 ? heatmapColor(gapRatio, 0.15) // tint, not a solid fill — text stays legible
-                : selectedId === p.id ? "rgba(212,175,55,0.12)" : "rgb(var(--surface))"
+                : selectedId === p.id ? "rgb(var(--gold) / 0.12)" : "rgb(var(--surface))"
             }
             stroke={
               hasGapData

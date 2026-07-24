@@ -48,7 +48,7 @@ export default function DashboardTab() {
               <ShinyPill
                 text="Know your work — workforce transformation intelligence."
                 textColor="rgb(var(--ink-muted))"
-                shineColor="#E8A33D"
+                shineColor="#E8834D"
                 shineColor2="#2FBF9F"
                 speed={2.8}
                 font={{ fontFamily: "Inter", fontSize: "14px", fontWeight: 500, lineHeight: "1.4em" }}

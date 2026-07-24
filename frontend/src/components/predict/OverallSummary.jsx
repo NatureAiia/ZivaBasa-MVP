@@ -97,8 +97,13 @@ export default function OverallSummary({ results, onRestart }) {
 
       <Card variants={fadeUpItem}>
         <h2 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold mb-3">Overall summary</h2>
-        <p className="text-sm text-ink leading-relaxed mb-3">
-          {flagSentence} Productivity is reported as a continuous score (not a risk flag) — read
+        {/* The one narrative verdict on this screen — set in the authority serif so it reads as
+            a considered finding, not another data row. Everything else on this card stays Inter. */}
+        <p className="font-serif text-lg leading-snug text-ink mb-3">
+          {flagSentence}
+        </p>
+        <p className="text-sm text-ink-muted leading-relaxed mb-3">
+          Productivity is reported as a continuous score (not a risk flag) — read
           it alongside the two flags rather than as confirmation of them.
         </p>
         <p className="text-sm text-ink-muted leading-relaxed mb-3">

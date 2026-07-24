@@ -12,9 +12,23 @@ export default function CostDonut({ segments, total, size = 168, thickness = 18 
   const hasData = total > 0;
   let cumulative = 0;
 
+  const summary = hasData
+    ? segments
+        .filter((s) => s.value > 0)
+        .map((s) => `${s.label}: ${Math.round((s.value / total) * 100)}%`)
+        .join(", ")
+    : "no cost data recorded";
+
   return (
     <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
+      <svg
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+        className="-rotate-90"
+        role="img"
+        aria-label={`Monthly cost breakdown, total $${total.toLocaleString()}. ${summary}.`}
+      >
         {/* Track */}
         <circle cx={cx} cy={cy} r={r} fill="none" strokeWidth={thickness} className="text-border" stroke="currentColor" />
         {hasData &&

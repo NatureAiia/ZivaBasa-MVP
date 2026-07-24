@@ -2,6 +2,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { formatRaw } from "../../lib/format";
 import { metaFor } from "../../lib/fieldMeta";
+import { LedgerHeader, LedgerLegend } from "./shapLedgerShared";
 
 const TIER_ORDER = ["raw", "ratio", "index", "interaction", "target"];
 const TIER_LABELS = {
@@ -68,6 +69,7 @@ export default function ShapTierTrace({ result, task }) {
 
   return (
     <div className="flex flex-col gap-4">
+      <LedgerHeader />
       <div className="grid grid-cols-[130px_1fr_74px] items-center gap-3 text-xs">
         <div className="text-ink-faint truncate">Typical case</div>
         <div className="relative h-2">
@@ -159,6 +161,7 @@ export default function ShapTierTrace({ result, task }) {
         <div className="text-right font-mono text-ink-muted">{formatRaw(prediction)}</div>
       </div>
 
+      <LedgerLegend />
       <p className="text-[11px] text-ink-faint leading-relaxed border-t border-border pt-3">
         Features are grouped by engineering tier — raw inputs first, then derived ratios/indexes,
         then interactions — each tier ending on a subtotal, so you can see how much of the
