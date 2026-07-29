@@ -38,6 +38,7 @@ import joblib
 from sklearn.preprocessing import StandardScaler
 
 from . import config
+from . import worldbank
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s [%(name)s] %(message)s")
@@ -148,6 +149,26 @@ def load_macro_human_capital() -> Optional[pd.DataFrame]:
     return wide
 
 
+# --------------------------------------------------------------------------- #
+# Live World Bank macro data (src/worldbank.py) — additive supplement, gated behind
+# config.USE_LIVE_MACRO_DATA. See worldbank.py's module docstring for why this isn't a
+# duplicate of the static CPI panel above (adds unemployment/labor-force-participation, not
+# currently in this pipeline at all).
+# --------------------------------------------------------------------------- #
+_WORLD_BANK_CACHE: Optional[pd.DataFrame] = None
+
+
+def load_world_bank_panel() -> Optional[pd.DataFrame]:
+    """Cached at module level like load_macro_human_capital() — worldbank.fetch_world_bank_panel()
+    already caches to disk, but this avoids re-reading that cache file on every call within a
+    single process/pipeline run."""
+    global _WORLD_BANK_CACHE
+    if _WORLD_BANK_CACHE is not None:
+        return _WORLD_BANK_CACHE
+    _WORLD_BANK_CACHE = worldbank.fetch_world_bank_panel()
+    return _WORLD_BANK_CACHE
+
+
 def add_macro_context_features(
     df: Optional[pd.DataFrame], task_name: str, year_col: str = "year"
 ) -> Optional[pd.DataFrame]:
@@ -213,6 +234,47 @@ def add_macro_context_features(
             "food_inflation_rate. A nominal pay rise can still be a real pay cut in a "
             "high-inflation economy — this is a legitimate, exogenous (non-leaky) addition, "
             "not a derivative of any task's own target.",
+        )
+
+    if config.USE_LIVE_MACRO_DATA:
+        merged = _add_world_bank_features(merged, task_name, year_col)
+
+    return merged
+
+
+def _add_world_bank_features(df: pd.DataFrame, task_name: str, year_col: str) -> pd.DataFrame:
+    """Additive World Bank merge, split out of add_macro_context_features() so the default
+    (USE_LIVE_MACRO_DATA=False) path above is unaffected by this function even existing. Same
+    extend-with-ffill/bfill-then-merge shape as the static CPI panel merge, applied to whichever
+    World Bank indicators actually came back (a partial fetch — e.g. one indicator's request
+    failed — still contributes whatever succeeded, rather than being all-or-nothing)."""
+    wb_panel = load_world_bank_panel()
+    if wb_panel is None:
+        logger.warning("[%s] USE_LIVE_MACRO_DATA is True but no World Bank data was available.", task_name)
+        return df
+
+    wb_cols = [c for c in config.WORLD_BANK_CONFIG.indicators.values() if c in wb_panel.columns]
+    n_before = len(df)
+
+    df_years = pd.to_numeric(df[year_col], errors="coerce").dropna().astype(int)
+    all_years = range(
+        int(min(wb_panel["year"].min(), df_years.min())),
+        int(max(wb_panel["year"].max(), df_years.max())) + 1,
+    )
+    wb_full = wb_panel.set_index("year").reindex(all_years)
+    wb_full[wb_cols] = wb_full[wb_cols].ffill().bfill()
+    wb_full = wb_full.reset_index()
+
+    merged = df.merge(wb_full[["year"] + wb_cols], left_on=year_col, right_on="year", how="left", suffixes=("", "_wb"))
+    assert len(merged) == n_before, (
+        f"[{task_name}] World Bank merge changed row count ({n_before} -> {len(merged)})."
+    )
+
+    for col in wb_cols:
+        _log_feature(
+            col, "raw", task_name, [year_col],
+            f"Live Zimbabwe {col.replace('_', ' ')} from the World Bank API "
+            "(config.WORLD_BANK_CONFIG) — additive, not present in the static CPI panel.",
         )
 
     return merged

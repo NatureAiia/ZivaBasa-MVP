@@ -221,6 +221,31 @@ MACRO_INDICATORS = {
 
 
 # --------------------------------------------------------------------------- #
+# Live World Bank macro data (src/worldbank.py) — additive, config-gated supplement to the
+# static CPI/food-inflation panel above. Adds indicators that don't exist anywhere in this
+# pipeline today (unemployment rate, labor force participation rate), not a live-refresh of
+# what's already there. No API key required. Off by default (USE_LIVE_MACRO_DATA=False) —
+# add_macro_context_features()'s behavior is byte-identical to today until this is flipped on.
+# --------------------------------------------------------------------------- #
+@dataclass
+class WorldBankConfig:
+    country_iso3: str = "ZWE"
+    # World Bank indicator code -> feature column name.
+    indicators: Dict[str, str] = field(default_factory=lambda: {
+        "SL.UEM.TOTL.ZS": "unemployment_rate_pct",
+        "SL.TLF.CACT.ZS": "labor_force_participation_pct",
+    })
+    cache_path: str = ""  # resolved below, after PROCESSED_DIR is known
+    cache_max_age_days: int = 30  # annual World Bank data — no reason to refetch every run
+    request_timeout_s: float = 10.0  # short and strict: a hung request must never block a pipeline run
+
+
+WORLD_BANK_CONFIG = WorldBankConfig(cache_path=os.path.join(PROCESSED_DIR, "worldbank_zwe_cache.parquet"))
+
+USE_LIVE_MACRO_DATA = False
+
+
+# --------------------------------------------------------------------------- #
 # Feature engineering hyperparameters
 # --------------------------------------------------------------------------- #
 OUTLIER_LOWER_QUANTILE = 0.01
@@ -339,17 +364,28 @@ FORECAST_CONFIG = ForecastConfig()
 class TSMixerConfig:
     """
     Sized for the same small (industry, year) panel FORECAST_CONFIG trains on — 7 years x
-    8 industries. patch_len defaults to the full window_size (no sub-patching): PatchTSMixer's
-    patching only pays off with sequences long enough to slice into several patches, and a
-    3-step window isn't. Kept as its own field (not hardcoded to window_size) so it starts doing
-    real patching automatically once more years of real data lengthen the panel.
+    8 industries (32 total training windows). patch_len defaults to the full window_size (no
+    sub-patching): PatchTSMixer's patching only pays off with sequences long enough to slice
+    into several patches, and a 3-step window isn't. Kept as its own field (not hardcoded to
+    window_size) so it starts doing real patching automatically once more years of real data
+    lengthen the panel.
+
+    hidden_dim/num_blocks deliberately small (4/1, not the paper-typical 32+/2+): benchmarked
+    against forecast.py's LSTM/GRU via leave-one-out CV (the only sound methodology at N=32 —
+    a single random train/val split's ~6-point validation set swings this model's MAE by 2-4x
+    depending on random seed alone, confirmed empirically before picking this config) in
+    scripts/benchmark_tsmixer_vs_lstm.py. The default 32/2 config has 8,179 trainable params
+    vs. the LSTM's 6,083 on ~25 training examples — overparameterized for this data regime,
+    and loses to the LSTM under LOOCV. This 4/1 config (931 params) wins on 2 of 3 forecast
+    metrics and ties on the third. Revisit upward only once the real panel has meaningfully
+    more years than today's 7.
     """
     window_size: int = FORECAST_CONFIG.window_size  # keep in sync with the shared panel windowing
     patch_len: int = FORECAST_CONFIG.window_size
-    hidden_dim: int = 32
-    num_blocks: int = 2
+    hidden_dim: int = 4
+    num_blocks: int = 1
     embedding_dim: int = 8          # industry-identity embedding, same role as ForecastConfig's
-    dropout_rate: float = 0.2
+    dropout_rate: float = 0.3
     batch_size: int = 16
     epochs: int = 200
     patience: int = 20
