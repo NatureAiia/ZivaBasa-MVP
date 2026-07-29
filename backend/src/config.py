@@ -29,8 +29,12 @@ SCALER_DIR = os.path.join(MODELS_DIR, "scalers")
 SHAP_DIR = os.path.join(MODELS_DIR, "shap_outputs")
 MLRUNS_DIR = os.path.join(PROJECT_ROOT, "mlruns")
 FORECAST_MODEL_DIR = os.path.join(MODELS_DIR, "forecast")
+# Separate from FORECAST_MODEL_DIR so the TSMixer spike (src/tsmixer_forecast.py) never
+# overwrites the shipped, API-served LSTM/GRU artifacts in FORECAST_MODEL_DIR.
+TSMIXER_MODEL_DIR = os.path.join(MODELS_DIR, "forecast_tsmixer")
 
-for _d in (RAW_DIR, PROCESSED_DIR, MODELS_DIR, MULTITASK_MODEL_DIR, SCALER_DIR, SHAP_DIR, FORECAST_MODEL_DIR):
+for _d in (RAW_DIR, PROCESSED_DIR, MODELS_DIR, MULTITASK_MODEL_DIR, SCALER_DIR, SHAP_DIR,
+           FORECAST_MODEL_DIR, TSMIXER_MODEL_DIR):
     os.makedirs(_d, exist_ok=True)
 
 RANDOM_STATE = 42
@@ -323,3 +327,56 @@ class ForecastConfig:
 
 
 FORECAST_CONFIG = ForecastConfig()
+
+
+# --------------------------------------------------------------------------- #
+# TSMixer forecasting spike (src/tsmixer_forecast.py) — alternative to the LSTM/GRU
+# head above, built alongside forecast.py (not replacing it), gated by
+# scripts/benchmark_tsmixer_vs_lstm.py the same way PLE_MODEL_CONFIG is gated by
+# scripts/benchmark_ple_vs_baseline.py.
+# --------------------------------------------------------------------------- #
+@dataclass
+class TSMixerConfig:
+    """
+    Sized for the same small (industry, year) panel FORECAST_CONFIG trains on — 7 years x
+    8 industries. patch_len defaults to the full window_size (no sub-patching): PatchTSMixer's
+    patching only pays off with sequences long enough to slice into several patches, and a
+    3-step window isn't. Kept as its own field (not hardcoded to window_size) so it starts doing
+    real patching automatically once more years of real data lengthen the panel.
+    """
+    window_size: int = FORECAST_CONFIG.window_size  # keep in sync with the shared panel windowing
+    patch_len: int = FORECAST_CONFIG.window_size
+    hidden_dim: int = 32
+    num_blocks: int = 2
+    embedding_dim: int = 8          # industry-identity embedding, same role as ForecastConfig's
+    dropout_rate: float = 0.2
+    batch_size: int = 16
+    epochs: int = 200
+    patience: int = 20
+    initial_lr: float = 1e-3
+
+
+TSMIXER_CONFIG = TSMixerConfig()
+
+
+# --------------------------------------------------------------------------- #
+# Chronos-2 zero-shot forecasting (src/chronos_forecast.py) — cold-start fallback for
+# multi-year forecasting when a panel doesn't yet have enough time points to train the
+# LSTM/GRU or TSMixer heads above. Requires torch + chronos-forecasting + transformers,
+# installed into the project's `deep_learning` conda env (see requirements.txt) — optional,
+# guarded import, not a hard dependency of the rest of src/.
+# --------------------------------------------------------------------------- #
+@dataclass
+class ChronosForecastConfig:
+    checkpoint: str = "amazon/chronos-2"
+    device: str = "cpu"
+    quantile_levels: List[float] = field(default_factory=lambda: [0.1, 0.5, 0.9])
+    # Swap-over criterion (named constant, not a magic number per-callsite): below this many
+    # observed years for a given industry, prefer Chronos-2 zero-shot over training the
+    # LSTM/TSMixer heads, which need enough windows (see ForecastConfig.window_size) to fit
+    # anything meaningful. Today's real panel (7 years) already clears this — it exists for the
+    # day a *new* time series (a real bank feed, a new industry) shows up with fewer points.
+    min_years_for_trained_model: int = 5
+
+
+CHRONOS_FORECAST_CONFIG = ChronosForecastConfig()

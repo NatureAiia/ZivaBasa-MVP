@@ -112,3 +112,24 @@ supabase==2.10.0  # server-side Supabase client for agent_graph.py's get_org_cha
 # Testing (Day 13 — integration/end-to-end suite, backend/tests/)
 pytest==8.2.2
 pytest-cov==5.0.0
+
+# Zero-shot forecasting (src/chronos_forecast.py) — cold-start fallback used only when a time
+# series doesn't yet have enough observed points to train src/forecast.py's LSTM/GRU or
+# src/tsmixer_forecast.py's TSMixer heads. OPTIONAL — guarded import, src/chronos_forecast.py
+# and its tests degrade gracefully (RuntimeError / pytest skip) without these installed.
+# Installed into this project's `deep_learning` conda env (`conda activate deep_learning`),
+# NOT this file's own venv assumption, and verified against a clean env before trusting it —
+# same diligence already applied to flwr/causal-learn/dowhy above, since torch + transformers
+# are exactly the class of package that has previously pulled in numpy>=2.0 or protobuf>=5 and
+# broken the pinned tensorflow==2.16.1 stack.
+#   pip install torch chronos-forecasting transformers
+#   python -c "import tensorflow; import torch"  # re-verify no regression after installing
+# Verified (2026-07-29): no numpy/protobuf/tensorflow regression. One resolver-flagged conflict
+# surfaced — huggingface-hub (pulled in by transformers) requires click>=8.4.2, while
+# flwr==1.23.0's metadata pins click<8.2.0 — but flwr actually imports and
+# tests/test_federated.py passes cleanly under click==8.4.2, so that pin is conservative
+# packaging metadata, not a real runtime incompatibility. Left at click>=8.4.2 (whatever
+# huggingface-hub resolves to); do not downgrade click to "fix" the pip resolver warning.
+torch  # version left unpinned deliberately — pin once verified against this project's stack
+chronos-forecasting
+transformers
