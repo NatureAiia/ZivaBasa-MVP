@@ -48,6 +48,7 @@ create table if not exists org_nodes (
 create index if not exists org_nodes_user_id_idx on org_nodes(user_id);
 create index if not exists org_nodes_parent_id_idx on org_nodes(parent_id);
 
+drop trigger if exists org_nodes_set_updated_at on org_nodes;
 create trigger org_nodes_set_updated_at
   before update on org_nodes
   for each row execute function set_updated_at();
@@ -146,6 +147,7 @@ create table if not exists chat_sessions (
   updated_at     timestamptz not null default now()
 );
 
+drop trigger if exists chat_sessions_set_updated_at on chat_sessions;
 create trigger chat_sessions_set_updated_at
   before update on chat_sessions
   for each row execute function set_updated_at();
@@ -226,6 +228,7 @@ begin
     'usage_log', 'cost_entries', 'chat_sessions', 'predict_history'
   ]
   loop
+    execute format('drop policy if exists "own rows only" on %I;', t);
     execute format(
       'create policy "own rows only" on %I for all using (user_id = auth.uid()) with check (user_id = auth.uid());',
       t
@@ -240,24 +243,42 @@ end $$;
 -- 'viewer' regardless of what a hand-crafted request claims; update is locked to prevent
 -- role changes at the RLS layer, reinforced by a trigger below (belt and suspenders — the
 -- trigger also protects against any future policy edit that loosens this).
+drop policy if exists "own profile select" on profiles;
 create policy "own profile select" on profiles
   for select using (user_id = auth.uid());
 
 -- Added for the Systems -> Users page: an admin/superadmin needs to see every profile, not just
--- their own, to approve pending signups and manage roles. A self-referential subquery on the
--- caller's OWN row (not the row being read) — this does not let anyone escalate what they can
--- SEE based on the target row's contents, only based on who the caller already is.
-create policy "admins can view all profiles" on profiles
-  for select using (
-    exists (
-      select 1 from profiles p
-      where p.user_id = auth.uid() and p.role in ('admin', 'superadmin')
-    )
+-- their own, to approve pending signups and manage roles.
+--
+-- NOT a bare "exists (select 1 from profiles ...)" subquery inside the policy itself — that's
+-- the classic Postgres RLS trap: a policy ON profiles whose USING clause queries profiles
+-- forces Postgres to re-evaluate every SELECT policy on profiles (including this one) for that
+-- inner query too, which calls itself again, forever — "infinite recursion detected in policy
+-- for relation profiles" (discovered live: this exact policy had apparently never actually run
+-- against the production database before, so the bug was silent until schema.sql's missing
+-- `drop policy if exists` guards were fixed and it was finally applied for the first time).
+--
+-- Fix: wrap the same check in a SECURITY DEFINER function. It executes with the privileges of
+-- the function's owner rather than the calling (RLS-restricted) role, so its internal query
+-- against profiles does not re-trigger this table's SELECT policies — breaking the recursive
+-- cycle. `stable` (not `volatile`) since it only reads, letting the planner cache it per
+-- statement. This is the standard, documented pattern for a self-referential admin check.
+create or replace function is_admin_or_superadmin()
+returns boolean as $$
+  select exists (
+    select 1 from profiles where user_id = auth.uid() and role in ('admin', 'superadmin')
   );
+$$ language sql security definer stable;
 
+drop policy if exists "admins can view all profiles" on profiles;
+create policy "admins can view all profiles" on profiles
+  for select using (is_admin_or_superadmin());
+
+drop policy if exists "own profile insert" on profiles;
 create policy "own profile insert" on profiles
   for insert with check (user_id = auth.uid() and role = 'viewer');
 
+drop policy if exists "own profile update" on profiles;
 create policy "own profile update" on profiles
   for update using (user_id = auth.uid()) with check (user_id = auth.uid());
 
@@ -275,6 +296,7 @@ begin
 end;
 $$ language plpgsql;
 
+drop trigger if exists profiles_lock_role on profiles;
 create trigger profiles_lock_role
   before update on profiles
   for each row execute function lock_profile_role();
@@ -315,14 +337,18 @@ insert into storage.buckets (id, name, public)
 values ('avatars', 'avatars', true)
 on conflict (id) do nothing;
 
+drop policy if exists "avatar public read" on storage.objects;
 create policy "avatar public read" on storage.objects
   for select using (bucket_id = 'avatars');
 
+drop policy if exists "avatar owner write" on storage.objects;
 create policy "avatar owner write" on storage.objects
   for insert with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
 
+drop policy if exists "avatar owner update" on storage.objects;
 create policy "avatar owner update" on storage.objects
   for update using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
 
+drop policy if exists "avatar owner delete" on storage.objects;
 create policy "avatar owner delete" on storage.objects
   for delete using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);

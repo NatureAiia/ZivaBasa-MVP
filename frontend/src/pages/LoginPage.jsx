@@ -208,7 +208,14 @@ export default function LoginPage() {
         setMode("signIn");
       }
     } catch (err) {
-      setError(err.message || "Something went wrong.");
+      // err.message can be present-but-useless — Supabase's hosted auth API has been observed
+      // returning a bare `{}` body on a 500 (a server-side failure, e.g. an auth hook throwing),
+      // which some SDK versions surface as the literal string "{}" rather than leaving .message
+      // empty. `err.message || fallback` doesn't catch that (it's truthy), so a raw JSON blob
+      // leaked straight into the UI — checked here explicitly rather than trusting .message's
+      // shape.
+      const looksLikeJson = typeof err.message === "string" && /^\s*[{[]/.test(err.message);
+      setError(!err.message || looksLikeJson ? "Something went wrong. Please try again shortly." : err.message);
     } finally {
       setBusy(false);
     }

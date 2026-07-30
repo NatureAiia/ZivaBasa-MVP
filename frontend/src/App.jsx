@@ -19,6 +19,8 @@ import RosterTab from "./pages/zivabasa/RosterTab";
 import EmployeeMirrorView from "./pages/zivabasa/EmployeeMirrorView";
 import NationalEvidenceView from "./pages/zivabasa/NationalEvidenceView";
 import MyOrganizationTab from "./pages/zivabasa/MyOrganizationTab";
+import ReviewQueueTab from "./pages/zivabasa/ReviewQueueTab";
+import EntityResolutionTab from "./pages/zivabasa/EntityResolutionTab";
 import { MODELS } from "./components/layout/Sidebar";
 import ChiedzaWidget from "./components/chat/ChiedzaWidget";
 
@@ -52,6 +54,8 @@ export default function App() {
             <Route path="my-view" element={<EmployeeMirrorView />} />
             <Route path="national-view" element={<NationalEvidenceView />} />
             <Route path="my-organization" element={<MyOrganizationTab />} />
+            <Route path="review-queue" element={<ReviewQueueTab />} />
+            <Route path="entity-resolution" element={<EntityResolutionTab />} />
           </Route>
 
           {OTHER_MODELS.map((slug) => (
