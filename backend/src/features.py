@@ -69,6 +69,30 @@ def save_feature_dictionary(path: Optional[str] = None) -> str:
     return path
 
 
+_feature_category_cache: dict[str, dict[str, str]] = {}
+
+
+def get_feature_categories(task: str, path: Optional[str] = None) -> dict:
+    """feature_name -> category ("raw"|"ratio"|"index"|"interaction"|"target") for one task
+    head, read from the saved feature_dictionary.csv (the API process serves pretrained
+    artifacts and never runs the pipeline itself, so _FEATURE_LOG is empty at request time —
+    the CSV written by save_feature_dictionary() during training is the only durable source).
+    A feature name can recur across task heads; later rows for the same name win, matching
+    however the CSV was last written.
+    """
+    if task in _feature_category_cache:
+        return _feature_category_cache[task]
+
+    path = path or os.path.join(config.PROCESSED_DIR, "feature_dictionary.csv")
+    mapping: dict[str, str] = {}
+    if os.path.exists(path):
+        df = pd.read_csv(path)
+        task_df = df[df["task_head"] == task]
+        mapping = dict(zip(task_df["feature_name"], task_df["category"]))
+    _feature_category_cache[task] = mapping
+    return mapping
+
+
 # --------------------------------------------------------------------------- #
 # I/O
 # --------------------------------------------------------------------------- #

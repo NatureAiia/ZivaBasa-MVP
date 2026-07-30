@@ -30,6 +30,11 @@ class FeatureContribution(BaseModel):
     feature: str
     value: float
     shap_value: float
+    # "raw" | "ratio" | "index" | "interaction" | "target" | "unknown" — looked up from the
+    # feature dictionary features.save_feature_dictionary() wrote during training
+    # (features.get_feature_categories()). "unknown" for any feature not found there rather
+    # than omitting the field, since ShapLedger.jsx groups/labels contributions by category.
+    category: str
 
 
 class LimeContribution(BaseModel):

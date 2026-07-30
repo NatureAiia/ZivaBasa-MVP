@@ -36,12 +36,20 @@ def configured() -> bool:
     return bool(_supabase_url() and _service_role_key())
 
 
-async def resolve_role_from_token(token: str) -> Optional[str]:
+async def resolve_identity_from_token(token: str) -> Optional[tuple[str, str]]:
     """Validates a Supabase access token against Supabase Auth, then looks up that user's
     profiles.role via the service role key (bypassing RLS, which is the point — RLS scopes a
-    normal user to their own row, but the backend needs to resolve *the caller's* role to
-    enforce access control in the first place). Returns None if the token is invalid, the
-    profile doesn't exist, or this backend isn't configured for Supabase auth at all."""
+    normal user to their own row, but the backend needs to resolve *the caller's* identity to
+    enforce access control and per-user token billing in the first place). Returns
+    (user_id, role), or None if the token is invalid, the profile doesn't exist, or this
+    backend isn't configured for Supabase auth at all.
+
+    Both user_id and role come out of this one call (not two) because the /auth/v1/user lookup
+    that resolves user_id is required either way to then look up profiles.role — api/tokens.py
+    needs user_id (to spend/check that user's token balance) alongside the role api/auth.py's
+    resolve_role_from_token() below already needed, so this is the shared, single source of
+    truth for both rather than two independent round-trips to Supabase.
+    """
     url, service_key = _supabase_url(), _service_role_key()
     if not (url and service_key):
         return None
@@ -66,4 +74,14 @@ async def resolve_role_from_token(token: str) -> Optional[str]:
         rows = profile_resp.json()
         if not rows:
             return None
-        return rows[0].get("role")
+        role = rows[0].get("role")
+        if not role:
+            return None
+        return user_id, role
+
+
+async def resolve_role_from_token(token: str) -> Optional[str]:
+    """Thin wrapper over resolve_identity_from_token() for callers (api/auth.py) that only
+    need the role, not the user_id."""
+    identity = await resolve_identity_from_token(token)
+    return identity[1] if identity else None

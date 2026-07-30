@@ -35,7 +35,7 @@ load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
                 # are imported, since those modules read them at import time via os.environ.get()
 
 import numpy as np
-from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, UploadFile, File, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.schemas import (
@@ -49,6 +49,7 @@ from api.schemas import (
 )
 from api.model_registry import registry, forecast_registry
 from api import auth
+from api import tokens
 from api import batch as batch_module
 from api import chat as chat_module
 from api import agent_graph
@@ -59,6 +60,7 @@ from api import field_extract as field_extract_module
 from api import image_gen as image_gen_module
 from api import redact as redact_module
 from src import evaluate
+from src import features as features_module
 from src import config as src_config
 from src import drift as drift_module
 from src import forecast as forecast_module
@@ -196,7 +198,12 @@ def schema(task: str, _role: str = Depends(auth.require_role("viewer"))):
 
 
 @app.post("/predict/{task}", response_model=PredictResponse)
-def predict(task: str, request: PredictRequest, _role: str = Depends(auth.require_role("viewer"))):
+def predict(
+    task: str,
+    request: PredictRequest,
+    _role: str = Depends(auth.require_role("viewer")),
+    _tokens: object = Depends(tokens.require_tokens("predict")),
+):
     artifacts = _get_task_or_404(task)
 
     if len(request.features) != artifacts.input_dim:
@@ -257,8 +264,12 @@ def explain(
     )
     prediction = float(artifacts.keras_model(X, training=False).numpy().squeeze())
 
+    feature_categories = features_module.get_feature_categories(task)
     contributions = [
-        FeatureContribution(feature=name, value=float(val), shap_value=float(sv))
+        FeatureContribution(
+            feature=name, value=float(val), shap_value=float(sv),
+            category=feature_categories.get(name, "unknown"),
+        )
         for name, val, sv in zip(artifacts.feature_names, request.features, shap_values)
     ]
     contributions.sort(key=lambda c: abs(c.shap_value), reverse=True)
@@ -303,7 +314,12 @@ _VALUE_COLUMN = {"employment": "avg_salary_usd", "skills": "MonthlyIncome", "ski
 
 
 @app.post("/predict/batch/{task}")
-async def predict_batch(task: str, file: UploadFile = File(...), _role: str = Depends(auth.require_role("viewer"))):
+async def predict_batch(
+    task: str,
+    file: UploadFile = File(...),
+    _role: str = Depends(auth.require_role("viewer")),
+    authorization: str | None = Header(default=None),
+):
     artifacts = _get_task_or_404(task)
 
     if not file.filename.lower().endswith(".csv"):
@@ -314,6 +330,18 @@ async def predict_batch(task: str, file: UploadFile = File(...), _role: str = De
         parsed = batch_module.parse_and_validate(file_bytes, task, artifacts.feature_names)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+
+    # Variable-cost gate — priced per row (a 5-row and a 5,000-row upload shouldn't cost the
+    # same), so this runs after parsing (n_rows is now known) but before any model inference,
+    # per tokens.py's own documented pattern for endpoints that can't use the fixed-cost
+    # require_tokens() dependency.
+    identity = await tokens.resolve_gate_identity(authorization)
+    if identity is not None:
+        user_id, role = identity
+        if role not in tokens._BYPASS_ROLES:
+            cost = parsed["n_rows"] * tokens.PREDICT_BATCH_COST_PER_ROW
+            if cost > 0:
+                await tokens.spend_or_402(user_id, cost, "predict_batch", endpoint=f"/predict/batch/{task}")
 
     df = parsed["df"]
     X_scaled = artifacts.transform_batch(parsed["feature_matrix"])
@@ -392,7 +420,11 @@ async def chat(request: ChatRequest, _role: str = Depends(auth.require_role("adm
 
 
 @app.post("/chat/agent", response_model=ChatResponse)
-async def chat_agent(request: ChatRequest, _role: str = Depends(auth.require_role("viewer"))):
+async def chat_agent(
+    request: ChatRequest,
+    _role: str = Depends(auth.require_role("viewer")),
+    _tokens: object = Depends(tokens.require_tokens("chat_agent")),
+):
     """Chiedza's LangGraph agent mode (api/agent_graph.py) — a parallel capability alongside
     POST /chat, not a replacement for it. Unlike plain chat, this can read the caller's own
     saved org chart / prediction history / batch results from Supabase (request.user_id scopes
@@ -417,7 +449,11 @@ async def chat_budget(_role: str = Depends(auth.require_role("viewer"))):
 
 
 @app.post("/skill_match/recommend", response_model=SkillGapResponse)
-async def skill_match_recommend(request: SkillGapRequest, _role: str = Depends(auth.require_role("viewer"))):
+async def skill_match_recommend(
+    request: SkillGapRequest,
+    _role: str = Depends(auth.require_role("viewer")),
+    _tokens: object = Depends(tokens.require_tokens("skill_match")),
+):
     """Prescriptive skill-gap layer on top of the skill_match head: for one staff-vs-target-role
     pair, returns the same match score skill_matching.match_score() computes plus a recommended
     training resource for each missing skill (Master Checklist §5, Day 10 item)."""
@@ -572,7 +608,11 @@ _XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.
 
 
 @app.post("/reports/predict")
-async def predict_report(request: PredictReportRequest, _role: str = Depends(auth.require_role("viewer"))):
+async def predict_report(
+    request: PredictReportRequest,
+    _role: str = Depends(auth.require_role("viewer")),
+    _tokens: object = Depends(tokens.require_tokens("report")),
+):
     try:
         docx_bytes = reports_module.build_predict_report(request.results, request.extra_notes)
     except Exception as e:
@@ -585,7 +625,11 @@ async def predict_report(request: PredictReportRequest, _role: str = Depends(aut
 
 
 @app.post("/reports/chat")
-async def chat_report(request: ChatReportRequest, _role: str = Depends(auth.require_role("viewer"))):
+async def chat_report(
+    request: ChatReportRequest,
+    _role: str = Depends(auth.require_role("viewer")),
+    _tokens: object = Depends(tokens.require_tokens("report")),
+):
     try:
         docx_bytes = reports_module.build_chat_report(
             [m.model_dump() for m in request.messages], request.tool_calls
@@ -600,7 +644,11 @@ async def chat_report(request: ChatReportRequest, _role: str = Depends(auth.requ
 
 
 @app.post("/reports/predict/pdf")
-async def predict_report_pdf(request: PredictReportRequest, _role: str = Depends(auth.require_role("viewer"))):
+async def predict_report_pdf(
+    request: PredictReportRequest,
+    _role: str = Depends(auth.require_role("viewer")),
+    _tokens: object = Depends(tokens.require_tokens("report")),
+):
     try:
         pdf_bytes = reports_module.build_predict_report_pdf(request.results, request.extra_notes)
     except Exception as e:
@@ -613,7 +661,11 @@ async def predict_report_pdf(request: PredictReportRequest, _role: str = Depends
 
 
 @app.post("/reports/chat/pdf")
-async def chat_report_pdf(request: ChatReportRequest, _role: str = Depends(auth.require_role("viewer"))):
+async def chat_report_pdf(
+    request: ChatReportRequest,
+    _role: str = Depends(auth.require_role("viewer")),
+    _tokens: object = Depends(tokens.require_tokens("report")),
+):
     try:
         pdf_bytes = reports_module.build_chat_report_pdf(
             [m.model_dump() for m in request.messages], request.tool_calls
@@ -628,7 +680,11 @@ async def chat_report_pdf(request: ChatReportRequest, _role: str = Depends(auth.
 
 
 @app.post("/reports/predict/xlsx")
-async def predict_report_xlsx(request: PredictReportRequest, _role: str = Depends(auth.require_role("viewer"))):
+async def predict_report_xlsx(
+    request: PredictReportRequest,
+    _role: str = Depends(auth.require_role("viewer")),
+    _tokens: object = Depends(tokens.require_tokens("report")),
+):
     try:
         xlsx_bytes = reports_module.build_predict_report_xlsx(request.results, request.extra_notes)
     except Exception as e:
@@ -641,7 +697,11 @@ async def predict_report_xlsx(request: PredictReportRequest, _role: str = Depend
 
 
 @app.post("/reports/chat/xlsx")
-async def chat_report_xlsx(request: ChatReportRequest, _role: str = Depends(auth.require_role("viewer"))):
+async def chat_report_xlsx(
+    request: ChatReportRequest,
+    _role: str = Depends(auth.require_role("viewer")),
+    _tokens: object = Depends(tokens.require_tokens("report")),
+):
     try:
         xlsx_bytes = reports_module.build_chat_report_xlsx(
             [m.model_dump() for m in request.messages], request.tool_calls
