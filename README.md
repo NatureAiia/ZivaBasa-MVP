@@ -114,7 +114,8 @@ ZivaBasa-MVP/
 │   ├── notebooks/                   # 01 EDA → 02 features → 03 baselines → 04 multitask NN → 05 SHAP → 06 sanity check
 │   ├── data/{raw,processed}/         # Kaggle proxy datasets + engineered outputs
 │   ├── models/                      # saved Keras models, scalers, SHAP outputs per task
-│   └── requirements.txt
+│   ├── pyproject.toml                # dependency source of truth (uv)
+│   └── requirements.lock.txt         # generated, hash-locked resolution (uv pip compile)
 └── frontend/
     ├── README.md                     # frontend-specific docs — read this before touching the UI
     └── src/
@@ -183,7 +184,8 @@ Feature taxonomy (must match the ChiedzaAI proposal's structure — see `backend
 ```bash
 cd backend
 python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
+pip install uv
+uv pip sync requirements.lock.txt --system
 uvicorn api.main:app --reload --port 8000
 ```
 Check it's alive: `curl http://localhost:8000/health` should return all three tasks loaded.

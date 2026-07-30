@@ -34,8 +34,10 @@ jobs:
         with:
           python-version: "3.12"
 
+      - uses: astral-sh/setup-uv@v3
+
       - name: Install backend dependencies
-        run: pip install -r requirements.txt
+        run: uv pip sync requirements.lock.txt --system
 
       - name: Run retrain-and-promote
         id: retrain

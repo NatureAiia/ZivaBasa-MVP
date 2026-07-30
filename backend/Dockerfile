@@ -12,11 +12,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 \
 
 WORKDIR /app
 
+# uv (astral-sh) — a real dependency resolver + lockfile, replacing a hand-sequenced pip
+# install. requirements.lock.txt is generated (`uv pip compile pyproject.toml -o
+# requirements.lock.txt`), not hand-written — see pyproject.toml for the source dependency
+# list and rationale comments. The `forecasting` extra (torch/chronos-forecasting/transformers)
+# is deliberately NOT installed here — nothing in api/main.py depends on it, and it's a large,
+# slow download this served image doesn't need.
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+
 # Dependencies copied and installed before the rest of the source so `docker build` only
-# reinstalls the (slow: tensorflow, mlflow, shap) dependency layer when requirements.txt
-# actually changes, not on every code edit.
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# reinstalls the (slow: tensorflow, mlflow, shap) dependency layer when the lock file actually
+# changes, not on every code edit.
+COPY pyproject.toml requirements.lock.txt .
+RUN uv pip sync requirements.lock.txt --system
 
 # api/main.py's own docstring documents `uvicorn api.main:app`, run with this directory as
 # cwd — api/ and src/ are plain top-level packages here, not backend.api/backend.src, so the
