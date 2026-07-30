@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, TASKS } from "../lib/api";
+import { markOnboardingStep } from "../lib/onboardingStore";
 
 const EMPTY_RESULTS = () =>
   Object.fromEntries(TASKS.map((t) => [t, { features: null, predict: null, explain: null }]));
@@ -73,6 +74,7 @@ export function usePredictionFlow() {
         ...r,
         [task]: { features: byName, predict: result, explain: null },
       }));
+      markOnboardingStep("ran_first_prediction");
       return result;
     } catch (e) {
       setError(e.message);

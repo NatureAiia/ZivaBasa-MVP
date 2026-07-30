@@ -45,7 +45,7 @@ def test_explain_valid_input(client, task):
     assert body["task"] == task
     assert 0 < len(body["top_contributions"]) <= min(5, len(features))
     for c in body["top_contributions"]:
-        assert set(c) == {"feature", "value", "shap_value"}
+        assert set(c) == {"feature", "value", "shap_value", "category"}
     # Sorted by |shap_value| descending, per main.py's explain() handler.
     magnitudes = [abs(c["shap_value"]) for c in body["top_contributions"]]
     assert magnitudes == sorted(magnitudes, reverse=True)

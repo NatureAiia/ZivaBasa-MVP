@@ -33,10 +33,10 @@ async function mountGlobe(container, options = {}) {
   ]);
 
   const cfg = {
-    dotColor: "#E7A23A",
+    dotColor: "#E8834D",
     dotSize: 1.6,
     density: 6,
-    outlineColor: "#E7A23A",
+    outlineColor: "#E8834D",
     markerColor: "#F3EEE3",
     markers: [{ lat: -17.83, lng: 31.05 }],
     speed: 1,

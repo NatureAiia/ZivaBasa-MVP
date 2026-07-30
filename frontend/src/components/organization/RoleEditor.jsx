@@ -5,6 +5,7 @@ import { ALL_SKILLS, SKILL_LABELS } from "../../lib/skillMatchClient";
 const EMPTY = {
   title: "", department: "", parentId: "", currentSkills: [], targetRole: "",
   targetSkills: [], seniorityYears: "", headcount: 1,
+  avgSalaryUsd: "", performanceRating: "", recentTrainingHours: "", recentOtHours: "",
 };
 
 function SkillPicker({ label, selected, onChange }) {
@@ -41,10 +42,23 @@ export default function RoleEditor({ node, otherNodes, onSave, onCancel }) {
 
   const set = (field, value) => setForm((f) => ({ ...f, [field]: value }));
 
+  // Optional business fields (see orgStore.js) — an empty input means "not entered", not zero,
+  // since Chiedza's scan_org_risk tool treats a missing value as "skip this role", not "0".
+  const numOrNull = (v) => (v === "" || v === null || v === undefined ? null : Number(v));
+
   const submit = (e) => {
     e.preventDefault();
     if (!form.title.trim()) return;
-    onSave({ ...form, parentId: form.parentId || null, seniorityYears: Number(form.seniorityYears) || 0, headcount: Number(form.headcount) || 1 });
+    onSave({
+      ...form,
+      parentId: form.parentId || null,
+      seniorityYears: Number(form.seniorityYears) || 0,
+      headcount: Number(form.headcount) || 1,
+      avgSalaryUsd: numOrNull(form.avgSalaryUsd),
+      performanceRating: numOrNull(form.performanceRating),
+      recentTrainingHours: numOrNull(form.recentTrainingHours),
+      recentOtHours: numOrNull(form.recentOtHours),
+    });
   };
 
   return (
@@ -76,12 +90,12 @@ export default function RoleEditor({ node, otherNodes, onSave, onCancel }) {
         <label className="flex flex-col gap-1">
           <span className="text-[11px] text-ink-faint">Headcount in this role</span>
           <input type="number" min="1" value={form.headcount} onChange={(e) => set("headcount", e.target.value)}
-            className="bg-surface border border-border rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-gold/50" />
+            className="bg-surface border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono outline-none focus:border-gold/50" />
         </label>
         <label className="flex flex-col gap-1">
           <span className="text-[11px] text-ink-faint">Avg. seniority (years)</span>
           <input type="number" min="0" step="0.5" value={form.seniorityYears} onChange={(e) => set("seniorityYears", e.target.value)}
-            className="bg-surface border border-border rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-gold/50" />
+            className="bg-surface border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono outline-none focus:border-gold/50" />
         </label>
         <label className="flex flex-col gap-1">
           <span className="text-[11px] text-ink-faint">Future role target (optional)</span>
@@ -92,7 +106,36 @@ export default function RoleEditor({ node, otherNodes, onSave, onCancel }) {
 
       <SkillPicker label="Current skills" selected={form.currentSkills} onChange={(v) => set("currentSkills", v)} />
       {form.targetRole && (
-        <SkillPicker label={`Skills needed for "${form.targetRole}"`} selected={form.targetSkills} onChange={(v) => set("targetSkills", v)} />
+        <>
+          <SkillPicker label={`Skills needed for "${form.targetRole}"`} selected={form.targetSkills} onChange={(v) => set("targetSkills", v)} />
+          <div>
+            <span className="text-[11px] text-ink-faint block mb-1.5">
+              Optional — enables Chiedza's org-wide redeployment-fit scan for this role (leave blank to skip it)
+            </span>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] text-ink-faint">Avg. salary (USD)</span>
+                <input type="number" min="0" value={form.avgSalaryUsd} onChange={(e) => set("avgSalaryUsd", e.target.value)}
+                  className="bg-surface border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono outline-none focus:border-gold/50" />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] text-ink-faint">Performance rating (1-5)</span>
+                <input type="number" min="1" max="5" step="0.5" value={form.performanceRating} onChange={(e) => set("performanceRating", e.target.value)}
+                  className="bg-surface border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono outline-none focus:border-gold/50" />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] text-ink-faint">Recent training hours</span>
+                <input type="number" min="0" value={form.recentTrainingHours} onChange={(e) => set("recentTrainingHours", e.target.value)}
+                  className="bg-surface border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono outline-none focus:border-gold/50" />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[11px] text-ink-faint">Recent overtime hours</span>
+                <input type="number" min="0" value={form.recentOtHours} onChange={(e) => set("recentOtHours", e.target.value)}
+                  className="bg-surface border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono outline-none focus:border-gold/50" />
+              </label>
+            </div>
+          </div>
+        </>
       )}
 
       <div className="flex gap-2 justify-end pt-1">

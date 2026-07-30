@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -19,12 +19,20 @@
   --ink-muted: 168 175 194; /* #A8AFC2 — nudged up from #9BA3B7 for clearer contrast */
   --ink-faint: 100 108 128; /* #646C80 */
 
+  /* Semantic core — the only three colors allowed in UI chrome (buttons, focus rings, status,
+     badges of meaning). Each maps to one fixed meaning app-wide and is never reassigned per
+     chart: gold = signal/primary action, teal = verified/positive, red = flagged/risk. */
   --gold: 232 163 61;       /* #E8A33D — "knowing / illumination" accent, signature ring color */
   --teal: 47 191 159;       /* #2FBF9F — positive / safe, carried over from v1 */
   --red: 229 72 77;         /* #E5484D — risk / negative */
-  --indigo: 108 124 255;    /* #6C7CFF — primary interactive / brand */
-  --violet: 168 129 255;    /* #A881FF — chart accent 5 */
-  --cyan: 45 197 219;       /* #2DC5DB — chart accent 6 */
+
+  /* Categorical set — reserved for multi-series charts/legends that need >3 distinguishable
+     hues (e.g. CostMonitoring's 6-category breakdown). Never used for brand chrome, CTAs, or
+     status — that's what the semantic core above is for. Keeping this separate from the
+     semantic core is what stops the app from reading as a generic 6-accent dashboard theme. */
+  --indigo: 108 124 255;    /* #6C7CFF — categorical 1 */
+  --violet: 168 129 255;    /* #A881FF — categorical 2 */
+  --cyan: 45 197 219;       /* #2DC5DB — categorical 3 */
 }
 
 [data-theme="light"] {

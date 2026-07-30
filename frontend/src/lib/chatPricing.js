@@ -37,6 +37,9 @@ export function estimateCostUsd(provider, inputTokens = 0, outputTokens = 0) {
 // https://ai.google.dev/pricing.
 export const IMAGE_COST_USD = {
   gemini: { perImage: 0.039, note: "gemini-2.5-flash-image list price, ~1024x1024 — verify at ai.google.dev/pricing." },
+  // Azure OpenAI (gpt-image-1) generation/edit list price, ~1024x1024, medium quality — verify
+  // against your own Azure resource's pricing tier at azure.microsoft.com/pricing/details/openai.
+  azure: { perImage: 0.042, note: "Azure OpenAI gpt-image-1 list price, ~1024x1024 — verify at azure.microsoft.com." },
 };
 
 export function estimateImageCostUsd(provider, count = 1) {
