@@ -21,6 +21,7 @@ export default function Shell() {
 
   return (
     <div className="flex flex-col md:flex-row h-screen bg-bg text-ink theme-transition relative">
+      <a href="#main-content" className="skip-link">Skip to content</a>
       <CommandPalette />
 
       {/* Click Effects — fires on empty space only (buttons/links/inputs are excluded inside
@@ -59,7 +60,7 @@ export default function Shell() {
 
       <Sidebar mobileOpen={mobileOpen} onCloseMobile={() => setMobileOpen(false)} />
 
-      <main className="flex-1 overflow-hidden flex flex-col relative">
+      <main id="main-content" tabIndex={-1} className="flex-1 overflow-hidden flex flex-col relative outline-none">
         {/* Background animation lives ONLY here (the main content area), not behind the
             sidebar — sidebar stays a solid, undistracted surface. */}
         <div className="absolute inset-0 z-0 pointer-events-none opacity-[0.35]">

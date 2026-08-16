@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { LogIn, UserPlus, ArrowLeft } from "lucide-react";
+import { LogIn, UserPlus, ArrowLeft, Eye, EyeOff, CheckCircle2 } from "lucide-react";
 import { useAuth } from "../lib/authStore";
 import Card from "../components/common/Card";
 import Button from "../components/common/Button";
@@ -18,6 +18,35 @@ import { spring } from "../lib/motion";
 // so the two panels drifted out of sync mid-transition — one snapped instantly, the other
 // lagged and overflowed the card. Plain `x` animation on persisting elements has no such
 // measurement step, so it can't desync.)
+function PasswordField({ value, onChange, autoComplete }) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[11px] text-ink-faint">Password</span>
+      <div className="relative">
+        <input
+          type={visible ? "text" : "password"}
+          required
+          minLength={6}
+          value={value}
+          onChange={onChange}
+          className="w-full bg-surface2 border border-border rounded-lg pl-3 pr-9 py-2 text-sm outline-none focus:border-gold/50"
+          autoComplete={autoComplete}
+        />
+        <button
+          type="button"
+          onClick={() => setVisible((v) => !v)}
+          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink"
+          aria-label={visible ? "Hide password" : "Show password"}
+          tabIndex={-1}
+        >
+          {visible ? <EyeOff size={15} /> : <Eye size={15} />}
+        </button>
+      </div>
+    </label>
+  );
+}
+
 function FormPanel({
   mode, email, setEmail, password, setPassword,
   fullName, setFullName, organization, setOrganization, jobTitle, setJobTitle,
@@ -98,21 +127,18 @@ function FormPanel({
             autoComplete="email"
           />
         </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-[11px] text-ink-faint">Password</span>
-          <input
-            type="password"
-            required
-            minLength={6}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="bg-surface2 border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-gold/50"
-            autoComplete={mode === "signIn" ? "current-password" : "new-password"}
-          />
-        </label>
+        <PasswordField
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          autoComplete={mode === "signIn" ? "current-password" : "new-password"}
+        />
 
         {error && <p className="text-xs text-red">{error}</p>}
-        {info && <p className="text-xs text-teal">{info}</p>}
+        {info && (
+          <p className="flex items-start gap-1.5 text-xs text-teal bg-teal/10 border border-teal/25 rounded-lg px-3 py-2">
+            <CheckCircle2 size={14} className="shrink-0 mt-0.5" /> {info}
+          </p>
+        )}
 
         <Button type="submit" disabled={busy} className="w-full mt-1">
           {mode === "signIn" ? <LogIn size={15} /> : <UserPlus size={15} />}
@@ -311,21 +337,18 @@ export default function LoginPage() {
                 autoComplete="email"
               />
             </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-[11px] text-ink-faint">Password</span>
-              <input
-                type="password"
-                required
-                minLength={6}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="bg-surface2 border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-gold/50"
-                autoComplete={mode === "signIn" ? "current-password" : "new-password"}
-              />
-            </label>
+            <PasswordField
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete={mode === "signIn" ? "current-password" : "new-password"}
+            />
 
             {error && <p className="text-xs text-red">{error}</p>}
-            {info && <p className="text-xs text-teal">{info}</p>}
+            {info && (
+              <p className="flex items-start gap-1.5 text-xs text-teal bg-teal/10 border border-teal/25 rounded-lg px-3 py-2">
+                <CheckCircle2 size={14} className="shrink-0 mt-0.5" /> {info}
+              </p>
+            )}
 
             <Button type="submit" disabled={busy} className="w-full mt-1">
               {mode === "signIn" ? <LogIn size={15} /> : <UserPlus size={15} />}
