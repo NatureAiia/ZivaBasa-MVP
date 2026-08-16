@@ -1,0 +1,44 @@
+{
+  "task": "skill_match",
+  "explainer_used": "KernelExplainer",
+  "instance_features": {
+    "seniority_years": -0.4326021373271942,
+    "recent_training_hours": -1.1863279342651367,
+    "performance_rating": 0.10984084755182266,
+    "avg_salary_usd": -0.33713391423225403,
+    "recent_ot_hours": 0.024271178990602493,
+    "skill_overlap_count": 1.7223143577575684,
+    "missing_skill_count": -1.4548978805541992,
+    "overlap_x_training": 0.832772433757782
+  },
+  "raw_shap": {
+    "seniority_years": 0.0158312450224475,
+    "recent_training_hours": 0.09235551146942658,
+    "performance_rating": -0.02386884771559049,
+    "avg_salary_usd": 0.017530411419919664,
+    "recent_ot_hours": -0.009256729931628219,
+    "skill_overlap_count": 0.4413110712731766,
+    "missing_skill_count": 0.20604751399610666,
+    "overlap_x_training": 0.08744860026886325
+  },
+  "causal_reweighted_shap": {
+    "seniority_years": 0.0047493735067342495,
+    "recent_training_hours": 0.027706653440827973,
+    "performance_rating": -0.007160654314677147,
+    "avg_salary_usd": 0.005259123425975899,
+    "recent_ot_hours": -0.0027770189794884656,
+    "skill_overlap_count": 0.13239332138195298,
+    "missing_skill_count": 0.06181425419883199,
+    "overlap_x_training": 0.026234580080658976
+  },
+  "intervention_example": {
+    "intervened_feature": "recent_training_hours",
+    "intervened_from": -1.1863279342651367,
+    "intervened_to": 18.813672065734863,
+    "predicted_target_before": 1.0,
+    "predicted_target_after": null,
+    "note": "Linear-SCM approximation of do-calculus (see causal_xai.py docstring for why this stands in for DoWhy-GCM) \u2014 propagates the intervention through the discovered DAG's downstream nodes only."
+  },
+  "verbalization_template_based": "- skill_overlap_count (value=1.722) increased the prediction; raw SHAP=0.4413, causally-reweighted SHAP=0.1324. this feature is not a direct causal parent of the target in the discovered DAG, so its raw SHAP weight was reduced from 0.4413 to 0.1324 \u2014 it may still matter, but more of its apparent effect could be correlation with an upstream cause rather than a direct effect of its own.\n- missing_skill_count (value=-1.455) increased the prediction; raw SHAP=0.2060, causally-reweighted SHAP=0.0618. this feature is not a direct causal parent of the target in the discovered DAG, so its raw SHAP weight was reduced from 0.2060 to 0.0618 \u2014 it may still matter, but more of its apparent effect could be correlation with an upstream cause rather than a direct effect of its own.\n- recent_training_hours (value=-1.186) increased the prediction; raw SHAP=0.0924, causally-reweighted SHAP=0.0277. this feature is not a direct causal parent of the target in the discovered DAG, so its raw SHAP weight was reduced from 0.0924 to 0.0277 \u2014 it may still matter, but more of its apparent effect could be correlation with an upstream cause rather than a direct effect of its own.\n- overlap_x_training (value=0.833) increased the prediction; raw SHAP=0.0874, causally-reweighted SHAP=0.0262. this feature is not a direct causal parent of the target in the discovered DAG, so its raw SHAP weight was reduced from 0.0874 to 0.0262 \u2014 it may still matter, but more of its apparent effect could be correlation with an upstream cause rather than a direct effect of its own.\n- performance_rating (value=0.110) decreased the prediction; raw SHAP=-0.0239, causally-reweighted SHAP=-0.0072. this feature is not a direct causal parent of the target in the discovered DAG, so its raw SHAP weight was reduced from -0.0239 to -0.0072 \u2014 it may still matter, but more of its apparent effect could be correlation with an upstream cause rather than a direct effect of its own.",
+  "data_caveat": "Kaggle-proxy/synthetic data (bank_skill_matching.csv fixture), not real bank data. DAG and sanity check are self-authored, not domain-expert-validated."
+}

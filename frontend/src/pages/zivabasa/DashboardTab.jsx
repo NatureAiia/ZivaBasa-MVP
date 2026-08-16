@@ -9,6 +9,9 @@ import CorporateKPIGrid from "../../components/dashboard/CorporateKPIGrid";
 import DepartmentBreakdown from "../../components/dashboard/DepartmentBreakdown";
 import ChatUsageSummary from "../../components/dashboard/ChatUsageSummary";
 import FutureSkillsTable from "../../components/dashboard/FutureSkillsTable";
+import AIReadinessCard from "../../components/dashboard/AIReadinessCard";
+import DepartmentEngagement from "../../components/dashboard/DepartmentEngagement";
+import OnboardingChecklist from "../../components/onboarding/OnboardingChecklist";
 import Typewriter from "../../components/effects/Typewriter";
 import ShinyPill from "../../components/effects/ShinyPill";
 import { staggerContainer, fadeUpItem } from "../../lib/motion";
@@ -48,7 +51,7 @@ export default function DashboardTab() {
               <ShinyPill
                 text="Know your work — workforce transformation intelligence."
                 textColor="rgb(var(--ink-muted))"
-                shineColor="#E8A33D"
+                shineColor="#E8834D"
                 shineColor2="#2FBF9F"
                 speed={2.8}
                 font={{ fontFamily: "Inter", fontSize: "14px", fontWeight: 500, lineHeight: "1.4em" }}
@@ -68,6 +71,10 @@ export default function DashboardTab() {
         </motion.div>
 
         <motion.div variants={fadeUpItem}>
+          <OnboardingChecklist />
+        </motion.div>
+
+        <motion.div variants={fadeUpItem}>
           <Card className="flex items-center gap-4" animated={false}>
             <ClarityRing mode={health ? "confidence" : "loading"} value={health ? 1 : 0} size={44} color={error ? "red" : "teal"} />
             <div className="flex-1">
@@ -76,13 +83,17 @@ export default function DashboardTab() {
                 {error ? (
                   <Badge tone="red">Unreachable</Badge>
                 ) : health ? (
-                  <Badge tone="teal">{health.tasks_loaded.length} task(s) loaded</Badge>
+                  <Badge tone="teal">{health.tasks_loaded.length} model(s) available</Badge>
                 ) : (
                   <Badge tone="neutral">Checking…</Badge>
                 )}
               </div>
               <p className="text-xs text-ink-muted mt-0.5">
-                {error ? error : health ? `Loaded: ${health.tasks_loaded.join(", ")}` : "Contacting the ZivaBasa API…"}
+                {error
+                  ? error
+                  : health
+                  ? `Ready to score uploads for: ${health.tasks_loaded.join(", ")} — upload a batch below to populate results.`
+                  : "Contacting the ZivaBasa API…"}
               </p>
             </div>
             <Activity size={16} className="text-ink-faint" />
@@ -95,11 +106,19 @@ export default function DashboardTab() {
         </motion.div>
 
         <motion.div variants={fadeUpItem}>
+          <AIReadinessCard />
+        </motion.div>
+
+        <motion.div variants={fadeUpItem}>
           <FutureSkillsTable />
         </motion.div>
 
         <motion.div variants={fadeUpItem}>
           <DepartmentBreakdown />
+        </motion.div>
+
+        <motion.div variants={fadeUpItem}>
+          <DepartmentEngagement />
         </motion.div>
 
         <motion.div variants={fadeUpItem}>

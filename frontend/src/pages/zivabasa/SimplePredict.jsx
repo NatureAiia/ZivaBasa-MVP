@@ -18,7 +18,7 @@ export default function SimplePredict() {
             <ShinyPill
               text="Upload your data"
               textColor="rgb(var(--ink))"
-              shineColor="#E8A33D"
+              shineColor="#E8834D"
               shineColor2="#2FBF9F"
               speed={2.2}
               font={{ fontFamily: "Space Grotesk", fontSize: "18px", fontWeight: 600 }}

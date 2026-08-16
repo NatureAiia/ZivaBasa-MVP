@@ -81,9 +81,13 @@ population — this is a known limitation, documented, not hidden.
 | Employment / Automation Risk | AI Automation Risk by Job Role | `khushikyad001/ai-automation-risk-by-job-role` | Job-role-level automation exposure |
 | Skills / Readiness | IBM HR Analytics Employee Attrition & Performance | `pavansubhasht/ibm-hr-analytics-attrition-dataset` | Training hours, tenure, satisfaction, role, promotion history |
 | Productivity / AI Adoption | Future of Work in the Age of AI (2020–2026) | `algozee/future-of-work-in-the-age-of-ai-20202026` | AI adoption level, salary trend, skill gap by industry |
+| Skill Match / Redeployment | Synthetic banking roster fixture | generated, see `backend/scripts/generate_skill_match_fixture.py` | Staff skill-tag sets vs. target-role requirements, cosine-matched |
+| Human Capital / Turnover | HRDataset_v14-style employee roster | landed at `backend/data/raw/human_capital.csv` (source: `davidepolizzi/hr-data-set-based-on-human-resources-data-set`) | **Real HR data, not a proxy** — department, tenure, pay, performance, turnover, 3,310 employees. See `backend/data/schema/human_capital_dictionary.md` for the full column mapping and confirmed-missing fields (no training-hours or revenue-per-employee columns exist in this file) |
 
 Raw files live in `backend/data/raw/`. Do not edit raw files in place — all cleaning happens in the
-feature engineering notebook and writes to `backend/data/processed/`.
+feature engineering notebook (or, for `skill_match`/`human_capital`, the dedicated
+`scripts/generate_skill_match_fixture.py` / `scripts/load_human_capital.py`) and writes to
+`backend/data/processed/`.
 
 ---
 
@@ -110,7 +114,8 @@ ZivaBasa-MVP/
 │   ├── notebooks/                   # 01 EDA → 02 features → 03 baselines → 04 multitask NN → 05 SHAP → 06 sanity check
 │   ├── data/{raw,processed}/         # Kaggle proxy datasets + engineered outputs
 │   ├── models/                      # saved Keras models, scalers, SHAP outputs per task
-│   └── requirements.txt
+│   ├── pyproject.toml                # dependency source of truth (uv)
+│   └── requirements.lock.txt         # generated, hash-locked resolution (uv pip compile)
 └── frontend/
     ├── README.md                     # frontend-specific docs — read this before touching the UI
     └── src/
@@ -179,7 +184,8 @@ Feature taxonomy (must match the ChiedzaAI proposal's structure — see `backend
 ```bash
 cd backend
 python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
+pip install uv
+uv pip sync requirements.lock.txt --system
 uvicorn api.main:app --reload --port 8000
 ```
 Check it's alive: `curl http://localhost:8000/health` should return all three tasks loaded.
@@ -233,10 +239,17 @@ internal redeployment recommendations (who can be reskilled/redeployed instead o
 
 ## 10. Known Limitations (Report These, Don't Bury Them)
 
-1. **Cross-dataset alignment** — the three datasets are not from the same population; task heads
-   are trained on different samples joined only at the feature-schema level.
-2. **No Zimbabwe/banking specificity** — proxy data is US/general-industry; results won't transfer
-   directly to the target domain.
+1. **Cross-dataset alignment** — the five datasets are not from the same population; task heads
+   are trained on different samples joined only at the feature-schema level. `human_capital` is
+   internally row-aligned (its own rows are genuinely one-employee-one-row, joined on `EmpID`),
+   but there's no shared key across it and the other four datasets (e.g. `skill_match`'s
+   `staff_id` is a separate synthetic population) — so this limitation is not yet closed, only
+   partially improved for one dataset. See `backend/data/schema/human_capital_dictionary.md`
+   "Join strategy".
+2. **No Zimbabwe/banking specificity** — employment/skills/productivity/skill_match proxy data is
+   US/general-industry or synthetic-banking; results won't transfer directly to the target domain.
+   `human_capital` is real US HR data (not a proxy standing in for something else), but still not
+   Zimbabwe/banking-specific.
 3. **No federated learning yet** — this phase runs on a single merged/aligned dataset locally;
    the proposal's privacy-preserving multi-bank federated setup is out of scope until real bank
    partners are onboarded.

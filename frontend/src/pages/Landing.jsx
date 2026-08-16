@@ -194,6 +194,22 @@ const LANDING_CSS = `
 
 /* ---------- HERO ---------- */
 .landing-page .hero{ position: relative; padding: 56px 0 64px; overflow: hidden; }
+/* Looping background video, composited under the existing gold glow + a left-to-right scrim
+   so hero text stays legible over motion (same trick as the VR-headset reference image:
+   dramatic backlit subject on the right, readable type on the left). No asset ships in this
+   repo — drop a file at public/media/hero-loop.mp4 (+ .webm/poster) to activate it; until
+   then the <video> simply fails to load and this layer is invisible, hero-glow still shows. */
+.landing-page .hero-video{ position: absolute; inset: 0; z-index: 0; overflow: hidden; }
+.landing-page .hero-video video{ width: 100%; height: 100%; object-fit: cover; opacity: 0.32; }
+.landing-page .hero-video::after{
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, var(--land-bg) 0%, color-mix(in srgb, var(--land-bg) 60%, transparent) 42%, transparent 78%);
+}
+/* Respect reduced-motion: the video element is simply not rendered (see JSX), this just
+   covers the (rare) case where markup renders before the JS media-query check settles. */
+@media (prefers-reduced-motion: reduce){ .landing-page .hero-video{ display: none; } }
 .landing-page .hero-glow{
   position: absolute;
   top: -18%;
@@ -230,6 +246,35 @@ const LANDING_CSS = `
 }
 .landing-page .hero-stat .num{ font-family: var(--land-font-display); font-size: 1.5rem; color: var(--land-gold); }
 .landing-page .hero-stat .label{ font-size: 0.8rem; color: var(--land-ink-muted); margin-top: 2px; }
+
+/* ---------- CHIEDZA TEASER ---------- */
+.landing-page .chiedza-teaser{
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: flex-start;
+  background: var(--land-surface);
+  border: 1px solid var(--land-hairline-strong);
+  border-radius: 8px;
+  padding: 22px 24px;
+  margin-top: 28px;
+  max-width: 480px;
+  position: relative;
+  overflow: hidden;
+}
+.landing-page .chiedza-teaser::before{
+  content: "";
+  position: absolute;
+  top: -60px; right: -60px;
+  width: 160px; height: 160px;
+  background: radial-gradient(circle, var(--land-gold-wash) 0%, transparent 70%);
+  pointer-events: none;
+}
+.landing-page .chiedza-teaser-head{ display: flex; align-items: center; gap: 10px; position: relative; z-index: 1; }
+.landing-page .chiedza-teaser-head svg{ width: 26px; height: 26px; flex-shrink: 0; }
+.landing-page .chiedza-teaser-head strong{ font-family: var(--land-font-display); font-size: 1.05rem; font-weight: 500; }
+.landing-page .chiedza-teaser p{ color: var(--land-ink-muted); font-size: 0.9rem; position: relative; z-index: 1; }
+.landing-page .chiedza-teaser .btn{ position: relative; z-index: 1; }
 
 .landing-page main{ display: block; padding-top: var(--land-header-h); }
 
@@ -279,6 +324,33 @@ const LANDING_CSS = `
 .landing-page .contrib-card .tag{ position: relative; z-index: 1; font-family: var(--land-font-mono); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--land-gold); }
 .landing-page .contrib-card h3{ font-family: var(--land-font-display); font-weight: 500; font-size: 1.1rem; margin: 10px 0 8px; }
 .landing-page .contrib-card p{ color: var(--land-ink-muted); font-size: 0.9rem; }
+
+/* ---------- AI AGENTS ---------- */
+.landing-page .agent-grid{ display: grid; grid-template-columns: 1fr; gap: 14px; }
+.landing-page .agent-card{
+  background: var(--land-surface);
+  border: 1px solid var(--land-hairline-strong);
+  border-radius: 6px;
+  padding: 24px 20px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color .25s ease, transform .25s ease, box-shadow .25s ease;
+}
+.landing-page .agent-card::before{
+  content: "";
+  position: absolute;
+  top: -50px; right: -50px;
+  width: 150px; height: 150px;
+  background: radial-gradient(circle, var(--land-gold-wash) 0%, transparent 70%);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .25s ease;
+}
+.landing-page .agent-card:hover{ border-color: var(--land-gold-dim); transform: translateY(-3px); box-shadow: 0 16px 40px -20px rgba(231,162,58,0.35); }
+.landing-page .agent-card:hover::before{ opacity: 1; }
+.landing-page .agent-card .tag{ position: relative; z-index: 1; font-family: var(--land-font-mono); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--land-gold); }
+.landing-page .agent-card h3{ position: relative; z-index: 1; font-family: var(--land-font-display); font-weight: 500; font-size: 1.1rem; margin: 10px 0 8px; }
+.landing-page .agent-card p{ position: relative; z-index: 1; color: var(--land-ink-muted); font-size: 0.88rem; }
 
 /* ---------- ECOSYSTEM ---------- */
 .landing-page .eco-grid{ display: grid; grid-template-columns: 1fr; gap: 14px; }
@@ -446,11 +518,12 @@ const LANDING_CSS = `
 /* ---------- BREAKPOINTS ---------- */
 @media (min-width: 640px){
   .landing-page .problem-grid{ grid-template-columns: repeat(3, 1fr); }
-  .landing-page .hero-stats{ grid-template-columns: repeat(3, 1fr); }
+  .landing-page .hero-stats{ grid-template-columns: repeat(2, 1fr); }
   .landing-page .footer-cols{ grid-template-columns: repeat(3, 1fr); }
   .landing-page .principle-list{ grid-template-columns: repeat(2, 1fr); }
   .landing-page .contrib-grid{ grid-template-columns: repeat(2, 1fr); }
   .landing-page .eco-grid{ grid-template-columns: repeat(2, 1fr); }
+  .landing-page .agent-grid{ grid-template-columns: repeat(2, 1fr); }
 }
 @media (min-width: 860px){
   .landing-page .nav-links{ display: flex; }
@@ -467,6 +540,8 @@ const LANDING_CSS = `
   .landing-page .steps{ max-width: 760px; }
   .landing-page .contrib-grid{ grid-template-columns: repeat(3, 1fr); }
   .landing-page .eco-grid{ grid-template-columns: repeat(4, 1fr); }
+  .landing-page .hero-stats{ grid-template-columns: repeat(4, 1fr); }
+  .landing-page .agent-grid{ grid-template-columns: repeat(4, 1fr); }
 }
 `;
 
@@ -502,6 +577,33 @@ const MODULES = [
   },
 ];
 
+// The four joint prediction heads ZivaBasa's multi-task model actually serves (see
+// backend/api/chat.py's SYSTEM_PROMPT for the same four tasks/feature lists) — surfaced here
+// as a Nathan-Digital-style glowing agent grid rather than left implicit in the "how it works"
+// steps above.
+const AGENTS = [
+  {
+    tag: "Employment",
+    name: "Automation-risk agent",
+    desc: "Classifies how exposed a role is to automation from salary, task repetition, AI-tool maturity and skill complexity.",
+  },
+  {
+    tag: "Productivity",
+    name: "Productivity-impact agent",
+    desc: "Scores expected productivity shift from a role's skill-gap index, standardized against the model's training distribution.",
+  },
+  {
+    tag: "Skills",
+    name: "Attrition-risk agent",
+    desc: "Flags attrition risk from tenure, training cadence, satisfaction and performance signals.",
+  },
+  {
+    tag: "Skill-Match",
+    name: "Redeployment-fit agent",
+    desc: "Matches people to open roles by skill overlap, training recency and seniority, for reskilling instead of layoffs.",
+  },
+];
+
 function BrandMark({ className }) {
   // A horizon crescent, not a sparkle: a filled disc with an offset disc cut out of it,
   // reading as a rising sun / first light — tied to "Chiedza" (Shona for light) rather than
@@ -526,6 +628,12 @@ const NAV_LINKS = [
 
 export default function Landing() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Mirrors the CSS `@media (prefers-reduced-motion: reduce)` rule on .hero-video — checked
+  // in JS too so the <video> element (and its network fetch) is never mounted at all for
+  // someone who has asked for reduced motion, not just hidden after the fact.
+  const [prefersReducedMotion] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
 
   useEffect(() => {
     document.title = "ChiedzaAI — Clarity for AI-driven transformation";
@@ -583,6 +691,14 @@ export default function Landing() {
       <main id="top">
         {/* HERO */}
         <section className="hero">
+          {!prefersReducedMotion && (
+            <div className="hero-video" aria-hidden="true">
+              <video autoPlay muted loop playsInline poster="/media/hero-loop-poster.jpg">
+                <source src="/media/hero-loop.webm" type="video/webm" />
+                <source src="/media/hero-loop.mp4" type="video/mp4" />
+              </video>
+            </div>
+          )}
           <div className="hero-glow" aria-hidden="true"></div>
 
           <div className="wrap hero-inner">
@@ -612,6 +728,23 @@ export default function Landing() {
                 <div className="num">ZW</div>
                 <div className="label">First evidence base for Zimbabwe&rsquo;s banking workforce</div>
               </div>
+              <div className="hero-stat">
+                <div className="num">Chiedza</div>
+                <div className="label">A named AI assistant, grounded in your own workforce data</div>
+              </div>
+            </div>
+
+            <div className="chiedza-teaser">
+              <div className="chiedza-teaser-head">
+                <BrandMark />
+                <strong>Ask Chiedza</strong>
+              </div>
+              <p>
+                Chiedza is ZivaBasa&rsquo;s built-in AI assistant — it reads your own org chart,
+                prediction history and batch results, not just generic answers, to explain what
+                a forecast means for your team.
+              </p>
+              <Link to="/login?mode=signup" className="btn btn-ghost">Meet Chiedza</Link>
             </div>
           </div>
         </section>
@@ -685,6 +818,26 @@ export default function Landing() {
                   <p>Decision-support outputs for reskilling, staffing, productivity planning, regulation and responsible AI adoption.</p>
                 </div>
               </div>
+            </div>
+          </div>
+        </section>
+
+        {/* AI AGENTS */}
+        <section id="ai-agents">
+          <div className="wrap">
+            <div className="section-head">
+              <span className="eyebrow">The model, as agents</span>
+              <h2>One shared-trunk network. Four specialized agents.</h2>
+            </div>
+
+            <div className="agent-grid">
+              {AGENTS.map((a) => (
+                <div key={a.tag} className="agent-card">
+                  <span className="tag">{a.tag}</span>
+                  <h3>{a.name}</h3>
+                  <p>{a.desc}</p>
+                </div>
+              ))}
             </div>
           </div>
         </section>

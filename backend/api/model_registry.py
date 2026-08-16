@@ -58,6 +58,26 @@ class TaskArtifacts:
         scale_ = self.scaler.scale_[self.scaler_index]
         return ((raw_matrix - mean_) / scale_).astype("float32")
 
+    def transform_named(self, name: str, raw_value: float) -> float:
+        """Scales a single named feature's raw value, same convention as transform() but for
+        one feature in isolation — used by the causal-intervention endpoint (api/main.py) to
+        convert a human-entered intervene_value into the units causal_xai's linear SCM operates
+        in, without needing a full feature vector."""
+        idx = self.feature_names.index(name)
+        mean_ = self.scaler.mean_[self.scaler_index[idx]]
+        scale_ = self.scaler.scale_[self.scaler_index[idx]]
+        return float((raw_value - mean_) / scale_)
+
+    def inverse_transform_named(self, name: str, scaled_value: float) -> float:
+        """Inverse of transform() for a single named feature — used by the causal-intervention
+        endpoint (api/main.py) to report a downstream feature's post-intervention value (computed
+        by causal_xai's linear SCM in scaled units) back in the same raw units the caller's own
+        request.features were given in."""
+        idx = self.feature_names.index(name)
+        mean_ = self.scaler.mean_[self.scaler_index[idx]]
+        scale_ = self.scaler.scale_[self.scaler_index[idx]]
+        return float(scaled_value * scale_ + mean_)
+
 
 class ModelRegistry:
     """Holds loaded artifacts for every task head. Populated once via `load_all()`."""

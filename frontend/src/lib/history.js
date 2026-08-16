@@ -21,12 +21,14 @@ export async function getHistory() {
 
 export async function logHistoryEntry(results) {
   // Avoid duplicate back-to-back entries if the effect fires twice for the same completed
-  // state (matches the old localStorage guard).
+  // state (matches the old localStorage guard). Returns the row id either way, so callers
+  // (e.g. the feedback control) always have something to attach to.
   const existing = await getHistory();
   const last = existing[0];
-  if (last && JSON.stringify(last.results) === JSON.stringify(results)) return;
-  const { error } = await supabase.from("predict_history").insert({ results });
+  if (last && JSON.stringify(last.results) === JSON.stringify(results)) return last.id;
+  const { data, error } = await supabase.from("predict_history").insert({ results }).select("id").single();
   if (error) throw error;
+  return data.id;
 }
 
 export async function deleteHistoryEntry(id) {

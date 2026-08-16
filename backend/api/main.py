@@ -35,26 +35,38 @@ load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
                 # are imported, since those modules read them at import time via os.environ.get()
 
 import numpy as np
-from fastapi import FastAPI, HTTPException, UploadFile, File, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, UploadFile, File, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.schemas import (
     PredictRequest, PredictResponse, SchemaResponse,
-    ExplainResponse, FeatureContribution, HealthResponse,
+    ExplainResponse, FeatureContribution, LimeContribution, HealthResponse,
     ChatRequest, ChatResponse, PredictReportRequest, ChatReportRequest,
     ImageGenerateRequest, ImageGenerateResponse,
     ForecastSchemaResponse, ForecastResponse, ForecastPoint,
+    SkillGapRequest, SkillGapResponse, UpliftResponse,
+    FederatedSimulateRequest, FederatedSimulationResponse,
 )
 from api.model_registry import registry, forecast_registry
+from api import auth
+from api import tokens
 from api import batch as batch_module
 from api import chat as chat_module
+from api import agent_graph
+from api import llm_gateway
 from api import reports as reports_module
 from api import org_extract as org_extract_module
+from api import field_extract as field_extract_module
 from api import image_gen as image_gen_module
+from api import redact as redact_module
 from src import evaluate
+from src import features as features_module
 from src import config as src_config
 from src import drift as drift_module
 from src import forecast as forecast_module
+from src import skill_matching
+from src import uplift as uplift_module
+from src.federated import simulation as federated_module
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s [%(name)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -127,7 +139,7 @@ def _get_forecast_bundle_or_503():
 # registration order, and /schema/{task}'s single-path-segment pattern would otherwise swallow
 # /schema/forecast (task="forecast") before it ever reached this handler.
 @app.get("/schema/forecast", response_model=ForecastSchemaResponse)
-def forecast_schema():
+def forecast_schema(_role: str = Depends(auth.require_role("viewer"))):
     bundle = _get_forecast_bundle_or_503()
     cfg = src_config.FORECAST_CONFIG
     last_year = int(bundle["panel"][cfg.year_col].max())
@@ -141,7 +153,7 @@ def forecast_schema():
 
 
 @app.get("/predict/forecast/{industry}", response_model=ForecastResponse)
-def predict_forecast(industry: str, years: int = 0):
+def predict_forecast(industry: str, years: int = 0, _role: str = Depends(auth.require_role("viewer"))):
     bundle = _get_forecast_bundle_or_503()
     if industry not in bundle["industries"]:
         raise HTTPException(
@@ -164,14 +176,18 @@ def predict_forecast(industry: str, years: int = 0):
             for p in result["history"]
         ],
         forecast=[
-            ForecastPoint(year=p["year"], values={m: p[m] for m in metrics})
+            # unlike history, forecast points also carry "{metric}_lower"/"{metric}_upper" —
+            # keep every key except "year" so those pass straight through.
+            ForecastPoint(year=p["year"], values={k: v for k, v in p.items() if k != "year"})
             for p in result["forecast"]
         ],
+        confidence_level=result["confidence_level"],
+        uncertainty_method=result["uncertainty_method"],
     )
 
 
 @app.get("/schema/{task}", response_model=SchemaResponse)
-def schema(task: str):
+def schema(task: str, _role: str = Depends(auth.require_role("viewer"))):
     artifacts = _get_task_or_404(task)
     return SchemaResponse(
         task=task,
@@ -182,7 +198,12 @@ def schema(task: str):
 
 
 @app.post("/predict/{task}", response_model=PredictResponse)
-def predict(task: str, request: PredictRequest):
+def predict(
+    task: str,
+    request: PredictRequest,
+    _role: str = Depends(auth.require_role("viewer")),
+    _tokens: object = Depends(tokens.require_tokens("predict")),
+):
     artifacts = _get_task_or_404(task)
 
     if len(request.features) != artifacts.input_dim:
@@ -211,7 +232,10 @@ def predict(task: str, request: PredictRequest):
 
 
 @app.post("/explain/{task}", response_model=ExplainResponse)
-def explain(task: str, request: PredictRequest, top_k: int = 10):
+def explain(
+    task: str, request: PredictRequest, top_k: int = 10, include_lime: bool = False,
+    _role: str = Depends(auth.require_role("viewer")),
+):
     artifacts = _get_task_or_404(task)
 
     if len(request.features) != artifacts.input_dim:
@@ -240,18 +264,45 @@ def explain(task: str, request: PredictRequest, top_k: int = 10):
     )
     prediction = float(artifacts.keras_model(X, training=False).numpy().squeeze())
 
+    feature_categories = features_module.get_feature_categories(task)
     contributions = [
-        FeatureContribution(feature=name, value=float(val), shap_value=float(sv))
+        FeatureContribution(
+            feature=name, value=float(val), shap_value=float(sv),
+            category=feature_categories.get(name, "unknown"),
+        )
         for name, val, sv in zip(artifacts.feature_names, request.features, shap_values)
     ]
     contributions.sort(key=lambda c: abs(c.shap_value), reverse=True)
+    top_contributions = contributions[:top_k]
+
+    lime_contributions = None
+    agreement_score = None
+    if include_lime:
+        try:
+            lime_pairs, _ = evaluate.compute_lime_values(
+                artifacts.keras_model, artifacts.shap_background, X,
+                artifacts.feature_names, artifacts.task_type,
+            )
+            lime_contributions = [
+                LimeContribution(feature=name, weight=float(w)) for name, w in lime_pairs[:top_k]
+            ]
+            agreement_score = evaluate.shap_lime_agreement(
+                [c.feature for c in top_contributions],
+                [c.feature for c in lime_contributions],
+            )
+        except Exception as e:
+            # LIME is additive/optional — a failure here shouldn't take down an otherwise-working
+            # SHAP explanation. Logged, not silently swallowed.
+            logger.warning("LIME explanation failed for task '%s': %s", task, e)
 
     return ExplainResponse(
         task=task,
         base_value=base_value,
         prediction=prediction,
-        top_contributions=contributions[:top_k],
+        top_contributions=top_contributions,
         explainer_used=explainer_name,
+        lime_top_contributions=lime_contributions,
+        agreement_score=agreement_score,
     )
 
 
@@ -263,7 +314,12 @@ _VALUE_COLUMN = {"employment": "avg_salary_usd", "skills": "MonthlyIncome", "ski
 
 
 @app.post("/predict/batch/{task}")
-async def predict_batch(task: str, file: UploadFile = File(...)):
+async def predict_batch(
+    task: str,
+    file: UploadFile = File(...),
+    _role: str = Depends(auth.require_role("viewer")),
+    authorization: str | None = Header(default=None),
+):
     artifacts = _get_task_or_404(task)
 
     if not file.filename.lower().endswith(".csv"):
@@ -274,6 +330,18 @@ async def predict_batch(task: str, file: UploadFile = File(...)):
         parsed = batch_module.parse_and_validate(file_bytes, task, artifacts.feature_names)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+
+    # Variable-cost gate — priced per row (a 5-row and a 5,000-row upload shouldn't cost the
+    # same), so this runs after parsing (n_rows is now known) but before any model inference,
+    # per tokens.py's own documented pattern for endpoints that can't use the fixed-cost
+    # require_tokens() dependency.
+    identity = await tokens.resolve_gate_identity(authorization)
+    if identity is not None:
+        user_id, role = identity
+        if role not in tokens._BYPASS_ROLES:
+            cost = parsed["n_rows"] * tokens.PREDICT_BATCH_COST_PER_ROW
+            if cost > 0:
+                await tokens.spend_or_402(user_id, cost, "predict_batch", endpoint=f"/predict/batch/{task}")
 
     df = parsed["df"]
     X_scaled = artifacts.transform_batch(parsed["feature_matrix"])
@@ -312,6 +380,11 @@ async def predict_batch(task: str, file: UploadFile = File(...)):
     else:
         drift_report = {"available": False, "reason": "No drift baseline saved for this task yet — run scripts/retrain_and_promote.py at least once."}
 
+    # Real redaction only for a resolved, sub-admin caller (_role is None whenever auth isn't
+    # configured at all — see auth.py/redact.py docstrings) — a viewer can now reach this
+    # endpoint, but sees masked salary/compensation fields rather than colleagues' real figures.
+    rows = redact_module.redact_rows(rows, _role)
+
     return {
         "task": task,
         "task_type": artifacts.task_type,
@@ -329,14 +402,14 @@ async def predict_batch(task: str, file: UploadFile = File(...)):
 
 
 @app.get("/chat/models")
-async def chat_models():
+async def chat_models(_role: str = Depends(auth.require_role("viewer"))):
     return {"models": chat_module.list_models()}
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, _role: str = Depends(auth.require_role("admin"))):
     try:
-        result = await chat_module.send_chat(
+        result = await llm_gateway.send_chat_with_fallback(
             [m.model_dump() for m in request.messages], provider=request.provider
         )
     except RuntimeError as e:
@@ -346,8 +419,94 @@ async def chat(request: ChatRequest):
     return ChatResponse(**result)
 
 
+@app.post("/chat/agent", response_model=ChatResponse)
+async def chat_agent(
+    request: ChatRequest,
+    _role: str = Depends(auth.require_role("viewer")),
+    _tokens: object = Depends(tokens.require_tokens("chat_agent")),
+):
+    """Chiedza's LangGraph agent mode (api/agent_graph.py) — a parallel capability alongside
+    POST /chat, not a replacement for it. Unlike plain chat, this can read the caller's own
+    saved org chart / prediction history / batch results from Supabase (request.user_id scopes
+    those reads) in addition to running fresh predictions."""
+    try:
+        result = await agent_graph.run_agent(
+            [m.model_dump() for m in request.messages], user_id=request.user_id
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Chiedza agent call failed: {e}")
+    return ChatResponse(**result)
+
+
+@app.get("/chat/budget")
+async def chat_budget(_role: str = Depends(auth.require_role("viewer"))):
+    """Per-provider daily token budget status (api/llm_gateway.py) — configured cap, used
+    today, remaining. A provider with no ZIVABASA_BUDGET_<PROVIDER>_TOKENS env var set shows
+    budget_tokens_per_day=None (unlimited, today's default)."""
+    return llm_gateway.budget_status(chat_module.MODEL_CATALOG)
+
+
+@app.post("/skill_match/recommend", response_model=SkillGapResponse)
+async def skill_match_recommend(
+    request: SkillGapRequest,
+    _role: str = Depends(auth.require_role("viewer")),
+    _tokens: object = Depends(tokens.require_tokens("skill_match")),
+):
+    """Prescriptive skill-gap layer on top of the skill_match head: for one staff-vs-target-role
+    pair, returns the same match score skill_matching.match_score() computes plus a recommended
+    training resource for each missing skill (Master Checklist §5, Day 10 item)."""
+    return skill_matching.recommend_training_path(request.current_skills, request.required_skills)
+
+
+@app.post("/federated/simulate", response_model=FederatedSimulationResponse)
+def federated_simulate(request: FederatedSimulateRequest, _role: str = Depends(auth.require_role("admin"))):
+    """Runs the Phase 4 federated-learning SIMULATION (src/federated/simulation.py) live and
+    returns per-round results, for the head-of-state/national-sovereignty demo track.
+    SIMULATED — one process, one machine, no real institutions; see src/federated/ package
+    docstring. Admin-gated since this triggers real model training, unlike the mostly-read
+    endpoints elsewhere in this API."""
+    try:
+        result = federated_module.run_federated_simulation(
+            request.task, num_institutions=request.num_institutions, num_rounds=request.num_rounds,
+        )
+    except (RuntimeError, ValueError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return FederatedSimulationResponse(**result)
+
+
+_uplift_cache: dict = {}
+
+
+def _get_uplift_bundle_or_503(task: str) -> dict:
+    if task not in _uplift_cache:
+        try:
+            _uplift_cache[task] = uplift_module.load_uplift_model(task)
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=503, detail=str(e))
+    return _uplift_cache[task]
+
+
+@app.post("/uplift/{task}", response_model=UpliftResponse)
+def uplift_endpoint(task: str, request: PredictRequest, _role: str = Depends(auth.require_role("viewer"))):
+    """Causal/uplift estimate (src/uplift.py) for the flagship attrition-risk use case: does
+    the recommended retention lever (TrainingTimesLastYear) actually move this employee's
+    attrition probability, or does ordinary SHAP just make it look that way? Currently only
+    trained for task='skills' — scripts/train_uplift_model.py."""
+    bundle = _get_uplift_bundle_or_503(task)
+    if len(request.features) != len(bundle["feature_names"]):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Expected {len(bundle['feature_names'])} features for task '{task}': "
+                   f"{bundle['feature_names']}, got {len(request.features)}.",
+        )
+    result = uplift_module.estimate_treatment_effect(bundle, request.features)
+    return UpliftResponse(task=task, **result)
+
+
 @app.get("/mlops/status")
-async def mlops_status():
+async def mlops_status(_role: str = Depends(auth.require_role("viewer"))):
     reports_dir = os.path.join(src_config.MODELS_DIR, "retrain_reports")
     latest_report = None
     if os.path.isdir(reports_dir):
@@ -366,7 +525,7 @@ async def mlops_status():
 
 
 @app.get("/organization/extract/providers")
-async def org_extract_providers():
+async def org_extract_providers(_role: str = Depends(auth.require_role("viewer"))):
     return {"providers": org_extract_module.available_vision_providers()}
 
 
@@ -377,7 +536,7 @@ _ORG_EXTRACT_MEDIA_TYPES = {
 
 
 @app.post("/organization/extract")
-async def org_extract(file: UploadFile = File(...), provider: str = None):
+async def org_extract(file: UploadFile = File(...), provider: str = None, _role: str = Depends(auth.require_role("admin"))):
     media_type = _ORG_EXTRACT_MEDIA_TYPES.get(file.content_type)
     if media_type is None:
         raise HTTPException(
@@ -396,13 +555,44 @@ async def org_extract(file: UploadFile = File(...), provider: str = None):
     return result
 
 
+@app.get("/extract/task-fields/providers")
+async def field_extract_providers(_role: str = Depends(auth.require_role("viewer"))):
+    return {"providers": field_extract_module.available_vision_providers()}
+
+
+@app.post("/extract/task-fields/{task}")
+async def field_extract(
+    task: str, file: UploadFile = File(...), provider: str = None,
+    _role: str = Depends(auth.require_role("viewer")),
+):
+    """Document upload -> auto-fill review payload for a task's prediction form (see
+    field_extract.py's docstring — human-in-the-loop, never auto-submits a prediction)."""
+    artifacts = _get_task_or_404(task)
+    media_type = _ORG_EXTRACT_MEDIA_TYPES.get(file.content_type)
+    if media_type is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unsupported file type '{file.content_type}'. Supported: PNG, JPEG, WEBP images, or PDF.",
+        )
+    file_bytes = await file.read()
+    try:
+        result = await field_extract_module.extract_task_fields(
+            file_bytes, media_type, artifacts.feature_names, provider
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Document field extraction failed: {e}")
+    return {"task": task, **result}
+
+
 @app.get("/images/providers")
-async def image_providers():
+async def image_providers(_role: str = Depends(auth.require_role("viewer"))):
     return {"providers": ["gemini"] if image_gen_module.available() else []}
 
 
 @app.post("/images/generate", response_model=ImageGenerateResponse)
-async def image_generate(request: ImageGenerateRequest):
+async def image_generate(request: ImageGenerateRequest, _role: str = Depends(auth.require_role("admin"))):
     try:
         result = await image_gen_module.generate_image(request.prompt)
     except RuntimeError as e:
@@ -414,12 +604,17 @@ async def image_generate(request: ImageGenerateRequest):
 
 _DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 _PDF_MEDIA_TYPE = "application/pdf"
+_XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 @app.post("/reports/predict")
-async def predict_report(request: PredictReportRequest):
+async def predict_report(
+    request: PredictReportRequest,
+    _role: str = Depends(auth.require_role("viewer")),
+    _tokens: object = Depends(tokens.require_tokens("report")),
+):
     try:
-        docx_bytes = reports_module.build_predict_report(request.results)
+        docx_bytes = reports_module.build_predict_report(request.results, request.extra_notes)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Report generation failed: {e}")
     return Response(
@@ -430,7 +625,11 @@ async def predict_report(request: PredictReportRequest):
 
 
 @app.post("/reports/chat")
-async def chat_report(request: ChatReportRequest):
+async def chat_report(
+    request: ChatReportRequest,
+    _role: str = Depends(auth.require_role("viewer")),
+    _tokens: object = Depends(tokens.require_tokens("report")),
+):
     try:
         docx_bytes = reports_module.build_chat_report(
             [m.model_dump() for m in request.messages], request.tool_calls
@@ -445,9 +644,13 @@ async def chat_report(request: ChatReportRequest):
 
 
 @app.post("/reports/predict/pdf")
-async def predict_report_pdf(request: PredictReportRequest):
+async def predict_report_pdf(
+    request: PredictReportRequest,
+    _role: str = Depends(auth.require_role("viewer")),
+    _tokens: object = Depends(tokens.require_tokens("report")),
+):
     try:
-        pdf_bytes = reports_module.build_predict_report_pdf(request.results)
+        pdf_bytes = reports_module.build_predict_report_pdf(request.results, request.extra_notes)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Report generation failed: {e}")
     return Response(
@@ -458,7 +661,11 @@ async def predict_report_pdf(request: PredictReportRequest):
 
 
 @app.post("/reports/chat/pdf")
-async def chat_report_pdf(request: ChatReportRequest):
+async def chat_report_pdf(
+    request: ChatReportRequest,
+    _role: str = Depends(auth.require_role("viewer")),
+    _tokens: object = Depends(tokens.require_tokens("report")),
+):
     try:
         pdf_bytes = reports_module.build_chat_report_pdf(
             [m.model_dump() for m in request.messages], request.tool_calls
@@ -469,4 +676,40 @@ async def chat_report_pdf(request: ChatReportRequest):
         content=pdf_bytes,
         media_type=_PDF_MEDIA_TYPE,
         headers={"Content-Disposition": 'attachment; filename="zivabasa-chat-report.pdf"'},
+    )
+
+
+@app.post("/reports/predict/xlsx")
+async def predict_report_xlsx(
+    request: PredictReportRequest,
+    _role: str = Depends(auth.require_role("viewer")),
+    _tokens: object = Depends(tokens.require_tokens("report")),
+):
+    try:
+        xlsx_bytes = reports_module.build_predict_report_xlsx(request.results, request.extra_notes)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Report generation failed: {e}")
+    return Response(
+        content=xlsx_bytes,
+        media_type=_XLSX_MEDIA_TYPE,
+        headers={"Content-Disposition": 'attachment; filename="zivabasa-predict-report.xlsx"'},
+    )
+
+
+@app.post("/reports/chat/xlsx")
+async def chat_report_xlsx(
+    request: ChatReportRequest,
+    _role: str = Depends(auth.require_role("viewer")),
+    _tokens: object = Depends(tokens.require_tokens("report")),
+):
+    try:
+        xlsx_bytes = reports_module.build_chat_report_xlsx(
+            [m.model_dump() for m in request.messages], request.tool_calls
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Report generation failed: {e}")
+    return Response(
+        content=xlsx_bytes,
+        media_type=_XLSX_MEDIA_TYPE,
+        headers={"Content-Disposition": 'attachment; filename="zivabasa-chat-report.xlsx"'},
     )

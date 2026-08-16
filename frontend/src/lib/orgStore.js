@@ -6,7 +6,12 @@
   sites just need `await`.
 
   node: { id, title, department, parentId (null = top of chart), currentSkills: [],
-          targetRole: "" | string, targetSkills: [], seniorityYears, headcount }
+          targetRole: "" | string, targetSkills: [], seniorityYears, headcount,
+          avgSalaryUsd, performanceRating, recentTrainingHours, recentOtHours }
+
+  The last four fields are optional and only feed Chiedza's scan_org_risk tool (backend/api/
+  agent_graph.py) — a per-role skill_match redeployment-fit scan. Left blank (null), a role is
+  simply skipped by that scan rather than defaulted to a fabricated number.
 */
 import { supabase } from "./supabaseClient";
 
@@ -21,6 +26,10 @@ function fromRow(row) {
     targetSkills: row.target_skills || [],
     seniorityYears: row.seniority_years,
     headcount: row.headcount,
+    avgSalaryUsd: row.avg_salary_usd,
+    performanceRating: row.performance_rating,
+    recentTrainingHours: row.recent_training_hours,
+    recentOtHours: row.recent_ot_hours,
   };
 }
 
@@ -35,6 +44,10 @@ function toRow(node) {
     target_skills: node.targetSkills || [],
     seniority_years: node.seniorityYears ?? null,
     headcount: node.headcount ?? 1,
+    avg_salary_usd: node.avgSalaryUsd ?? null,
+    performance_rating: node.performanceRating ?? null,
+    recent_training_hours: node.recentTrainingHours ?? null,
+    recent_ot_hours: node.recentOtHours ?? null,
   };
 }
 

@@ -282,6 +282,66 @@ def compute_shap_values(
         return sv, "KernelExplainer"
 
 
+# --------------------------------------------------------------------------- #
+# LIME — 2nd explainer alongside SHAP, for a SHAP/LIME agreement signal
+# --------------------------------------------------------------------------- #
+def compute_lime_values(
+    keras_model,
+    background: np.ndarray,
+    explain_row: np.ndarray,
+    feature_names: List[str],
+    task_type: str,
+) -> Tuple[List[Tuple[str, float]], str]:
+    """
+    Computed in the SAME scaled feature space compute_shap_values() already uses — `background`
+    and `explain_row` are the identical scaled arrays the SHAP call above receives, not a
+    separate unscaled reference dataset. Returns [(feature_name, weight), ...] sorted by
+    |weight| descending, plus the explainer name (mirrors compute_shap_values()'s return shape).
+
+    discretize_continuous=False so LIME's feature descriptions are plain feature names (not
+    binned conditions like "avg_salary_usd <= 45000.00") — required to compare LIME's top
+    features against SHAP's top features by name for the agreement score below.
+    """
+    from lime.lime_tabular import LimeTabularExplainer
+
+    mode = "classification" if task_type == "classification" else "regression"
+    explainer = LimeTabularExplainer(
+        training_data=background,
+        feature_names=feature_names,
+        mode=mode,
+        discretize_continuous=False,
+    )
+
+    if mode == "classification":
+        def predict_fn(x):
+            p = keras_model.predict(x, verbose=0).reshape(-1)
+            return np.column_stack([1 - p, p])
+        exp = explainer.explain_instance(
+            explain_row.reshape(-1), predict_fn, num_features=len(feature_names), labels=(1,)
+        )
+        pairs = exp.as_list(label=1)
+    else:
+        def predict_fn(x):
+            return keras_model.predict(x, verbose=0).reshape(-1)
+        exp = explainer.explain_instance(
+            explain_row.reshape(-1), predict_fn, num_features=len(feature_names)
+        )
+        pairs = exp.as_list()
+
+    pairs.sort(key=lambda p: abs(p[1]), reverse=True)
+    return pairs, "LimeTabularExplainer"
+
+
+def shap_lime_agreement(shap_top_features: List[str], lime_top_features: List[str]) -> float:
+    """Fraction of SHAP's top-k feature names that also appear in LIME's top-k — the cheapest
+    honest agreement metric given what's actually computed above (not a fancier rank-correlation
+    claim this doesn't back up). 1.0 = full agreement, 0.0 = no overlap."""
+    if not shap_top_features:
+        return 0.0
+    shared = set(shap_top_features) & set(lime_top_features)
+    return len(shared) / len(shap_top_features)
+
+
 def feature_importance_table(shap_values: np.ndarray, feature_names: List[str]) -> pd.DataFrame:
     """Mean |SHAP value| per feature, ranked — the report-friendly global importance summary."""
     mean_abs_shap = np.abs(shap_values).mean(axis=0)

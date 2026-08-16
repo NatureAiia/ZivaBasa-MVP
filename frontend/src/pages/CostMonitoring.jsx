@@ -13,6 +13,7 @@ import { computeCostTotals, AUTO_TRACKED_ITEM_KEY } from "../lib/costCompute";
 import { usageSummary } from "../lib/usageStore";
 import { getAssignments } from "../lib/assignmentStore";
 import { aiOverrideShare } from "../lib/governanceStats";
+import TokenBalanceBar from "../components/tokens/TokenBalanceBar";
 
 // One distinct accent per category — used consistently across the quick-total
 // buttons, the donut, the bar chart, and the legend so the same category
@@ -135,6 +136,10 @@ export default function CostMonitoring() {
               <Badge tone={enteredCount > 0 ? "teal" : "neutral"}>
                 {enteredCount} of {totalItems} drivers costed
               </Badge>
+            </Card>
+
+            <Card animated={false}>
+              <TokenBalanceBar />
             </Card>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">

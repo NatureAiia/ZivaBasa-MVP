@@ -72,6 +72,48 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / (mag_a * mag_b))
 
 
+# Prescriptive layer on top of match_score()'s missing_skill_count (Master Checklist §5,
+# Day 10 item: "skill-matching model exists; recommendation layer on top is still open").
+# One training resource per ALL_SKILLS entry — a static taxonomy, not sourced from any
+# external LMS/catalog integration (none exists in this repo), so it's an illustrative
+# placeholder mapping rather than a live course catalog.
+SKILL_TRAINING_RESOURCES: dict = {
+    "teller_ops": "Teller Operations & Cash Handling Certification",
+    "loan_underwriting": "Credit & Loan Underwriting Fundamentals",
+    "credit_risk": "Credit Risk Analysis Workshop",
+    "aml_compliance": "AML/CFT Compliance Certification",
+    "digital_banking": "Digital Banking Platforms & Channels Training",
+    "sales_advisory": "Financial Sales & Advisory Skills Program",
+    "customer_service": "Customer Experience in Banking",
+    "forex_ops": "Foreign Exchange Operations Training",
+    "treasury_ops": "Treasury & Liquidity Management Course",
+    "it_support": "IT Service Desk & Systems Support Training",
+    "data_analytics": "Data Analytics for Financial Services",
+    "branch_management": "Branch Management & Operations Leadership",
+    "leadership": "People Leadership & Team Management Program",
+    "cybersecurity": "Cybersecurity Awareness & Fundamentals",
+    "wealth_management": "Wealth & Investment Advisory Certification",
+}
+
+
+def recommend_training_path(current_skills: str, required_skills: str) -> dict:
+    """Prescriptive recommendation for one staff-vs-target-role pair: reuses match_score()'s
+    missing-skill set, then attaches the recommended training resource for each gap, ordered
+    by ALL_SKILLS so the output is deterministic across calls."""
+    current = set(parse_skills(current_skills))
+    required = set(parse_skills(required_skills))
+    missing = [skill for skill in ALL_SKILLS if skill in required and skill not in current]
+
+    return {
+        **match_score(current_skills, required_skills),
+        "missing_skills": missing,
+        "recommended_training": [
+            {"skill": skill, "resource": SKILL_TRAINING_RESOURCES.get(skill, skill)}
+            for skill in missing
+        ],
+    }
+
+
 def match_score(current_skills: str, required_skills: str) -> dict:
     """Single staff-vs-target-role match. Same scoring as matchDriversToTask() computes per
     driver, but for one (staff, target role) pair — this is the row-level unit features.py

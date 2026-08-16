@@ -8,16 +8,30 @@ SHAP-based local explanations.
 
 ```bash
 python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
+pip install uv
+uv pip sync requirements.lock.txt --system
 uvicorn api.main:app --reload --port 8000
+```
+
+Dependencies are managed via [uv](https://docs.astral.sh/uv/) — `pyproject.toml` is the source
+of truth (with rationale comments for every pinned/constrained version), `requirements.lock.txt`
+is the generated, hash-locked resolution actually installed. Regenerate it after editing
+`pyproject.toml` with `uv pip compile pyproject.toml -o requirements.lock.txt`. For TSMixer/
+Chronos-2 forecasting work (`src/tsmixer_forecast.py`, `src/chronos_forecast.py`), also sync
+`requirements-forecasting.lock.txt` (adds torch/chronos-forecasting/transformers — a large,
+slow download, deliberately not part of the default install or the served Docker image):
+```bash
+uv pip sync requirements-forecasting.lock.txt --system
 ```
 
 Check it's alive: `curl http://localhost:8000/health` should return all three tasks loaded.
 
 **On this machine specifically:** use the `deep_learning` conda env
-(`C:\Users\<user>\.conda\envs\deep_learning`, Python 3.12.13) — it already has every package at
-the exact versions `requirements.txt` pins (tensorflow==2.16.1, fastapi==0.111.0, etc.) and is
-what the four existing task models were trained under. The machine's global Python is 3.13,
+(`C:\Users\<user>\.conda\envs\deep_learning`, Python 3.12.13) — `uv` detects and installs into
+whichever environment is currently active (conda or venv), so `uv pip sync requirements.lock.txt`
+inside that activated env installs the exact locked versions
+(tensorflow==2.16.1, fastapi==0.111.0, etc.) that the four existing task models were trained
+under. The machine's global Python is 3.13,
 which `tensorflow==2.16.1` doesn't support; pip-installing newer TF/numpy/pandas into the global
 site-packages "works" but trains/serves under different library versions than everything else
 in `models/`, which is best avoided rather than debugged later. Run scripts and uvicorn via

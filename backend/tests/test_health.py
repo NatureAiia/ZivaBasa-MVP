@@ -1,4 +1,4 @@
-TASKS = ["employment", "skills", "productivity", "skill_match"]
+TASKS = ["employment", "skills", "productivity", "skill_match", "human_capital"]
 
 
 def test_health_ok(client):
@@ -10,7 +10,7 @@ def test_health_ok(client):
 
 
 def test_health_all_tasks_loaded(client):
-    """All four task models ship checked into the repo (backend/models/, backend/data/processed/),
+    """All five task models ship checked into the repo (backend/models/, backend/data/processed/),
     so a correctly configured environment should load every one of them at startup — a
     partial load here means an artifact went missing or the registry silently skipped a task."""
     r = client.get("/health")

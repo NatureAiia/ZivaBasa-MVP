@@ -5,9 +5,15 @@
 */
 export default function CostBarChart({ bars, height = 168 }) {
   const max = Math.max(1, ...bars.map((b) => b.value));
+  const summary = bars.map((b) => `${b.label}: $${b.value.toLocaleString()}`).join(", ");
 
   return (
-    <div className="flex items-end justify-between gap-3" style={{ height }}>
+    <div
+      className="flex items-end justify-between gap-3"
+      style={{ height }}
+      role="img"
+      aria-label={`Cost comparison by category. ${summary}.`}
+    >
       {bars.map((b) => {
         const pct = Math.max(2, (b.value / max) * 100); // min 2% so zero-value bars still show a sliver
         return (

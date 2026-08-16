@@ -1,0 +1,24 @@
+{
+  "nodes": [
+    "seniority_years",
+    "recent_training_hours",
+    "performance_rating",
+    "avg_salary_usd",
+    "recent_ot_hours",
+    "skill_overlap_count",
+    "missing_skill_count",
+    "overlap_x_training",
+    "target_good_redeployment_match"
+  ],
+  "edges": [
+    [
+      "overlap_x_training",
+      "recent_training_hours"
+    ],
+    [
+      "overlap_x_training",
+      "skill_overlap_count"
+    ]
+  ],
+  "sanity_check": "Discovered 2 directed edge(s) over 9 features. 0 matched the hand-authored plausibility prior (none); 2 ran opposite to the prior's expected direction ([('overlap_x_training', 'recent_training_hours'), ('overlap_x_training', 'skill_overlap_count')]) and should be treated as either a real, surprising finding worth domain-expert review or a discovery-noise artifact of the small proxy dataset \u2014 not distinguishable from PC alone; 0 edge(s) involve a feature pair with no stated prior either way (none). This is a plausibility check against self-authored expectations, NOT a domain-expert-validated causal claim \u2014 see module docstring and checklist Section 4's gating note."
+}

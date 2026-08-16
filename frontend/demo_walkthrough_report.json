@@ -1,0 +1,87 @@
+{
+  "report": [
+    {
+      "step": "Landing page loads (dark)",
+      "status": "OK",
+      "detail": ""
+    },
+    {
+      "step": "Landing page theme toggle",
+      "status": "SKIP",
+      "detail": "no theme toggle button found on landing"
+    },
+    {
+      "step": "Sign up + auto-login",
+      "status": "FAIL",
+      "detail": "still on http://127.0.0.1:5173/login"
+    },
+    {
+      "step": "Auto-created profile shows signup data",
+      "status": "FAIL",
+      "detail": "full name field = \"null\""
+    },
+    {
+      "step": "Role dropdown editable + save",
+      "status": "FAIL",
+      "detail": "no <select> found on settings page"
+    },
+    {
+      "step": "Dashboard loads",
+      "status": "OK",
+      "detail": "http://127.0.0.1:5173/login"
+    },
+    {
+      "step": "Run prediction",
+      "status": "SKIP",
+      "detail": "no predict button found (form may need dropdown selections first)"
+    },
+    {
+      "step": "My Organization loads",
+      "status": "OK",
+      "detail": "http://127.0.0.1:5173/login"
+    },
+    {
+      "step": "Roster loads",
+      "status": "OK",
+      "detail": "http://127.0.0.1:5173/login"
+    },
+    {
+      "step": "Cost Monitoring loads",
+      "status": "OK",
+      "detail": "http://127.0.0.1:5173/login"
+    },
+    {
+      "step": "Chiedza chat",
+      "status": "OK",
+      "detail": "message sent, see screenshot"
+    },
+    {
+      "step": "Invite a teammate",
+      "status": "OK",
+      "detail": "invite submitted, see screenshot"
+    }
+  ],
+  "consoleErrors": [
+    {
+      "text": "Failed to load resource: the server responded with a status of 500 ()",
+      "url": "http://127.0.0.1:5173/login"
+    },
+    {
+      "text": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+      "url": "http://127.0.0.1:5173/login"
+    }
+  ],
+  "failedRequests": [
+    {
+      "url": "https://pwttcyegzbymdohdnkzc.supabase.co/auth/v1/signup",
+      "status": 500,
+      "page": "http://127.0.0.1:5173/login"
+    },
+    {
+      "url": "http://localhost:8000/chat/agent",
+      "status": 503,
+      "page": "http://127.0.0.1:5173/login"
+    }
+  ],
+  "testEmail": "demo-walkthrough-1784904054119@zivabasa-test.local"
+}

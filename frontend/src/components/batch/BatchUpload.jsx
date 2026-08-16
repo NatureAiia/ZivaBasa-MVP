@@ -1,11 +1,11 @@
 import { useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Upload, FileSpreadsheet, AlertTriangle, TrendingDown, TrendingUp, Users, Building2, Shuffle } from "lucide-react";
+import { Upload, FileSpreadsheet, AlertTriangle, TrendingDown, TrendingUp, Users, Building2, Shuffle, Fingerprint } from "lucide-react";
 import clsx from "clsx";
 import Card from "../common/Card";
 import ClarityRing from "../common/ClarityRing";
 import { staggerContainer, fadeUpItem } from "../../lib/motion";
-import { api, TASKS, TASK_LABELS, TASK_SHORT_LABELS } from "../../lib/api";
+import { api, TASKS, TASK_LABELS, TASK_SHORT_LABELS, TASK_POSITIVE_IS_RISK } from "../../lib/api";
 import { saveBatchResult } from "../../lib/batchStore";
 import { addSource } from "../../lib/sourcesStore";
 import { formatPercent } from "../../lib/format";
@@ -56,6 +56,8 @@ export default function BatchUpload({ task, onResult }) {
 
   if (state === "done" && result) {
     const isClass = result.task_type === "classification";
+    const positiveIsRisk = TASK_POSITIVE_IS_RISK[task] ?? true;
+    const positiveTone = positiveIsRisk ? "text-red" : "text-teal";
     return (
       <motion.div variants={staggerContainer} initial="hidden" animate="show" className="flex flex-col gap-4">
         {result.drift?.available !== false && result.drift?.overall_verdict !== "none" && (
@@ -80,6 +82,20 @@ export default function BatchUpload({ task, onResult }) {
             </span>
           </motion.div>
         )}
+        {result.provenance && (
+          <motion.div
+            variants={fadeUpItem}
+            className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-[11px] border text-ink-muted bg-surface2/60 border-border"
+          >
+            <Fingerprint size={13} className="shrink-0 text-teal" />
+            <span>
+              {Math.round(result.provenance.completeness_score * 100)}% of uploaded rows were
+              complete ({result.provenance.n_total - result.provenance.n_dropped} of{" "}
+              {result.provenance.n_total}) · fingerprint{" "}
+              <span className="font-mono">{result.provenance.content_sha256.slice(0, 12)}…</span>
+            </span>
+          </motion.div>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card className="flex flex-col gap-1">
             <span className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold">Rows analyzed</span>
@@ -89,8 +105,8 @@ export default function BatchUpload({ task, onResult }) {
           {isClass ? (
             <>
               <Card className="flex flex-col gap-1">
-                <span className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold">Flagged {copy.risk}</span>
-                <span className="font-mono text-2xl font-semibold text-red">{result.aggregate.positive_count} {copy.verb}</span>
+                <span className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold">{positiveIsRisk ? "Flagged" : "Identified"} {copy.risk}</span>
+                <span className={`font-mono text-2xl font-semibold ${positiveTone}`}>{result.aggregate.positive_count} {copy.verb}</span>
                 <span className="text-[11px] text-ink-faint">{formatPercent(result.aggregate.positive_rate)} of uploaded rows</span>
               </Card>
               <Card className="flex flex-col gap-1">

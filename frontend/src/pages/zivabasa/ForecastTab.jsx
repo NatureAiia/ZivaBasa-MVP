@@ -7,6 +7,8 @@ import Skeleton from "../../components/common/Skeleton";
 import ForecastLineChart from "../../components/forecast/ForecastLineChart";
 import { staggerContainer, fadeUpItem } from "../../lib/motion";
 import { api } from "../../lib/api";
+import { createReviewItem } from "../../lib/reviewQueueStore";
+import { isLowConfidenceForecast } from "../../lib/reviewThresholds";
 
 const METRIC_META = {
   automation_risk_percent: { label: "Automation Risk", color: "rgb(var(--red))", unit: "%" },
@@ -39,7 +41,18 @@ export default function ForecastTab() {
     setError(null);
     api
       .forecast(industry, horizon)
-      .then(setResult)
+      .then((result) => {
+        setResult(result);
+        if (isLowConfidenceForecast(result.confidence_level)) {
+          createReviewItem({
+            task: industry,
+            source: "forecast",
+            subject: `${industry} forecast (${horizon}y horizon)`,
+            predictedValue: { industry, horizon, forecast: result.forecast },
+            confidenceScore: result.confidence_level,
+          });
+        }
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [industry, horizon]);
@@ -115,7 +128,13 @@ export default function ForecastTab() {
                         color={meta.color}
                         unit={meta.unit}
                         history={result.history.map((p) => ({ year: p.year, value: p.values[metric] }))}
-                        forecast={result.forecast.map((p) => ({ year: p.year, value: p.values[metric] }))}
+                        forecast={result.forecast.map((p) => ({
+                          year: p.year,
+                          value: p.values[metric],
+                          lower: p.values[`${metric}_lower`],
+                          upper: p.values[`${metric}_upper`],
+                        }))}
+                        confidenceLevel={result.confidence_level}
                       />
                     </Card>
                   );
@@ -128,6 +147,14 @@ export default function ForecastTab() {
               industry-level averages), not real Zimbabwean banking-sector workforce data. Read
               trend direction as a validation of the forecasting pipeline, not a real-world
               prediction — same proxy-data caveat as the rest of this MVP phase.
+              {result && (
+                <>
+                  {" "}
+                  The shaded band around each projected year is a {Math.round((result.confidence_level ?? 0.9) * 100)}%
+                  interval ({result.uncertainty_method}), not a guarantee — it widens the further out the forecast
+                  reaches, which is expected: uncertainty compounds with every additional year projected.
+                </>
+              )}
             </Card>
           </motion.div>
         </motion.div>

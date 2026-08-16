@@ -18,17 +18,75 @@ import { spring } from "../lib/motion";
 // so the two panels drifted out of sync mid-transition — one snapped instantly, the other
 // lagged and overflowed the card. Plain `x` animation on persisting elements has no such
 // measurement step, so it can't desync.)
-function FormPanel({ mode, email, setEmail, password, setPassword, error, info, busy, onSubmit }) {
+function FormPanel({
+  mode, email, setEmail, password, setPassword,
+  fullName, setFullName, organization, setOrganization, jobTitle, setJobTitle,
+  requestedRole, setRequestedRole,
+  error, info, busy, onSubmit,
+}) {
   return (
     <motion.div
       animate={{ x: mode === "signIn" ? "0%" : "100%" }}
       transition={spring}
-      className="absolute inset-y-0 left-0 w-1/2 flex flex-col justify-center p-8 bg-surface"
+      className="absolute inset-y-0 left-0 w-1/2 flex flex-col justify-center p-8 bg-surface overflow-y-auto"
     >
       <form onSubmit={onSubmit} className="flex flex-col gap-3">
         <h2 className="font-display text-lg font-semibold text-ink mb-1">
           {mode === "signIn" ? "Welcome back" : "Create account"}
         </h2>
+
+        {mode === "signUp" && (
+          <>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] text-ink-faint">Full name</span>
+              <input
+                type="text"
+                required
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                className="bg-surface2 border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-gold/50"
+                autoComplete="name"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] text-ink-faint">Organization</span>
+              <input
+                type="text"
+                required
+                value={organization}
+                onChange={(e) => setOrganization(e.target.value)}
+                className="bg-surface2 border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-gold/50"
+                autoComplete="organization"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] text-ink-faint">Job title</span>
+              <input
+                type="text"
+                required
+                value={jobTitle}
+                onChange={(e) => setJobTitle(e.target.value)}
+                className="bg-surface2 border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-gold/50"
+                autoComplete="organization-title"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] text-ink-faint">Requested role</span>
+              <select
+                value={requestedRole}
+                onChange={(e) => setRequestedRole(e.target.value)}
+                className="bg-surface2 border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-gold/50"
+              >
+                <option value="viewer">Viewer</option>
+                <option value="admin">Admin</option>
+              </select>
+              <span className="text-[10px] text-ink-faint">
+                New accounts start as Viewer — an existing admin grants Admin access.
+              </span>
+            </label>
+          </>
+        )}
+
         <label className="flex flex-col gap-1">
           <span className="text-[11px] text-ink-faint">Email</span>
           <input
@@ -104,6 +162,10 @@ export default function LoginPage() {
   const [mode, setMode] = useState(searchParams.get("mode") === "signup" ? "signUp" : "signIn");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [organization, setOrganization] = useState("");
+  const [jobTitle, setJobTitle] = useState("");
+  const [requestedRole, setRequestedRole] = useState("viewer");
   const [error, setError] = useState(null);
   const [info, setInfo] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -138,13 +200,22 @@ export default function LoginPage() {
         if (err) throw err;
         navigate("/app", { replace: true });
       } else {
-        const { error: err } = await signUp(email, password);
+        const { error: err } = await signUp(email, password, {
+          fullName, organization, jobTitle, requestedRole,
+        });
         if (err) throw err;
         setInfo("Account created. Check your email to confirm, then sign in.");
         setMode("signIn");
       }
     } catch (err) {
-      setError(err.message || "Something went wrong.");
+      // err.message can be present-but-useless — Supabase's hosted auth API has been observed
+      // returning a bare `{}` body on a 500 (a server-side failure, e.g. an auth hook throwing),
+      // which some SDK versions surface as the literal string "{}" rather than leaving .message
+      // empty. `err.message || fallback` doesn't catch that (it's truthy), so a raw JSON blob
+      // leaked straight into the UI — checked here explicitly rather than trusting .message's
+      // shape.
+      const looksLikeJson = typeof err.message === "string" && /^\s*[{[]/.test(err.message);
+      setError(!err.message || looksLikeJson ? "Something went wrong. Please try again shortly." : err.message);
     } finally {
       setBusy(false);
     }
@@ -167,7 +238,7 @@ export default function LoginPage() {
 
       {/* Below md: today's single stacked card — a 680px split panel doesn't fit a phone screen. */}
       <motion.div className="relative z-10 md:hidden" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-        <Card className="w-[340px] flex flex-col gap-5" animated={false}>
+        <Card className="w-[340px] max-h-[85vh] overflow-y-auto flex flex-col gap-5" animated={false}>
           <div className="flex items-center gap-2.5">
             <ClarityRing mode="static" size={32} strokeWidth={4} color="gold" />
             <div>
@@ -177,6 +248,58 @@ export default function LoginPage() {
           </div>
 
           <form onSubmit={submit} className="flex flex-col gap-3">
+            {mode === "signUp" && (
+              <>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] text-ink-faint">Full name</span>
+                  <input
+                    type="text"
+                    required
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className="bg-surface2 border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-gold/50"
+                    autoComplete="name"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] text-ink-faint">Organization</span>
+                  <input
+                    type="text"
+                    required
+                    value={organization}
+                    onChange={(e) => setOrganization(e.target.value)}
+                    className="bg-surface2 border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-gold/50"
+                    autoComplete="organization"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] text-ink-faint">Job title</span>
+                  <input
+                    type="text"
+                    required
+                    value={jobTitle}
+                    onChange={(e) => setJobTitle(e.target.value)}
+                    className="bg-surface2 border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-gold/50"
+                    autoComplete="organization-title"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] text-ink-faint">Requested role</span>
+                  <select
+                    value={requestedRole}
+                    onChange={(e) => setRequestedRole(e.target.value)}
+                    className="bg-surface2 border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-gold/50"
+                  >
+                    <option value="viewer">Viewer</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                  <span className="text-[10px] text-ink-faint">
+                    New accounts start as Viewer — an existing admin grants Admin access.
+                  </span>
+                </label>
+              </>
+            )}
+
             <label className="flex flex-col gap-1">
               <span className="text-[11px] text-ink-faint">Email</span>
               <input
@@ -221,9 +344,11 @@ export default function LoginPage() {
       </motion.div>
 
       {/* md and up: the animated split panel — brand half slides to whichever side isn't the
-          active form when `mode` toggles, via framer-motion's layout-reorder animation. */}
+          active form when `mode` toggles, via framer-motion's layout-reorder animation. Height
+          grew from 460 to 600 to fit the signup panel's four extra fields without relying on
+          FormPanel's internal scroll except on short viewports. */}
       <motion.div
-        className="relative z-10 hidden md:block w-full max-w-[680px] h-[460px] rounded-2xl overflow-hidden border border-border bg-surface shadow-card dark:shadow-card-dark"
+        className="relative z-10 hidden md:block w-full max-w-[680px] h-[600px] max-h-[85vh] rounded-2xl overflow-hidden border border-border bg-surface shadow-card dark:shadow-card-dark"
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
       >
@@ -233,6 +358,14 @@ export default function LoginPage() {
           setEmail={setEmail}
           password={password}
           setPassword={setPassword}
+          fullName={fullName}
+          setFullName={setFullName}
+          organization={organization}
+          setOrganization={setOrganization}
+          jobTitle={jobTitle}
+          setJobTitle={setJobTitle}
+          requestedRole={requestedRole}
+          setRequestedRole={setRequestedRole}
           error={error}
           info={info}
           busy={busy}

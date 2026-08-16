@@ -6,6 +6,7 @@ import GlitterWrap from "../effects/GlitterWrap";
 import ClickEffects from "../effects/ClickEffects";
 import ClarityRing from "../common/ClarityRing";
 import ThemeToggle from "./ThemeToggle";
+import CommandPalette from "../common/CommandPalette";
 import { useAuth } from "../../lib/authStore";
 
 export default function Shell() {
@@ -20,6 +21,8 @@ export default function Shell() {
 
   return (
     <div className="flex flex-col md:flex-row h-screen bg-bg text-ink theme-transition relative">
+      <CommandPalette />
+
       {/* Click Effects — fires on empty space only (buttons/links/inputs are excluded inside
           the component itself). Fixed, full-screen, very high z-index so it renders above
           everything; the component sets pointerEvents:"none" on its own root so it never
