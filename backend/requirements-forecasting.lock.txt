@@ -396,17 +396,6 @@ markupsafe==3.0.3
     #   mako
     #   nbconvert
     #   werkzeug
-matplotlib==3.9.0
-    # via
-    #   zivabasa-backend (pyproject.toml)
-    #   causal-learn
-    #   lime
-    #   mlflow
-    #   seaborn
-matplotlib-inline==0.2.2
-    # via
-    #   ipykernel
-    #   ipython
 mdurl==0.1.2
     # via markdown-it-py
 mistune==3.3.4
