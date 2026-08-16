@@ -8,8 +8,9 @@ SHAP-based local explanations.
 
 ```bash
 python3 -m venv venv && source venv/bin/activate
-pip install uv
-uv pip sync requirements.lock.txt --system
+or conda env
+python -m pip install uv
+python -m uv pip sync requirements.lock.txt
 uvicorn api.main:app --reload --port 8000
 ```
 
