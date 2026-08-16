@@ -65,7 +65,6 @@ from src import config as src_config
 from src import drift as drift_module
 from src import forecast as forecast_module
 from src import skill_matching
-from src import uplift as uplift_module
 from src.federated import simulation as federated_module
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s [%(name)s] %(message)s")
@@ -479,10 +478,25 @@ def federated_simulate(request: FederatedSimulateRequest, _role: str = Depends(a
 _uplift_cache: dict = {}
 
 
+# src.uplift pulls in econml -> numba, whose compiled extension can be unavailable at runtime
+# (e.g. blocked by an OS code-integrity policy) even when the package is installed -- imported
+# lazily, on first actual use, so that failure only takes down /uplift/{task}, not the whole API
+# at startup.
+def _uplift_module():
+    try:
+        from src import uplift as uplift_module
+    except ImportError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Uplift/causal estimation is unavailable in this environment: {e}",
+        )
+    return uplift_module
+
+
 def _get_uplift_bundle_or_503(task: str) -> dict:
     if task not in _uplift_cache:
         try:
-            _uplift_cache[task] = uplift_module.load_uplift_model(task)
+            _uplift_cache[task] = _uplift_module().load_uplift_model(task)
         except FileNotFoundError as e:
             raise HTTPException(status_code=503, detail=str(e))
     return _uplift_cache[task]
@@ -501,7 +515,7 @@ def uplift_endpoint(task: str, request: PredictRequest, _role: str = Depends(aut
             detail=f"Expected {len(bundle['feature_names'])} features for task '{task}': "
                    f"{bundle['feature_names']}, got {len(request.features)}.",
         )
-    result = uplift_module.estimate_treatment_effect(bundle, request.features)
+    result = _uplift_module().estimate_treatment_effect(bundle, request.features)
     return UpliftResponse(task=task, **result)
 
 
