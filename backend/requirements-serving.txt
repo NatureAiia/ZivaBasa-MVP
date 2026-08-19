@@ -1,0 +1,53 @@
+# Serving-only dependency set for shared cPanel UAT deployment (Passenger/Python App).
+# Derived from pyproject.toml's [project.dependencies], dropping packages that are never
+# imported by api/ or src/ at request-serving time:
+#   - jupyter, ipykernel        (notebook-only, api/src never import these)
+#   - pytest, pytest-cov        (test-only)
+#   - mlflow                    (every `import mlflow` call site in src/ is inside a function
+#                                 body wrapped in try/except ImportError — confirmed via grep,
+#                                 see pyproject.toml's own comment on this. Safe to omit entirely.)
+#   - setuptools<81 pin         (only needed to keep mlflow's pkg_resources import working)
+#   - seaborn                   (not imported anywhere in src/ or api/, notebook-only)
+#   - torch/chronos-forecasting/transformers (pyproject.toml's own `forecasting` extra —
+#                                 already excluded from the base served image per its comment)
+#   - econml                    (src/uplift.py's `import econml` is inside a function body,
+#                                 same lazy-import-for-optional-heavy-dep pattern as mlflow —
+#                                 api/main.py only reaches it inside one endpoint handler)
+#   - causal-learn/networkx/pydot/graphviz/momentchi2/statsmodels (all only used by
+#                                 src/causal_xai.py, which nothing in api/ currently imports)
+#   - xgboost                   (not imported anywhere in src/ or api/ — baseline-notebook only)
+
+pandas==2.2.2
+numpy==1.26.4
+pyarrow==15.0.2
+
+tensorflow==2.16.1
+protobuf==4.25.9
+
+flwr==1.23.0
+
+scikit-learn==1.5.0
+
+shap==0.45.1
+lime==0.2.0.1
+
+matplotlib==3.9.0
+markdown==3.10.2
+python-docx==1.2.0
+reportlab==4.2.2
+openpyxl==3.1.5
+beautifulsoup4==4.15.0
+
+joblib==1.4.2
+python-dotenv==1.0.1
+
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+pydantic==2.13.4
+python-multipart==0.0.9
+httpx==0.27.0
+
+langgraph==0.2.60
+langchain-core>=0.3.31,<0.4.0
+langchain-anthropic==0.3.4
+supabase==2.10.0
