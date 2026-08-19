@@ -4,4 +4,9 @@ RewriteEngine On
 RewriteRule ^index\.html$ - [L]
 RewriteCond %{REQUEST_FILENAME} -f
 RewriteRule ^ - [L]
+# Missing static assets (images/video/fonts/etc.) must 404 for real, not fall through to
+# index.html -- an <img>/<video poster> request that gets a 200 HTML response instead of a
+# real 404 renders as a broken-image icon rather than failing invisibly as intended.
+RewriteCond %{REQUEST_URI} \.(?:png|jpe?g|gif|svg|webp|avif|ico|mp4|webm|ogg|mp3|wav|woff2?|ttf|eot|pdf|txt|json|xml|map)$ [NC]
+RewriteRule ^ - [L,R=404]
 RewriteRule ^ index.html [L]
