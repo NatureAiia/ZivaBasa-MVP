@@ -1,15 +1,9 @@
 ---
 deployment:
   tasks:
-    - /bin/mkdir -p /home/uat/apps/zivabasa-backend/data/processed /home/uat/apps/zivabasa-backend/data/schema
-    - /bin/cp -R /home/uat/repositories/ZivaBasa_MVP/backend/api/. /home/uat/apps/zivabasa-backend/api/
-    - /bin/cp -R /home/uat/repositories/ZivaBasa_MVP/backend/src/. /home/uat/apps/zivabasa-backend/src/
-    - /bin/cp -R /home/uat/repositories/ZivaBasa_MVP/backend/models/. /home/uat/apps/zivabasa-backend/models/
-    - /bin/cp -R /home/uat/repositories/ZivaBasa_MVP/backend/data/processed/. /home/uat/apps/zivabasa-backend/data/processed/
-    - /bin/cp -R /home/uat/repositories/ZivaBasa_MVP/backend/data/schema/. /home/uat/apps/zivabasa-backend/data/schema/
     - cd /home/uat/repositories/ZivaBasa_MVP/frontend && VITE_API_BASE=https://generous-platinum-hippopotamus.172-93-106-10.cpanel.site:8443 VITE_SUPABASE_URL=https://pwttcyegzbymdohdnkzc.supabase.co VITE_SUPABASE_ANON_KEY=sb_publishable_P0bodUoUalamwNmQ0Ey8UQ_BsKRbKPC /usr/bin/node node_modules/vite/bin/vite.js build --base=/zivabasa/ --outDir /home/uat/public_html/zivabasa --emptyOutDir
     - /usr/bin/pkill -f 'uvicorn api.main' || /usr/bin/true
     - /bin/sleep 1
-    - /usr/bin/setsid /usr/bin/nohup /home/uat/apps/zivabasa-backend/start.sh >> /home/uat/apps/zivabasa-backend/uvicorn.log 2>&1 < /dev/null &
+    - /usr/bin/setsid /usr/bin/nohup /home/uat/repositories/ZivaBasa_MVP/backend/start.sh >> /home/uat/repositories/ZivaBasa_MVP/backend/uvicorn.log 2>&1 < /dev/null &
     - /bin/sleep 8
     - /usr/bin/uapi NginxCaching clear_cache
