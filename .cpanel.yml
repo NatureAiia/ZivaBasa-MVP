@@ -1,9 +1,6 @@
 ---
 deployment:
   tasks:
-    - cd /home/uat/repositories/ZivaBasa_MVP/frontend && VITE_API_BASE=https://generous-platinum-hippopotamus.172-93-106-10.cpanel.site:8443 VITE_SUPABASE_URL=https://pwttcyegzbymdohdnkzc.supabase.co VITE_SUPABASE_ANON_KEY=sb_publishable_P0bodUoUalamwNmQ0Ey8UQ_BsKRbKPC /usr/bin/node node_modules/vite/bin/vite.js build --base=/zivabasa/ --outDir /home/uat/public_html/zivabasa --emptyOutDir
-    - /usr/bin/pkill -f 'uvicorn api.main' || /usr/bin/true
-    - /bin/sleep 1
-    - /usr/bin/setsid /usr/bin/nohup /home/uat/repositories/ZivaBasa_MVP/backend/start.sh >> /home/uat/repositories/ZivaBasa_MVP/backend/uvicorn.log 2>&1 < /dev/null &
-    - /bin/sleep 8
+    - cd /home/uat/repositories/ZivaBasa_MVP/frontend && VITE_API_BASE=https://diplomatic-onyx-antelope.172-93-106-10.cpanel.site:8443 VITE_SUPABASE_URL=https://pwttcyegzbymdohdnkzc.supabase.co VITE_SUPABASE_ANON_KEY=sb_publishable_P0bodUoUalamwNmQ0Ey8UQ_BsKRbKPC /usr/bin/node node_modules/vite/bin/vite.js build --outDir /home/uat/public_html/diplomatic-onyx-antelope.172-93-106-10.cpanel.site --emptyOutDir
+    - /usr/local/bin/pm2 restart zivabasa-backend --update-env
     - /usr/bin/uapi NginxCaching clear_cache
