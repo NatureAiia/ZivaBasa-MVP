@@ -1,77 +1,99 @@
+/*
+  authStore.jsx — replaces Supabase Auth (signUp/signInWithPassword/signOut/onAuthStateChange)
+  with calls to this backend's own POST /auth/* endpoints (backend/api/auth_routes.py).
+
+  Session model: the access token lives ONLY in this module's React state — never localStorage/
+  sessionStorage, so it can't be read by an XSS payload that isn't also live in this exact tab.
+  It's also mirrored into sessionToken.js (a plain in-memory variable, not a React value) so
+  api.js's synchronous authHeaders() can read it without needing to be a hook itself. The
+  longer-lived refresh token is an httpOnly cookie the browser holds and this code never touches
+  directly — POST /auth/refresh reads it server-side to mint a new access token, which is how a
+  page reload restores a session without ever putting the refresh token in reach of JS.
+*/
 import { createContext, useContext, useEffect, useState } from "react";
-import { supabase, isSupabaseConfigured } from "./supabaseClient";
-import { getProfile, createProfile } from "./profileStore";
+import { getBase } from "./api";
+import { setAccessToken } from "./sessionToken";
+import { getProfile } from "./profileStore";
 
 const AuthContext = createContext(null);
 
+async function _authFetch(path, body) {
+  const base = getBase();
+  const res = await fetch(`${base}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  let data = null;
+  try {
+    data = await res.json();
+  } catch (_) {
+    /* no body */
+  }
+  if (!res.ok) {
+    const message = data?.detail
+      ? typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail)
+      : `${res.status}: ${res.statusText}`;
+    return { data: null, error: new Error(message) };
+  }
+  return { data, error: null };
+}
+
 export function AuthProvider({ children }) {
-  const [session, setSession] = useState(null);
+  const [session, setSession] = useState(null); // { userId, role } | null
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Silent session restore on load: the refresh cookie (if any) is sent automatically by the
+  // browser — a successful response means "already signed in from a previous visit".
   useEffect(() => {
-    if (!isSupabaseConfigured) {
+    (async () => {
+      const { data } = await _authFetch("/auth/refresh");
+      if (data) {
+        setAccessToken(data.access_token);
+        setSession({ userId: data.user_id, role: data.role });
+      }
       setLoading(false);
-      return;
-    }
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setLoading(false);
-    });
-    // Keeps session in sync across tabs and after token refresh — without this, a session
-    // that expires or is signed out in another tab would silently go stale here.
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event, next) => {
-      setSession(next);
-    });
-    return () => subscription.subscription.unsubscribe();
+    })();
   }, []);
 
-  // Profile carries `role`, which gates admin-only UI — fetched separately from the session
-  // since it lives in its own table, not the Supabase auth user object. If signup happened
-  // with email confirmation on, there was no session yet to write the profile row under (RLS
-  // requires auth.uid()), so the fields were stashed in localStorage — write them now that a
-  // real session (post-confirmation sign-in) exists, then clear the stash either way so a
-  // later sign-in by a different account never reuses stale fields.
   useEffect(() => {
     if (!session) {
       setProfile(null);
       return;
     }
-    (async () => {
-      const existing = await getProfile();
-      if (existing) {
-        setProfile(existing);
-        return;
-      }
-      const pendingRaw = localStorage.getItem("zivabasa_pending_profile");
-      if (pendingRaw) {
-        localStorage.removeItem("zivabasa_pending_profile");
-        try {
-          await createProfile(JSON.parse(pendingRaw));
-        } catch (e) {
-          console.error("createProfile failed:", e.message);
-        }
-      }
-      setProfile(await getProfile());
-    })();
+    (async () => setProfile(await getProfile()))();
   }, [session]);
 
-  const signUp = (email, password, profileFields) =>
-    supabase.auth.signUp({ email, password }).then(async (result) => {
-      if (result.error || !profileFields) return result;
-      if (result.data.session) {
-        // Email confirmation is off — a session exists immediately, write the row now.
-        await createProfile(profileFields).catch((e) => console.error("createProfile failed:", e.message));
-      } else {
-        // No session until the user confirms their email and signs in — stash the fields for
-        // the effect above to pick up at that point.
-        localStorage.setItem("zivabasa_pending_profile", JSON.stringify(profileFields));
-      }
-      return result;
+  const signUp = async (email, password, profileFields = {}) => {
+    const { data, error } = await _authFetch("/auth/signup", {
+      email,
+      password,
+      full_name: profileFields.fullName || null,
+      organization: profileFields.organization || null,
+      job_title: profileFields.jobTitle || null,
+      requested_role: profileFields.requestedRole || "viewer",
     });
+    if (error) return { error };
+    setAccessToken(data.access_token);
+    setSession({ userId: data.user_id, role: data.role });
+    return { error: null };
+  };
 
-  const signIn = (email, password) => supabase.auth.signInWithPassword({ email, password });
-  const signOut = () => supabase.auth.signOut();
+  const signIn = async (email, password) => {
+    const { data, error } = await _authFetch("/auth/login", { email, password });
+    if (error) return { error };
+    setAccessToken(data.access_token);
+    setSession({ userId: data.user_id, role: data.role });
+    return { error: null };
+  };
+
+  const signOut = async () => {
+    await _authFetch("/auth/logout");
+    setAccessToken(null);
+    setSession(null);
+  };
 
   // Settings page calls this after updateProfile()/uploadAvatar() so the rest of the app (e.g.
   // any header/sidebar that shows profile fields) reflects the change without a full reload.
@@ -79,12 +101,12 @@ export function AuthProvider({ children }) {
 
   const value = {
     session,
-    user: session?.user ?? null,
+    user: session ? { id: session.userId } : null,
     profile,
-    role: profile?.role ?? null,
+    role: profile?.role ?? session?.role ?? null,
     loading,
     signedIn: Boolean(session),
-    configured: isSupabaseConfigured,
+    configured: true, // no separate "backend not configured" state now that there's no external service key to check
     signUp,
     signIn,
     signOut,
