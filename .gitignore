@@ -197,5 +197,7 @@ supabase/token-gate
 # Server-side only (cPanel UAT deploy) -- lives inside backend/ on the server so the git
 # checkout doubles as the running app dir, but must never be tracked/reinstalled via git.
 backend/venv/
-backend/start.sh
-backend/uvicorn.log
+backend/ecosystem.config.cjs
+backend/pm2-out.log
+backend/pm2-error.log
+backend/pm2-reboot.log
