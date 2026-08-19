@@ -3,11 +3,14 @@
   for the scaler/leakage-column bug). Same contract v1's dashboard used: GET /health,
   GET /schema/{task}, POST /predict/{task}, POST /explain/{task}.
 */
-import { supabase } from "./supabaseClient";
+import { getAccessToken } from "./sessionToken";
 
 const DEFAULT_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 
-function getBase() {
+// Exported for authStore.jsx, which needs the base URL for its own POST /auth/* calls (those
+// happen before any session exists, so they can't go through this file's request() helper,
+// which always attaches an auth header).
+export function getBase() {
   return localStorage.getItem("zivabasa-api-base") || DEFAULT_BASE;
 }
 
@@ -15,23 +18,25 @@ export function setApiBase(url) {
   localStorage.setItem("zivabasa-api-base", url.replace(/\/$/, ""));
 }
 
-// Attach the current Supabase session's access token, if there is one, so the backend's
-// optional Supabase-role fallback (api/supabase_auth.py) can resolve who's actually calling. A
-// no-op when Supabase isn't configured (getSession() then just resolves to no session) or when
-// the backend hasn't turned on that fallback (auth.py ignores the header either way). Shared by
+// Attach the current in-memory access token, if there is one, so api/auth.py's local-JWT
+// fallback can resolve who's actually calling. A no-op when signed out (auth.py ignores a
+// missing header either way, unless ZIVABASA_API_KEYS/JWT_SECRET enforcement is on). Shared by
 // every call site that hits the backend, including the two raw-fetch multipart uploads below
 // that don't go through request() (predictBatch, extractOrgChart) — those need it too, since
-// /predict/batch/{task} is exactly where the new redaction feature depends on it.
-async function authHeaders() {
-  const { data } = await supabase.auth.getSession();
-  const token = data?.session?.access_token;
+// /predict/batch/{task} is exactly where the redaction feature depends on it.
+function authHeaders() {
+  const token = getAccessToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 async function request(path, options) {
   const base = getBase();
-  const auth = await authHeaders();
-  const withAuth = { ...options, headers: { ...(options?.headers || {}), ...auth } };
+  const auth = authHeaders();
+  const withAuth = {
+    ...options,
+    credentials: "include", // sends the httpOnly refresh cookie on same-site/CORS-credentialed calls
+    headers: { ...(options?.headers || {}), ...auth },
+  };
   let res;
   try {
     res = await fetch(base + path, withAuth);
@@ -92,10 +97,12 @@ export const api = {
     const form = new FormData();
     form.append("file", file);
     const base = getBase();
-    const auth = await authHeaders();
+    const auth = authHeaders();
     let res;
     try {
-      res = await fetch(`${base}/predict/batch/${task}`, { method: "POST", body: form, headers: auth });
+      res = await fetch(`${base}/predict/batch/${task}`, {
+        method: "POST", body: form, headers: auth, credentials: "include",
+      });
     } catch (e) {
       throw new Error(`Could not reach API at ${base}. Is uvicorn running? (${e.message})`);
     }
@@ -116,7 +123,7 @@ export const api = {
       body: JSON.stringify({ messages, provider }),
     }),
   // Chiedza's LangGraph agent mode (backend/api/agent_graph.py) — a parallel capability
-  // alongside chat() above, not a replacement. userId scopes its Supabase context tools
+  // alongside chat() above, not a replacement. userId scopes its database-backed context tools
   // (org chart / predict history / batch results) to the signed-in user.
   chatAgent: (messages, userId = null) =>
     request("/chat/agent", {
@@ -132,10 +139,12 @@ export const api = {
     form.append("file", file);
     const base = getBase();
     const qs = provider ? `?provider=${encodeURIComponent(provider)}` : "";
-    const auth = await authHeaders();
+    const auth = authHeaders();
     let res;
     try {
-      res = await fetch(`${base}/organization/extract${qs}`, { method: "POST", body: form, headers: auth });
+      res = await fetch(`${base}/organization/extract${qs}`, {
+        method: "POST", body: form, headers: auth, credentials: "include",
+      });
     } catch (e) {
       throw new Error(`Could not reach API at ${base}. Is uvicorn running? (${e.message})`);
     }
@@ -155,10 +164,12 @@ export const api = {
     form.append("file", file);
     const base = getBase();
     const qs = provider ? `?provider=${encodeURIComponent(provider)}` : "";
-    const auth = await authHeaders();
+    const auth = authHeaders();
     let res;
     try {
-      res = await fetch(`${base}/extract/task-fields/${task}${qs}`, { method: "POST", body: form, headers: auth });
+      res = await fetch(`${base}/extract/task-fields/${task}${qs}`, {
+        method: "POST", body: form, headers: auth, credentials: "include",
+      });
     } catch (e) {
       throw new Error(`Could not reach API at ${base}. Is uvicorn running? (${e.message})`);
     }

@@ -1,105 +1,88 @@
 /*
-  User profile (Postgres `profiles` table) — the signup-time info used to assess a user's
-  rights: full name, organization, job title, and requested role, plus the Settings page's own
-  additions (phone, department, avatar). `role` is what the app actually gates on and only ever
-  changes via manual admin action (see schema.sql); this store never writes it — the "own
-  profile update" RLS policy allows updating any OTHER column on your own row, enforced at the
-  database layer by a trigger that rejects a `role` change from an authenticated (non-admin)
-  session regardless of what a client sends.
+  User profile — calls the backend's /profiles/* routes (backend/api/routes/profiles.py)
+  instead of `supabase.from("profiles")`. `role` is what the app actually gates on and only ever
+  changes via manual admin action (POST /auth/admin/promote-role); this store never writes it —
+  the PATCH /profiles/me request body has no `role` field at all, so there's no way to even
+  attempt setting it through this store.
 */
-import { supabase } from "./supabaseClient";
+import { getBase } from "./api";
+import { getAccessToken } from "./sessionToken";
+
+function authHeaders() {
+  const token = getAccessToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function request(path, options) {
+  const res = await fetch(`${getBase()}${path}`, {
+    ...options,
+    credentials: "include",
+    headers: { ...(options?.headers || {}), ...authHeaders() },
+  });
+  if (!res.ok) {
+    if (res.status === 404) return null;
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `${res.status}: ${res.statusText}`);
+  }
+  return res.json();
+}
 
 export async function getProfile() {
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("full_name, organization, job_title, phone, department, avatar_url, requested_role, role")
-    .maybeSingle();
-  if (error) {
-    console.error("getProfile failed:", error.message);
+  try {
+    return await request("/profiles/me");
+  } catch (e) {
+    console.error("getProfile failed:", e.message);
     return null;
   }
-  return data;
 }
 
 // Systems -> Users page. Only returns more than the caller's own row for an admin/superadmin —
-// enforced by the "admins can view all profiles" RLS policy in schema.sql, not by this function;
-// a viewer calling this just gets their own single row back, same as getProfile() effectively.
+// enforced by require_role("admin") on the backend, not by this function; a viewer calling this
+// gets a 403 instead.
 export async function listAllProfiles() {
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("user_id, full_name, organization, job_title, requested_role, role, created_at")
-    .order("created_at", { ascending: false });
-  if (error) throw error;
-  return data || [];
+  return (await request("/profiles")) || [];
 }
 
-// Calls the promote_user_role() RPC (schema.sql) — SECURITY DEFINER, re-checks the caller is
-// actually a superadmin server-side, so this isn't a client-trust boundary even though it's
-// invoked from the browser.
+// Calls POST /auth/admin/promote-role — re-checks the caller is actually a superadmin
+// server-side, so this isn't a client-trust boundary even though it's invoked from the browser.
 export async function promoteUserRole(targetUserId, newRole) {
-  const { error } = await supabase.rpc("promote_user_role", {
-    target_user_id: targetUserId,
-    new_role: newRole,
+  await request("/auth/admin/promote-role", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ target_user_id: targetUserId, new_role: newRole }),
   });
-  if (error) throw error;
 }
 
-export async function createProfile({ fullName, organization, jobTitle, requestedRole }) {
-  const { error } = await supabase.from("profiles").insert({
-    full_name: fullName || null,
-    organization: organization || null,
-    job_title: jobTitle || null,
-    requested_role: requestedRole || "viewer",
-  });
-  if (error) throw error;
-}
-
-// Settings page — updates the editable subset of the caller's own profile row. `role` is
-// deliberately not an accepted field here (see module docstring); passing it would be silently
-// rejected by the database trigger anyway, but keeping it out of this function's signature
-// means that's not even something a future caller could attempt from this store.
+// Settings page — updates the editable subset of the caller's own profile row.
 export async function updateProfile({ fullName, organization, jobTitle, phone, department }) {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not signed in.");
-  const { error } = await supabase
-    .from("profiles")
-    .update({
+  await request("/profiles/me", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
       full_name: fullName || null,
       organization: organization || null,
       job_title: jobTitle || null,
       phone: phone || null,
       department: department || null,
-    })
-    .eq("user_id", user.id);
-  if (error) throw error;
+    }),
+  });
 }
 
-// Uploads a new avatar image to the `avatars` Storage bucket (owner-scoped by path prefix —
-// see schema.sql's storage.objects policies), then writes the resulting public URL onto the
-// caller's own profile row. Overwrites any previous avatar at the same fixed path (`upsert:
-// true`) rather than accumulating old uploads that RLS would prevent anyone from cleaning up.
+// Uploads a new avatar image. Backed by POST /profile/avatar (local-disk storage — see
+// backend/api/routes/avatar.py), replacing the Supabase `avatars` Storage bucket.
 export async function uploadAvatar(file) {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not signed in.");
-
-  const ext = file.name.split(".").pop() || "jpg";
-  const path = `${user.id}/avatar.${ext}`;
-
-  const { error: uploadError } = await supabase.storage
-    .from("avatars")
-    .upload(path, file, { upsert: true, contentType: file.type });
-  if (uploadError) throw uploadError;
-
-  const { data: publicUrlData } = supabase.storage.from("avatars").getPublicUrl(path);
-  // Cache-bust: the URL itself doesn't change on re-upload (fixed path), so a browser that
-  // already cached the old image would otherwise keep showing it after a new upload.
-  const avatarUrl = `${publicUrlData.publicUrl}?t=${Date.now()}`;
-
-  const { error: updateError } = await supabase
-    .from("profiles")
-    .update({ avatar_url: avatarUrl })
-    .eq("user_id", user.id);
-  if (updateError) throw updateError;
-
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${getBase()}/profile/avatar`, {
+    method: "POST",
+    body: form,
+    credentials: "include",
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `${res.status}: ${res.statusText}`);
+  }
+  const { avatar_url: avatarUrl } = await res.json();
   return avatarUrl;
 }

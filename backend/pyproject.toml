@@ -137,6 +137,8 @@ dependencies = [
     # Testing (Day 13 — integration/end-to-end suite, backend/tests/)
     "pytest==8.2.2",
     "pytest-cov==5.0.0",
+    "pytest-asyncio==0.24.0", # async DB-backed tests (test_auth.py, CRUD route tests)
+    "aiosqlite==0.20.0", # in-memory async SQLite for tests — avoids requiring a live Postgres
 ]
 
 [project.optional-dependencies]

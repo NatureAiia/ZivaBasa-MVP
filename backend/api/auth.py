@@ -3,28 +3,23 @@ auth.py — Optional API-key bearer auth + role-based access control (Section 8 
 Compliance: "Secure authentication", "Role-based access control on API endpoints", "Secure API
 access tokens").
 
-OFF BY DEFAULT, same pattern as every other optional key in this project (chat providers,
-Supabase, macro data): if `ZIVABASA_API_KEYS` isn't set, every endpoint behaves exactly as it did
-before this file existed — open, no token required. This matters concretely here: the frontend
-has no login screen today, so making auth mandatory by default would break every existing
-request path the moment this shipped, for a `docker compose up` that sets no new env var at all.
-Once an operator sets `ZIVABASA_API_KEYS` (format: `"key1:role1,key2:role2"`, roles are `admin`
-or `viewer`), sensitive/costly endpoints start requiring a valid `Authorization: Bearer <key>`
-header carrying a role that meets the endpoint's minimum.
+OFF BY DEFAULT, same pattern as every other optional key in this project (chat providers, macro
+data): if `ZIVABASA_API_KEYS` isn't set, every endpoint behaves exactly as it did before this
+file existed — open, no token required. This matters concretely here: the frontend has no login
+screen today, so making auth mandatory by default would break every existing request path the
+moment this shipped, for a `docker compose up` that sets no new env var at all. Once an operator
+sets `ZIVABASA_API_KEYS` (format: `"key1:role1,key2:role2"`, roles are `admin` or `viewer`),
+sensitive/costly endpoints start requiring a valid `Authorization: Bearer <key>` header carrying
+a role that meets the endpoint's minimum.
 
-SCOPE NOTE on "secure authentication + password hashing": this implements API-key bearer auth,
-not a username/password login system — there is no user-account database or login UI anywhere
-in this frontend to hash passwords for. If a real per-user login system is added later, password
-hashing (e.g. via passlib/bcrypt) becomes relevant then, not retrofitted onto a machine-to-machine
-API key scheme now.
-
-SUPABASE FALLBACK (added alongside the 3rd role tier): the ZIVABASA_API_KEYS scheme above was,
-until now, the *only* thing require_role() could ever resolve a role from — and the frontend
-never sends an Authorization header, so in practice every endpoint stayed fully open regardless
-of who was logged in. require_role() now also tries resolving a role from the caller's actual
-Supabase session (see supabase_auth.py) when ZIVABASA_API_KEYS isn't configured. This activates
-only once SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY are BOTH set on the backend — unset, behavior
-is byte-for-byte what it was before this change (fully open).
+LOCAL JWT FALLBACK (replaces the old Supabase-session fallback): the ZIVABASA_API_KEYS scheme
+above was, until now, the *only* thing require_role() could ever resolve a role from — and the
+frontend never sent an Authorization header before real login existed, so in practice every
+endpoint stayed fully open regardless of who was logged in. require_role() now also tries
+decoding the caller's access token issued by POST /auth/login (see auth_service.py) when
+ZIVABASA_API_KEYS isn't configured — this activates automatically once a frontend session
+exists, no separate opt-in env var needed (JWT_SECRET is required either way for /auth/* to
+function at all).
 """
 from __future__ import annotations
 
@@ -33,7 +28,7 @@ from typing import Dict, Optional
 
 from fastapi import Header, HTTPException
 
-from api import supabase_auth
+from api import auth_service
 
 Role = str  # "viewer" | "admin" | "superadmin"
 _ROLE_RANK = {"viewer": 0, "admin": 1, "superadmin": 2}
@@ -55,13 +50,30 @@ def auth_enabled() -> bool:
     return bool(_load_keys())
 
 
+def _jwt_configured() -> bool:
+    return bool(os.environ.get("JWT_SECRET"))
+
+
+async def resolve_identity_from_access_token(token: str) -> Optional[tuple[str, str]]:
+    """Decodes a POST /auth/login-issued access token locally (no DB round trip needed for the
+    role, since it's embedded in the JWT claims) — returns (user_id, role), or None if the token
+    is missing/expired/invalid."""
+    payload = auth_service.decode_access_token(token)
+    if payload is None:
+        return None
+    user_id, role = payload.get("sub"), payload.get("role")
+    if not user_id or not role:
+        return None
+    return user_id, role
+
+
 def require_role(min_role: Role = "viewer"):
     """FastAPI dependency factory. Tries, in order: the ZIVABASA_API_KEYS bearer-token scheme
-    (unchanged from before), then — only if that scheme isn't configured — a Supabase-session
-    fallback (see supabase_auth.py). If NEITHER is configured, always passes with role=None
-    (fully open, identical to this file's original behavior). Once either is configured, a
-    missing/invalid/insufficient token is rejected (401/403) rather than silently allowed
-    through — configuring either secret is the explicit opt-in to real enforcement."""
+    (unchanged from before), then — only if that scheme isn't configured — decoding a local JWT
+    issued by POST /auth/login (see auth_service.py). If NEITHER is configured (no
+    ZIVABASA_API_KEYS and no JWT_SECRET), always passes with role=None (fully open, identical to
+    this file's original behavior). Once either is configured, a missing/invalid/insufficient
+    token is rejected (401/403) rather than silently allowed through."""
 
     async def _dependency(authorization: Optional[str] = Header(default=None)) -> Optional[Role]:
         keys = _load_keys()
@@ -76,17 +88,37 @@ def require_role(min_role: Role = "viewer"):
                 raise HTTPException(status_code=403, detail=f"Role '{role}' lacks required '{min_role}' access.")
             return role
 
-        if supabase_auth.configured():
+        if _jwt_configured():
             if not authorization or not authorization.startswith("Bearer "):
                 raise HTTPException(status_code=401, detail="Missing or malformed Authorization header.")
             token = authorization.removeprefix("Bearer ").strip()
-            role = await supabase_auth.resolve_role_from_token(token)
-            if role is None:
-                raise HTTPException(status_code=401, detail="Invalid or unrecognized session.")
+            identity = await resolve_identity_from_access_token(token)
+            if identity is None:
+                raise HTTPException(status_code=401, detail="Invalid or expired session.")
+            _user_id, role = identity
             if _ROLE_RANK.get(role, -1) < _ROLE_RANK.get(min_role, 0):
                 raise HTTPException(status_code=403, detail=f"Role '{role}' lacks required '{min_role}' access.")
             return role
 
         return None  # neither scheme configured — open, as before this file existed
+
+    return _dependency
+
+
+def require_user():
+    """FastAPI dependency factory for the CRUD routes (api/routes/*.py) that need the caller's
+    own user_id to scope queries — the explicit backend-enforced replacement for what Postgres
+    RLS's `user_id = auth.uid()` used to do automatically. Unlike require_role(), this has no
+    "open" fallback: every CRUD endpoint that touches per-user data requires a real session,
+    since there's no meaningful way to scope a query to "no particular user"."""
+
+    async def _dependency(authorization: Optional[str] = Header(default=None)) -> tuple[str, Role]:
+        if not authorization or not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Missing or malformed Authorization header.")
+        token = authorization.removeprefix("Bearer ").strip()
+        identity = await resolve_identity_from_access_token(token)
+        if identity is None:
+            raise HTTPException(status_code=401, detail="Invalid or expired session.")
+        return identity
 
     return _dependency
