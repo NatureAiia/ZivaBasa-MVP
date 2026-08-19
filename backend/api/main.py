@@ -37,6 +37,7 @@ load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 import numpy as np
 from fastapi import Depends, FastAPI, Header, HTTPException, UploadFile, File, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from api.schemas import (
     PredictRequest, PredictResponse, SchemaResponse,
@@ -49,7 +50,10 @@ from api.schemas import (
 )
 from api.model_registry import registry, forecast_registry
 from api import auth
+from api import auth_routes
 from api import tokens
+from api.routes import avatar as avatar_routes
+from api.routes import profiles as profiles_routes
 from api import batch as batch_module
 from api import chat as chat_module
 from api import agent_graph
@@ -97,15 +101,29 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Permissive CORS for local prototyping only — the dashboard (opened as a local file, or
-# served from a different port) needs this to call the API from a browser. Tighten this
-# (specific origins, not "*") before this goes anywhere beyond your own machine.
+# CORS_ALLOWED_ORIGINS (comma-separated, e.g. "http://localhost:5173,https://app.zivabasa.com")
+# — explicit origins, not "*", are required once auth uses cookies (POST /auth/*'s httpOnly
+# refresh-token cookie, see api/auth_routes.py): browsers reject `Access-Control-Allow-Origin: *`
+# combined with `Access-Control-Allow-Credentials: true` outright, so a wildcard would silently
+# break login/refresh from any real frontend rather than just being "permissive". Defaults to
+# the Vite dev server origin so local development keeps working out of the box.
+_cors_origins = [
+    o.strip() for o in os.environ.get("CORS_ALLOWED_ORIGINS", "http://localhost:5173").split(",") if o.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(auth_routes.router)
+app.include_router(profiles_routes.router)
+app.include_router(avatar_routes.router)
+
+os.makedirs(avatar_routes.avatar_storage_dir(), exist_ok=True)
+app.mount("/avatars", StaticFiles(directory=avatar_routes.avatar_storage_dir()), name="avatars")
 
 
 def _get_task_or_404(task: str):
@@ -426,8 +444,8 @@ async def chat_agent(
 ):
     """Chiedza's LangGraph agent mode (api/agent_graph.py) — a parallel capability alongside
     POST /chat, not a replacement for it. Unlike plain chat, this can read the caller's own
-    saved org chart / prediction history / batch results from Supabase (request.user_id scopes
-    those reads) in addition to running fresh predictions."""
+    saved org chart / prediction history / batch results from the database (request.user_id
+    scopes those reads) in addition to running fresh predictions."""
     try:
         result = await agent_graph.run_agent(
             [m.model_dump() for m in request.messages], user_id=request.user_id

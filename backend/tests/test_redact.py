@@ -6,7 +6,6 @@ viewer-role caller).
 from __future__ import annotations
 
 from api import redact
-from api import supabase_auth
 
 
 def test_redact_rows_noop_when_role_none():
