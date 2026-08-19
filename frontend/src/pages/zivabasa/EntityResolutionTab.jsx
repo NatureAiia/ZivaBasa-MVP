@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Link2, Loader2, Check, X } from "lucide-react";
 import Card from "../../components/common/Card";
 import Badge from "../../components/common/Badge";
+import ConfirmModal from "../../components/common/ConfirmModal";
 import { staggerContainer, fadeUpItem } from "../../lib/motion";
 import { getAllBatchResults } from "../../lib/batchStore";
 import { getEntityLinks, confirmCluster } from "../../lib/entityLinksStore";
@@ -32,6 +33,7 @@ export default function EntityResolutionTab() {
   const [matchResult, setMatchResult] = useState(null);
   const [error, setError] = useState(null);
   const [dismissed, setDismissed] = useState(new Set());
+  const [pendingDismiss, setPendingDismiss] = useState(null);
 
   useEffect(() => {
     getAllBatchResults().then(setBatchResults);
@@ -149,7 +151,7 @@ export default function EntityResolutionTab() {
                             </span>
                             <div className="flex items-center gap-2">
                               <button
-                                onClick={() => setDismissed((prev) => new Set(prev).add(idx))}
+                                onClick={() => setPendingDismiss(idx)}
                                 className="text-ink-faint hover:text-ink"
                                 aria-label="Dismiss"
                               >
@@ -174,6 +176,19 @@ export default function EntityResolutionTab() {
           )}
         </motion.div>
       </div>
+
+      <ConfirmModal
+        open={pendingDismiss !== null}
+        title="Dismiss this match?"
+        body="This candidate link won't be saved. You can re-run matching later, but this exact suggestion won't be shown again this session."
+        confirmLabel="Dismiss"
+        tone="danger"
+        onCancel={() => setPendingDismiss(null)}
+        onConfirm={() => {
+          setDismissed((prev) => new Set(prev).add(pendingDismiss));
+          setPendingDismiss(null);
+        }}
+      />
     </div>
   );
 }

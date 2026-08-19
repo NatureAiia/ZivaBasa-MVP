@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { Search, ChevronDown } from "lucide-react";
 import ThemeToggle from "../components/layout/ThemeToggle";
 import Globe from "../components/landing/Globe";
 import StarBurst from "../components/effects/StarBurst";
@@ -504,6 +505,53 @@ const LANDING_CSS = `
 .landing-page .auth-card p{ color: var(--land-ink-muted); font-size: 0.9rem; }
 .landing-page .auth-card .auth-card-actions{ display: flex; flex-direction: column; gap: 10px; }
 
+/* ---------- FAQ ---------- */
+.landing-page .faq-search{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 420px;
+  margin-bottom: 32px;
+  padding: 10px 14px;
+  border: 1px solid var(--land-hairline-strong);
+  border-radius: 6px;
+  background: var(--land-surface);
+}
+.landing-page .faq-search svg{ flex-shrink: 0; color: var(--land-ink-faint); }
+.landing-page .faq-search input{
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  font-family: var(--land-font-body);
+  font-size: 0.9rem;
+  color: var(--land-ink);
+}
+.landing-page .faq-search input::placeholder{ color: var(--land-ink-faint); }
+.landing-page .faq-list{ display: flex; flex-direction: column; border-top: 1px solid var(--land-hairline); }
+.landing-page .faq-item{ border-bottom: 1px solid var(--land-hairline); }
+.landing-page .faq-q{
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 0;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--land-font-body);
+  font-weight: 600;
+  font-size: 0.98rem;
+  color: var(--land-ink);
+}
+.landing-page .faq-q svg{ flex-shrink: 0; color: var(--land-ink-faint); transition: transform .2s ease; }
+.landing-page .faq-q[aria-expanded="true"] svg{ transform: rotate(180deg); color: var(--land-gold); }
+.landing-page .faq-a{ max-height: 0; overflow: hidden; transition: max-height .3s ease; }
+.landing-page .faq-a-inner{ padding-bottom: 20px; color: var(--land-ink-muted); font-size: 0.92rem; max-width: 62ch; }
+.landing-page .faq-empty{ color: var(--land-ink-faint); font-size: 0.9rem; padding: 24px 0; }
+
 /* ---------- FOOTER ---------- */
 .landing-page footer{ border-top: 1px solid var(--land-hairline); padding: 40px 0 28px; }
 .landing-page .footer-grid{ display: grid; grid-template-columns: 1fr; gap: 32px; margin-bottom: 32px; }
@@ -624,10 +672,57 @@ const NAV_LINKS = [
   { href: "#how-it-works", label: "How it works" },
   { href: "#ecosystem", label: "Ecosystem" },
   { href: "#contributions", label: "Contributions" },
+  { href: "#faq", label: "FAQ" },
 ];
+
+// Placeholder copy — swap in real answers once support/product has settled them.
+const FAQS = [
+  {
+    q: "Is ZivaBasa's data real workforce data?",
+    a: "Not yet. The current MVP runs on Kaggle proxy datasets standing in for real banking-sector workforce data, so every prediction is a demonstration of the model's mechanics, not a real-world finding.",
+  },
+  {
+    q: "Do I need my own data to try it?",
+    a: "No — sign up and you can explore forecasts on the built-in proxy datasets immediately. Connecting your own organization's data is a separate, later step.",
+  },
+  {
+    q: "What makes ChiedzaAI's predictions explainable?",
+    a: "Every forecast ships with a causal-consistent XAI layer alongside it — the same screen that shows a prediction also shows which inputs drove it, so it can be interpreted and challenged rather than trusted blindly.",
+  },
+  {
+    q: "Which module should I start with?",
+    a: "ZivaBasa (workforce intelligence) is the only live module today. ZivaDzidzo, ZivaBusiness and ZivaUpfumi are planned next across the wider ChiedzaAI ecosystem.",
+  },
+  {
+    q: "Is my organization's data shared with other institutions?",
+    a: "No. Cross-institution learning is designed around privacy-preserving federated learning — collaboration without exposing any single institution's raw data to another.",
+  },
+];
+
+function FaqItem({ faq, open, onToggle }) {
+  return (
+    <div className="faq-item">
+      <button className="faq-q" aria-expanded={open} onClick={onToggle}>
+        <span>{faq.q}</span>
+        <ChevronDown size={18} />
+      </button>
+      <div className="faq-a" style={{ maxHeight: open ? 400 : 0 }}>
+        <div className="faq-a-inner">{faq.a}</div>
+      </div>
+    </div>
+  );
+}
 
 export default function Landing() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [faqQuery, setFaqQuery] = useState("");
+  const [openFaq, setOpenFaq] = useState(null);
+
+  const filteredFaqs = useMemo(() => {
+    const q = faqQuery.trim().toLowerCase();
+    if (!q) return FAQS;
+    return FAQS.filter((f) => f.q.toLowerCase().includes(q) || f.a.toLowerCase().includes(q));
+  }, [faqQuery]);
   // Mirrors the CSS `@media (prefers-reduced-motion: reduce)` rule on .hero-video — checked
   // in JS too so the <video> element (and its network fetch) is never mounted at all for
   // someone who has asked for reduced motion, not just hidden after the fact.
@@ -642,6 +737,8 @@ export default function Landing() {
   return (
     <div className="landing-page">
       <style>{LANDING_CSS}</style>
+
+      <a href="#top" className="skip-link">Skip to content</a>
 
       <header>
         <nav className="wrap nav">
@@ -688,7 +785,7 @@ export default function Landing() {
         </div>
       </header>
 
-      <main id="top">
+      <main id="top" tabIndex={-1}>
         {/* HERO */}
         <section className="hero">
           {!prefersReducedMotion && (
@@ -1064,6 +1161,41 @@ export default function Landing() {
             </div>
           </div>
         </section>
+        {/* FAQ */}
+        <section id="faq">
+          <div className="wrap">
+            <div className="section-head">
+              <span className="eyebrow">FAQ</span>
+              <h2>Questions, answered.</h2>
+            </div>
+
+            <div className="faq-search">
+              <Search size={16} />
+              <input
+                type="search"
+                placeholder="Search questions…"
+                value={faqQuery}
+                onChange={(e) => setFaqQuery(e.target.value)}
+                aria-label="Search FAQ"
+              />
+            </div>
+
+            {filteredFaqs.length === 0 ? (
+              <p className="faq-empty">No questions match &ldquo;{faqQuery}&rdquo;.</p>
+            ) : (
+              <div className="faq-list">
+                {filteredFaqs.map((faq) => (
+                  <FaqItem
+                    key={faq.q}
+                    faq={faq}
+                    open={openFaq === faq.q}
+                    onToggle={() => setOpenFaq((cur) => (cur === faq.q ? null : faq.q))}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
       </main>
 
       <footer>
@@ -1086,6 +1218,7 @@ export default function Landing() {
                   <li><a href="#ecosystem">Ecosystem</a></li>
                   <li><a href="#global-reach">Global reach</a></li>
                   <li><a href="#principles">Significance</a></li>
+                  <li><a href="#faq">FAQ</a></li>
                 </ul>
               </div>
               <div className="footer-col">
@@ -1106,6 +1239,7 @@ export default function Landing() {
 
           <div className="footer-bottom">
             <span>© 2026 ChiedzaAI. Part of the Aiia ecosystem. All forecasts shown are for demonstration purposes.</span>
+            <span>Page content last updated 16 August 2026.</span>
           </div>
         </div>
       </footer>

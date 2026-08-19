@@ -125,6 +125,43 @@ body, .theme-transition {
   border-radius: 4px;
 }
 
+/* Skip-to-content link — offscreen until keyboard-focused, so it doesn't clutter the visual
+   layout for mouse/touch users but is the very first stop for keyboard/screen-reader nav. */
+.skip-link {
+  position: fixed;
+  top: -100px;
+  left: 12px;
+  z-index: 300;
+  background: rgb(var(--surface));
+  color: rgb(var(--ink));
+  border: 1px solid rgb(var(--gold));
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  transition: top 150ms ease;
+}
+.skip-link:focus {
+  top: 12px;
+}
+
+/* Print — strip chrome (nav/sidebar/floating widgets/buttons) down to the readable content. */
+@media print {
+  .skip-link,
+  nav,
+  aside,
+  header,
+  footer button,
+  .hamburger,
+  .mobile-menu {
+    display: none !important;
+  }
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;

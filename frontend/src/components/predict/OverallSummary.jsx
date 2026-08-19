@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { FileDown, RotateCcw } from "lucide-react";
 import Card from "../common/Card";
 import Button from "../common/Button";
+import CopyButton from "../common/CopyButton";
 import { staggerContainer, fadeUpItem } from "../../lib/motion";
 import { TASKS, TASK_LABELS, TASK_POSITIVE_IS_RISK } from "../../lib/api";
 import { formatPercent, formatRaw } from "../../lib/format";
@@ -96,7 +97,10 @@ export default function OverallSummary({ results, onRestart }) {
       </div>
 
       <Card variants={fadeUpItem}>
-        <h2 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold mb-3">Overall summary</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-[11px] uppercase tracking-wide text-ink-faint font-semibold">Overall summary</h2>
+          <CopyButton text={flagSentence} label="Copy summary" />
+        </div>
         {/* The one narrative verdict on this screen — set in the authority serif so it reads as
             a considered finding, not another data row. Everything else on this card stays Inter. */}
         <p className="font-serif text-lg leading-snug text-ink mb-3">

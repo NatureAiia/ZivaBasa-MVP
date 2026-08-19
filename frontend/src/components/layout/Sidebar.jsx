@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutGrid, Boxes, Wallet, ChevronDown, PanelLeftClose, PanelLeftOpen, X, LogOut, Settings,
-  Users as UsersIcon, Cpu, Cog,
+  Users as UsersIcon, Cpu, Cog, Search,
 } from "lucide-react";
 import clsx from "clsx";
 import ClarityRing from "../common/ClarityRing";
@@ -114,6 +114,19 @@ export default function Sidebar({ mobileOpen = false, onCloseMobile }) {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-3 py-4 flex flex-col gap-1.5">
+        <button
+          onClick={() => window.dispatchEvent(new Event("open-command-palette"))}
+          className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-ink-faint bg-surface2/60 hover:text-ink hover:bg-surface2 transition-colors mb-1"
+        >
+          <Search size={17} className="shrink-0" />
+          {!collapsed && (
+            <>
+              <span className="flex-1 text-left">Search…</span>
+              <kbd className="text-[10px] text-ink-faint border border-border rounded px-1.5 py-0.5">⌘K</kbd>
+            </>
+          )}
+        </button>
+
         <NavItem to="/app" end icon={LayoutGrid} label="Dashboards" collapsed={collapsed} onNavigate={onCloseMobile} />
 
         <button
