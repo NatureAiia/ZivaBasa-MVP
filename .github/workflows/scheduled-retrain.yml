@@ -1,0 +1,67 @@
+# Scheduled retraining + drift-baseline refresh for the ZivaBasa 4-task pipeline.
+#
+# WHAT THIS DOES AND DOESN'T DO, HONESTLY: this reruns backend/scripts/retrain_and_promote.py
+# against whatever CSVs currently live in backend/data/raw/ inside the repo. It is NOT wired
+# to any live data warehouse or production traffic — this project doesn't have one yet. What
+# it buys you: if you refresh those CSVs (a new Kaggle export, real data later), the next
+# scheduled run picks it up automatically and gates promotion on the metrics comparison in
+# retrain_and_promote.py, instead of someone remembering to retrain by hand. It also refreshes
+# the drift baselines every promoted run, so batch-upload drift checks (see src/drift.py)
+# stay meaningful over time rather than comparing against a snapshot from months ago.
+#
+# On promotion, the job commits the updated models/ + data/processed/ + drift_baselines back
+# to the branch and uploads the run's retrain report as a build artifact either way (promoted
+# or not) so a blocked promotion is visible in the Actions tab, not just a silent no-op.
+name: Scheduled retrain
+
+on:
+  schedule:
+    # Weekly, Monday 03:00 UTC — arbitrary but deliberate: off-hours, and frequent enough to
+    # catch a refreshed dataset without retraining on every trivial repo change.
+    - cron: "0 3 * * 1"
+  workflow_dispatch: {}  # manual trigger from the Actions tab, e.g. right after refreshing data/raw/
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v3
+
+      - name: Install backend dependencies
+        run: uv pip sync requirements.lock.txt --system
+
+      - name: Run retrain-and-promote
+        id: retrain
+        run: python scripts/retrain_and_promote.py
+        continue-on-error: true  # a blocked (non-promoted) run is a normal, expected outcome —
+                                  # the job should still upload the report and commit nothing,
+                                  # not go red for a working gate doing its job.
+
+      - name: Upload retrain report
+        uses: actions/upload-artifact@v4
+        with:
+          name: retrain-report
+          path: backend/models/retrain_reports/*.json
+
+      - name: Commit promoted models, if any
+        run: |
+          git config user.name "zivabasa-mlops-bot"
+          git config user.email "actions@github.com"
+          git add models/ data/processed/
+          git diff --cached --quiet || git commit -m "chore(mlops): scheduled retrain promotion [skip ci]"
+          git diff --cached --quiet || git push
+
+      - name: Fail the job if the gate blocked promotion
+        if: steps.retrain.outcome == 'failure'
+        run: |
+          echo "Retrain ran but did NOT promote — see the retrain-report artifact for gate_reasons."
+          exit 1

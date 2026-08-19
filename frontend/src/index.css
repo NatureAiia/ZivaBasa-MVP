@@ -1,0 +1,141 @@
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  Design tokens — two palettes (dark default, light override), expressed as raw RGB triples so
+  Tailwind's `rgb(var(--x) / <alpha-value>)` pattern can apply opacity. Dark is the platform's
+  home base (matches v1's data-density and NotebookLM/FFIMS's dark-first dashboards); light is a
+  full parity mode, not an afterthought.
+*/
+:root {
+  --bg: 11 15 23;           /* #0B0F17 */
+  --surface: 19 24 38;      /* #131826 */
+  --surface-2: 27 35 51;    /* #1B2333 */
+  --border: 38 48 74;       /* #26304A */
+  --ink: 237 239 245;       /* #EDEFF5 */
+  --ink-muted: 168 175 194; /* #A8AFC2 — nudged up from #9BA3B7 for clearer contrast */
+  --ink-faint: 100 108 128; /* #646C80 */
+
+  /* Semantic core — the only three colors allowed in UI chrome (buttons, focus rings, status,
+     badges of meaning). Each maps to one fixed meaning app-wide and is never reassigned per
+     chart: gold = signal/primary action, teal = verified/positive, red = flagged/risk. */
+  --gold: 232 163 61;       /* #E8A33D — "knowing / illumination" accent, signature ring color */
+  --teal: 47 191 159;       /* #2FBF9F — positive / safe, carried over from v1 */
+  --red: 229 72 77;         /* #E5484D — risk / negative */
+
+  /* Categorical set — reserved for multi-series charts/legends that need >3 distinguishable
+     hues (e.g. CostMonitoring's 6-category breakdown). Never used for brand chrome, CTAs, or
+     status — that's what the semantic core above is for. Keeping this separate from the
+     semantic core is what stops the app from reading as a generic 6-accent dashboard theme. */
+  --indigo: 108 124 255;    /* #6C7CFF — categorical 1 */
+  --violet: 168 129 255;    /* #A881FF — categorical 2 */
+  --cyan: 45 197 219;       /* #2DC5DB — categorical 3 */
+}
+
+[data-theme="light"] {
+  --bg: 247 248 251;        /* #F7F8FB */
+  --surface: 255 255 255;   /* #FFFFFF */
+  --surface-2: 240 242 247; /* #F0F2F7 */
+  --border: 226 230 239;    /* #E2E6EF */
+  --ink: 18 23 43;          /* #12172B */
+  --ink-muted: 91 100 120;  /* #5B6478 */
+  --ink-faint: 138 146 166; /* #8A92A6 */
+
+  --gold: 197 129 22;       /* deepened for AA contrast on white */
+  --teal: 12 138 112;
+  --red: 200 45 50;
+  --indigo: 79 92 219;
+  --violet: 124 77 255;
+  --cyan: 8 137 154;
+}
+
+/*
+  Per-module accent override — each ChiedzaAI module (ZivaBasa, ZivaDzidzo, ZivaBusiness,
+  ZivaUpfumi) gets its own color code, applied by scoping class on that module's layout root
+  (see ZivaBasaLayout.jsx) rather than touching every component that reads --gold. Every
+  existing bg-gold/text-gold/border-gold usage (Badge, Button, ClarityRing, focus rings, etc.)
+  picks this up automatically since they all read the --gold CSS var, not a hardcoded color.
+  Everything outside a module scope (Shell, Sidebar, ChiedzaDashboard, LoginPage) keeps the
+  base gold above untouched, matching ChiedzaAI's own brand identity.
+*/
+.zivabasa-scope {
+  --gold: 232 131 77;       /* #E8834D — ZivaBasa's orange/peach accent (dark) */
+}
+[data-theme="light"] .zivabasa-scope {
+  --gold: 197 111 65;       /* deepened for AA contrast on white, same ratio as the base gold above */
+}
+
+* {
+  border-color: rgb(var(--border));
+}
+
+html {
+  color-scheme: dark;
+}
+html[data-theme="light"] {
+  color-scheme: light;
+}
+
+body {
+  background: rgb(var(--bg));
+  color: rgb(var(--ink));
+  font-family: "Inter", sans-serif;
+  font-weight: 500; /* bumped from the browser default 400 — thin body text read as washed-out
+                        in both themes, especially over the new background animation */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 300ms var(--ease, ease), color 300ms var(--ease, ease);
+}
+
+h1, h2, h3, .font-display {
+  font-weight: 700; /* headings get a firmer weight than the 600 "semibold" default so they
+                        stay legible against the animated background */
+}
+
+/* Cross-fade every themeable surface, not just body — this is what makes the toggle feel like
+   one continuous transition instead of a flash of mismatched colors. */
+body, .theme-transition {
+  transition: background-color 320ms cubic-bezier(0.22, 1, 0.36, 1),
+              border-color 320ms cubic-bezier(0.22, 1, 0.36, 1),
+              color 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+::selection {
+  background: rgb(var(--gold) / 0.3);
+}
+
+/* Shimmer skeleton loader */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgb(var(--surface-2)) 0%,
+    rgb(var(--border)) 50%,
+    rgb(var(--surface-2)) 100%
+  );
+  background-size: 800px 100%;
+}
+
+/* Visible keyboard focus everywhere — quality floor, not optional */
+:focus-visible {
+  outline: 2px solid rgb(var(--gold));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Thin, unobtrusive scrollbars matching the palette */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgb(var(--border)); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--ink-faint)); }

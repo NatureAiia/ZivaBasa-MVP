@@ -1,0 +1,24 @@
+# Kept out of the image on purpose: data/, models/ (predictions need these) and api/, src/,
+# scripts/, requirements.txt are NOT excluded here.
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+coverage.xml
+tests/
+
+# Secrets — injected at runtime via `environment:`/`--env-file`, never baked into the image.
+.env
+api/.env
+
+# Local dev / notebook cruft not needed to serve the API.
+notebooks/
+mlruns/
+.ipynb_checkpoints/
+*.egg-info/
+.venv/
+venv/
+
+.git/
+.gitignore

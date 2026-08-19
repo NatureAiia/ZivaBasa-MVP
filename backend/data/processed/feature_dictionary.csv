@@ -1,0 +1,12 @@
+feature_name,category,task_head,source_columns,description
+industry,raw,productivity,['industry'],"Direct source column, no transformation."
+ai_adoption_level,raw,productivity,['ai_adoption_level'],"Direct source column, no transformation."
+skill_gap_index,raw,productivity,['skill_gap_index'],"Direct source column, no transformation."
+salary_change_percent,raw,productivity,['salary_change_percent'],"Direct source column, no transformation."
+year,raw,productivity,['year'],"Direct source column, no transformation."
+cpi_general_index,raw,productivity,['year'],"Zimbabwe cpi general index, joined by year from human_capital_project.csv (FAO CPI/food-inflation panel — NOT HR data despite the misleading filename)."
+food_inflation_rate,raw,productivity,['year'],"Zimbabwe food inflation rate, joined by year from human_capital_project.csv (FAO CPI/food-inflation panel — NOT HR data despite the misleading filename)."
+salary_change_real,ratio,productivity,"['salary_change_percent', 'food_inflation_rate']","Inflation-adjusted (real) salary change = nominal salary_change_percent - food_inflation_rate. A nominal pay rise can still be a real pay cut in a high-inflation economy — this is a legitimate, exogenous (non-leaky) addition, not a derivative of any task's own target."
+ai_adoption_index,index,productivity,['ai_adoption_level'],"Min-max normalized AI adoption level, 0-1 scale."
+ai_adoption_x_labour_cost_trend,interaction,productivity,"['ai_adoption_index', 'salary_change_percent']","AI4I catalogue §2.3 'AI Adoption x Labour Cost'. The real productivity CSV (ai_job_replacement_2020_2026_v2.csv) has no absolute labour-cost column, so salary_change_percent (% change in salary) is used as the labour-cost-trend proxy — same 'closest analogue, honestly labeled' pattern as employment's ai_tool_maturity_score/task_repetition_level standing in for a true digital-skill-level field. NOT a substitute for a real labour_cost_per_employee column once bank data replaces the Kaggle proxy. Dropped from productivity's modeling matrix (config.py) — it's a direct multiplicative derivative of ai_adoption_index, which IS target_ai_adoption, so it inherits the same leakage employment's exposure_x_skill_complexity had to be excluded for."
+target_ai_adoption,target,productivity,['ai_adoption_index'],Regression target — normalized AI adoption level.
