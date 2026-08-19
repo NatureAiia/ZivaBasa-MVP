@@ -35,8 +35,15 @@ export default function CommandPalette() {
         setOpen((o) => !o);
       }
     };
+    // Sidebar's visible "Search" button has no ref to this component's state, so it opens the
+    // palette by firing this event instead — same entry point as Cmd/Ctrl+K.
+    const onOpenRequest = () => setOpen(true);
     document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("open-command-palette", onOpenRequest);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("open-command-palette", onOpenRequest);
+    };
   }, []);
 
   const go = (to) => {

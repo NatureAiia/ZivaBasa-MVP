@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import Landing from "./pages/Landing";
 import LoginPage from "./pages/LoginPage";
@@ -23,13 +24,22 @@ import ReviewQueueTab from "./pages/zivabasa/ReviewQueueTab";
 import EntityResolutionTab from "./pages/zivabasa/EntityResolutionTab";
 import { MODELS } from "./components/layout/Sidebar";
 import ChiedzaWidget from "./components/chat/ChiedzaWidget";
+import ScrollProgressBar from "./components/common/ScrollProgressBar";
+import BackToTop from "./components/common/BackToTop";
+import CookieConsentBanner from "./components/common/CookieConsentBanner";
+import { captureUtmParams } from "./lib/utm";
 
 
 const OTHER_MODELS = MODELS.filter((m) => !m.live).map((m) => m.slug);
 
 export default function App() {
+  useEffect(() => {
+    captureUtmParams();
+  }, []);
+
   return (
     <>
+      <ScrollProgressBar />
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<LoginPage />} />
@@ -79,6 +89,8 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <ChiedzaWidget />
+      <BackToTop />
+      <CookieConsentBanner />
     </>
   );
 }
