@@ -3,5 +3,9 @@ deployment:
   tasks:
     - cd /home/uat/repositories/ZivaBasa-MVP/frontend && npm install --no-audit --no-fund
     - cd /home/uat/repositories/ZivaBasa-MVP/frontend && VITE_API_BASE=https://diplomatic-onyx-antelope.172-93-106-10.cpanel.site:8443 VITE_SUPABASE_URL=https://pwttcyegzbymdohdnkzc.supabase.co VITE_SUPABASE_ANON_KEY=sb_publishable_P0bodUoUalamwNmQ0Ey8UQ_BsKRbKPC /usr/bin/node node_modules/vite/bin/vite.js build --outDir /home/uat/public_html --emptyOutDir
-    - /usr/local/bin/pm2 restart zivabasa-backend --update-env
+    # Serving-only deps (excludes torch/transformers/chronos-forecasting — see
+    # backend/requirements-serving.txt's own header for what's deliberately left out).
+    - cd /home/uat/repositories/ZivaBasa-MVP/backend && venv/bin/pip install --no-cache-dir -r requirements-serving.txt
+    - cd /home/uat/repositories/ZivaBasa-MVP/backend && venv/bin/alembic upgrade head
+    - cd /home/uat/repositories/ZivaBasa-MVP/backend && /usr/local/bin/pm2 startOrReload ecosystem.config.cjs --update-env && /usr/local/bin/pm2 save
     - /usr/bin/uapi NginxCaching clear_cache
