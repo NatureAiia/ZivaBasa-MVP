@@ -7,5 +7,7 @@ deployment:
     # backend/requirements-serving.txt's own header for what's deliberately left out).
     - cd /home/uat/repositories/ZivaBasa-MVP/backend && venv/bin/pip install --no-cache-dir -r requirements-serving.txt
     - cd /home/uat/repositories/ZivaBasa-MVP/backend && venv/bin/alembic upgrade head
+    # NOTE: ecosystem.config.cjs now binds port 8001 (was 8000, taken by digital-force-py).
+    # Provider must update Apache/Nginx proxy: ProxyPass / ProxyPassReverse to 127.0.0.1:8001.
     - cd /home/uat/repositories/ZivaBasa-MVP/backend && /usr/local/bin/pm2 startOrReload ecosystem.config.cjs --update-env && /usr/local/bin/pm2 save
     - /usr/bin/uapi NginxCaching clear_cache
