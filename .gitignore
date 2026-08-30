@@ -201,3 +201,6 @@ backend/ecosystem.config.cjs
 backend/pm2-out.log
 backend/pm2-error.log
 backend/pm2-reboot.log
+
+# Admin scripts contain hardcoded VPS secrets — never commit
+admin/*.py
