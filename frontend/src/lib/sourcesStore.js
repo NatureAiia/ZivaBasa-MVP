@@ -1,9 +1,10 @@
 /*
-  Sources store — now backed by Postgres (sources table) instead of localStorage. Written to
-  by SourcesPanel's manual drag-drop and every successful Predict-tab batch upload. File
+  Sources store — backed by Postgres via the backend's /sources routes
+  (backend/api/routes/sources.py) instead of a direct `supabase.from("sources")` call. Written
+  to by SourcesPanel's manual drag-drop and every successful Predict-tab batch upload. File
   contents are never stored here — just enough metadata to recognize and reference the source.
 */
-import { supabase } from "./supabaseClient";
+import { request } from "./api";
 
 function fromRow(row) {
   return {
@@ -18,29 +19,32 @@ function fromRow(row) {
 }
 
 export async function getSources() {
-  const { data, error } = await supabase.from("sources").select("*").order("added_at", { ascending: false });
-  if (error) {
-    console.error("getSources failed:", error.message);
+  try {
+    const rows = await request("/sources");
+    return rows.map(fromRow);
+  } catch (e) {
+    console.error("getSources failed:", e.message);
     return [];
   }
-  return data.map(fromRow);
 }
 
 // source: { name, kind: "pdf"|"image"|"text"|"csv", size, task?, rowCount? }
 export async function addSource(source) {
-  const { error } = await supabase.from("sources").insert({
-    name: source.name,
-    kind: source.kind,
-    size: source.size ?? null,
-    task: source.task ?? null,
-    row_count: source.rowCount ?? null,
+  const rows = await request("/sources", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: source.name,
+      kind: source.kind,
+      size: source.size ?? null,
+      task: source.task ?? null,
+      row_count: source.rowCount ?? null,
+    }),
   });
-  if (error) throw error;
-  return getSources();
+  return rows.map(fromRow);
 }
 
 export async function removeSource(id) {
-  const { error } = await supabase.from("sources").delete().eq("id", id);
-  if (error) throw error;
-  return getSources();
+  const rows = await request(`/sources/${id}`, { method: "DELETE" });
+  return rows.map(fromRow);
 }

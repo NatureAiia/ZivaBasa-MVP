@@ -50,7 +50,6 @@ httpx==0.27.0
 langgraph==0.2.60
 langchain-core>=0.3.31,<0.4.0
 langchain-anthropic==0.3.4
-supabase==2.10.0
 
 # Self-hosted persistence + auth (api/db/, api/auth_service.py) — required once DATABASE_URL
 # is set. bcrypt is pinned to 4.0.1, not left to resolve to latest: passlib 1.7.4's own

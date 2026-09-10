@@ -29,7 +29,10 @@ function authHeaders() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-async function request(path, options) {
+// Exported for the *Store.js modules under lib/ (profileStore.js and everything that used to
+// call Supabase directly) — same base-URL + auth-header + credentials + JSON-error-unwrapping
+// contract this file's own `api` object uses internally.
+export async function request(path, options) {
   const base = getBase();
   const auth = authHeaders();
   const withAuth = {
@@ -53,7 +56,11 @@ async function request(path, options) {
     }
     throw new Error(`${res.status}: ${detail}`);
   }
-  return res.json();
+  // 204 No Content (several of the new *Store.js DELETE/PUT-void routes) has no body at all —
+  // res.json() throws on an empty body, so only parse when there's actually something to parse.
+  if (res.status === 204) return null;
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
 }
 
 async function requestBlob(path, options) {

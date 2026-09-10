@@ -1,10 +1,11 @@
 /*
-  Milestone moments (growth mechanic 4) — Postgres-backed (milestone_events table, see
-  backend/supabase/migration_add_engagement.sql). Each milestone fires its celebratory toast
-  once per user, ever, not on every repeat visit — enforced by a unique(user_id, milestone_key)
-  constraint, so a duplicate insert simply fails and is treated as "already fired."
+  Milestone moments (growth mechanic 4) — backed by Postgres via the backend's /milestones route
+  (backend/api/routes/milestones.py) instead of a direct `supabase.from("milestone_events")`
+  insert. Each milestone fires its celebratory toast once per user, ever, not on every repeat
+  visit — enforced server-side by a pre-check against the same unique(user_id, milestone_key)
+  constraint the table still has.
 */
-import { supabase } from "./supabaseClient";
+import { request } from "./api";
 
 export const MILESTONES = {
   FIRST_SKILL_MATCH: "first_skill_match",
@@ -30,21 +31,17 @@ export const MILESTONE_COPY = {
 };
 
 // Returns true the first time this milestone fires for the signed-in user (caller should show
-// a toast), false if it already fired before or the insert failed for any other reason.
+// a toast), false if it already fired before or the request failed for any other reason.
 export async function checkAndFireMilestone(milestoneKey) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return false;
-
-  const { error } = await supabase
-    .from("milestone_events")
-    .insert({ user_id: user.id, milestone_key: milestoneKey });
-
-  // A unique-violation (Postgres code 23505) means it already fired — that's the expected
-  // "don't re-celebrate" path, not a real error.
-  if (error && error.code !== "23505") {
-    console.error("checkAndFireMilestone failed:", error.message);
+  try {
+    const { fired } = await request("/milestones", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ milestone_key: milestoneKey }),
+    });
+    return fired;
+  } catch (e) {
+    console.error("checkAndFireMilestone failed:", e.message);
+    return false;
   }
-  return !error;
 }

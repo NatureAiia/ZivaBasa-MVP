@@ -1,13 +1,13 @@
 /*
-  Assignment store — now backed by Postgres (assignments table, see
-  backend/supabase/schema.sql) instead of localStorage. Same approval-workflow audit trail
-  concept as before (recommend -> approve/reject -> tracked decision); same exported
-  function names, now async.
+  Assignment store — backed by Postgres via the backend's /assignments routes
+  (backend/api/routes/assignments.py) instead of a direct `supabase.from("assignments")` call.
+  Same approval-workflow audit trail concept as before (recommend -> approve/reject -> tracked
+  decision); same exported function names, still async.
 
   A record: { id, roleId, roleTitle, fromRole, toRole, cosineSimilarityScore, missingSkills,
               status: "pending" | "approved" | "rejected", decidedAt, note, recommendedAt }
 */
-import { supabase } from "./supabaseClient";
+import { request } from "./api";
 
 function fromRow(row) {
   return {
@@ -26,50 +26,40 @@ function fromRow(row) {
 }
 
 export async function getAssignments() {
-  const { data, error } = await supabase
-    .from("assignments")
-    .select("*")
-    .order("recommended_at", { ascending: false });
-  if (error) {
-    console.error("getAssignments failed:", error.message);
+  try {
+    const rows = await request("/assignments");
+    return rows.map(fromRow);
+  } catch (e) {
+    console.error("getAssignments failed:", e.message);
     return [];
   }
-  return data.map(fromRow);
 }
 
 export async function recommendAssignment(record) {
-  // Relies on the assignments_role_target_uniq constraint (user_id, role_id, to_role) —
-  // upsert with ignoreDuplicates is the same "don't spam a new row for the same
-  // role -> target pair" behavior the old localStorage version implemented by hand.
-  const { error } = await supabase
-    .from("assignments")
-    .upsert(
-      {
-        role_id: record.roleId,
-        role_title: record.roleTitle,
-        from_role: record.fromRole,
-        to_role: record.toRole,
-        cosine_similarity_score: record.cosineSimilarityScore,
-        missing_skills: record.missingSkills || [],
-        status: "pending",
-      },
-      { onConflict: "user_id,role_id,to_role", ignoreDuplicates: true }
-    )
-    .select();
-  if (error) throw error;
-  return getAssignments();
+  const rows = await request("/assignments", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      role_id: record.roleId,
+      role_title: record.roleTitle,
+      from_role: record.fromRole,
+      to_role: record.toRole,
+      cosine_similarity_score: record.cosineSimilarityScore,
+      missing_skills: record.missingSkills || [],
+    }),
+  });
+  return rows.map(fromRow);
 }
 
 export async function decideAssignment(id, status, note = "") {
-  const { error } = await supabase
-    .from("assignments")
-    .update({ status, note, decided_at: new Date().toISOString() })
-    .eq("id", id);
-  if (error) throw error;
-  return getAssignments();
+  const rows = await request(`/assignments/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status, note }),
+  });
+  return rows.map(fromRow);
 }
 
 export async function clearAssignments() {
-  const { error } = await supabase.from("assignments").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-  if (error) throw error;
+  await request("/assignments", { method: "DELETE" });
 }

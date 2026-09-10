@@ -125,6 +125,14 @@ class OrgNode(Base):
     target_skills: Mapped[list] = mapped_column(JSON, default=list)
     seniority_years: Mapped[float | None] = mapped_column(Numeric, nullable=True)
     headcount: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    # These 4 were referenced by orgStore.js's toRow()/fromRow() but never existed in
+    # backend/supabase/schema.sql either — PostgREST would have rejected any upsert that set one
+    # of them, so this was a pre-existing bug, not something introduced by the self-hosted port.
+    # Added here (nullable, no data to migrate) to make the field finally work end-to-end.
+    avg_salary_usd: Mapped[float | None] = mapped_column(Numeric, nullable=True)
+    performance_rating: Mapped[float | None] = mapped_column(Numeric, nullable=True)
+    recent_training_hours: Mapped[float | None] = mapped_column(Numeric, nullable=True)
+    recent_ot_hours: Mapped[float | None] = mapped_column(Numeric, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 

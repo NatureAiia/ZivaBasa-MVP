@@ -1,49 +1,47 @@
 /*
-  Usage store — now backed by Postgres (usage_log table) instead of localStorage. A log of
-  every chat call, backend or Puter, with estimated cost — what makes "cost monitoring" for
-  LLM usage automatic. Both the ZivaBasa dashboard's usage summary and Cost Monitoring's
+  Usage store — backed by Postgres via the backend's /usage-log routes
+  (backend/api/routes/usage_log.py) instead of a direct `supabase.from("usage_log")` call. A
+  log of every chat call, backend or Puter, with estimated cost — what makes "cost monitoring"
+  for LLM usage automatic. Both the ZivaBasa dashboard's usage summary and Cost Monitoring's
   auto-tracked llm_api_usage line read from the same aggregate.
 */
-import { supabase } from "./supabaseClient";
-
-const MAX_ENTRIES = 500; // matches old client-side cap; kept as a query limit here
+import { request } from "./api";
 
 export async function getUsageLog() {
-  const { data, error } = await supabase
-    .from("usage_log")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(MAX_ENTRIES);
-  if (error) {
-    console.error("getUsageLog failed:", error.message);
+  try {
+    const rows = await request("/usage-log");
+    return rows.map((r) => ({
+      provider: r.provider,
+      model: r.model,
+      inputTokens: r.input_tokens,
+      outputTokens: r.output_tokens,
+      costUsd: r.cost_usd,
+      timestamp: r.created_at,
+    }));
+  } catch (e) {
+    console.error("getUsageLog failed:", e.message);
     return [];
   }
-  return data.map((r) => ({
-    provider: r.provider,
-    model: r.model,
-    inputTokens: r.input_tokens,
-    outputTokens: r.output_tokens,
-    costUsd: r.cost_usd,
-    timestamp: r.created_at,
-  }));
 }
 
 // entry: { provider, model, inputTokens, outputTokens, costUsd }
 export async function logUsage(entry) {
-  const { error } = await supabase.from("usage_log").insert({
-    provider: entry.provider,
-    model: entry.model ?? null,
-    input_tokens: entry.inputTokens ?? 0,
-    output_tokens: entry.outputTokens ?? 0,
-    cost_usd: entry.costUsd ?? 0,
+  await request("/usage-log", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      provider: entry.provider,
+      model: entry.model ?? null,
+      input_tokens: entry.inputTokens ?? 0,
+      output_tokens: entry.outputTokens ?? 0,
+      cost_usd: entry.costUsd ?? 0,
+    }),
   });
-  if (error) throw error;
   return getUsageLog();
 }
 
 export async function clearUsageLog() {
-  const { error } = await supabase.from("usage_log").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-  if (error) throw error;
+  await request("/usage-log", { method: "DELETE" });
 }
 
 function isThisMonth(isoTimestamp) {

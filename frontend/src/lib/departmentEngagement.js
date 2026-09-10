@@ -7,10 +7,10 @@
                           (department, at least one current skill, seniority) to be usable in
                           skill-gap analysis at all.
     - lastViewedAt      — when someone last reviewed that department's skills-gap view (Organi-
-                          zational Structure tab), from department_report_views (Postgres-backed,
-                          see backend/supabase/migration_add_engagement.sql).
+                          zational Structure tab), from the backend's /department-views routes
+                          (backend/api/routes/department_engagement.py).
 */
-import { supabase } from "./supabaseClient";
+import { request } from "./api";
 
 const QUARTER_MS = 90 * 24 * 60 * 60 * 1000;
 
@@ -20,31 +20,32 @@ function isStructureComplete(node) {
 
 export async function recordDepartmentView(department) {
   if (!department) return;
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
-  const { error } = await supabase.from("department_report_views").insert({ user_id: user.id, department });
-  if (error) console.error("recordDepartmentView failed:", error.message);
+  try {
+    await request("/department-views", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ department }),
+    });
+  } catch (e) {
+    console.error("recordDepartmentView failed:", e.message);
+  }
 }
 
 async function getLastViewedByDepartment() {
-  const { data, error } = await supabase
-    .from("department_report_views")
-    .select("department, viewed_at")
-    .order("viewed_at", { ascending: false });
-  if (error) {
-    console.error("getLastViewedByDepartment failed:", error.message);
+  try {
+    const rows = await request("/department-views");
+    const byDept = {};
+    for (const row of rows || []) {
+      if (!byDept[row.department]) byDept[row.department] = row.viewed_at; // first hit per dept = most recent (already sorted)
+    }
+    return byDept;
+  } catch (e) {
+    console.error("getLastViewedByDepartment failed:", e.message);
     return {};
   }
-  const byDept = {};
-  for (const row of data || []) {
-    if (!byDept[row.department]) byDept[row.department] = row.viewed_at; // first hit per dept = most recent (already sorted)
-  }
-  return byDept;
 }
 
-// Combines org_nodes structure-completeness with department_report_views recency into one
+// Combines org_nodes structure-completeness with department view recency into one
 // per-department engagement summary, sorted by name.
 export async function getDepartmentEngagement(orgNodes = []) {
   const byDept = {};

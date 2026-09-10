@@ -54,6 +54,22 @@ from api import auth_routes
 from api import tokens
 from api.routes import avatar as avatar_routes
 from api.routes import profiles as profiles_routes
+from api.routes import org_nodes as org_nodes_routes
+from api.routes import assignments as assignments_routes
+from api.routes import batch_results as batch_results_routes
+from api.routes import sources as sources_routes
+from api.routes import usage_log as usage_log_routes
+from api.routes import cost_entries as cost_entries_routes
+from api.routes import chat_sessions as chat_sessions_routes
+from api.routes import predict_history as predict_history_routes
+from api.routes import onboarding as onboarding_routes
+from api.routes import milestones as milestones_routes
+from api.routes import department_engagement as department_engagement_routes
+from api.routes import entity_links as entity_links_routes
+from api.routes import feedback as feedback_routes
+from api.routes import review_queue as review_queue_routes
+from api.routes import token_balance as token_balance_routes
+from api.routes import organizations as organizations_routes
 from api import batch as batch_module
 from api import chat as chat_module
 from api import agent_graph
@@ -121,6 +137,22 @@ app.add_middleware(
 app.include_router(auth_routes.router)
 app.include_router(profiles_routes.router)
 app.include_router(avatar_routes.router)
+app.include_router(org_nodes_routes.router)
+app.include_router(assignments_routes.router)
+app.include_router(batch_results_routes.router)
+app.include_router(sources_routes.router)
+app.include_router(usage_log_routes.router)
+app.include_router(cost_entries_routes.router)
+app.include_router(chat_sessions_routes.router)
+app.include_router(predict_history_routes.router)
+app.include_router(onboarding_routes.router)
+app.include_router(milestones_routes.router)
+app.include_router(department_engagement_routes.router)
+app.include_router(entity_links_routes.router)
+app.include_router(feedback_routes.router)
+app.include_router(review_queue_routes.router)
+app.include_router(token_balance_routes.router)
+app.include_router(organizations_routes.router)
 
 os.makedirs(avatar_routes.avatar_storage_dir(), exist_ok=True)
 app.mount("/avatars", StaticFiles(directory=avatar_routes.avatar_storage_dir()), name="avatars")

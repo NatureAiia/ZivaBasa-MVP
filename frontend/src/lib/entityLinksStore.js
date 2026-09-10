@@ -1,37 +1,36 @@
 /*
-  Confirmed cross-dataset "golden record" links (entity_links table) — what a reviewer accepts
-  from the candidate matches api.matchEntities() proposes. See backend/src/entity_resolution.py
-  for the matching logic; this store only persists decisions, same stateless-API/stateful-
-  frontend split as every other *Store.js file.
+  Confirmed cross-dataset "golden record" links — backed by Postgres via the backend's
+  /entity-links routes (backend/api/routes/entity_links.py) instead of a direct
+  `supabase.from("entity_links")` call. See backend/src/entity_resolution.py for the matching
+  logic; this store only persists decisions, same stateless-API/stateful-frontend split as
+  every other *Store.js file.
 */
-import { supabase } from "./supabaseClient";
+import { request } from "./api";
 
 export async function getEntityLinks() {
-  const { data, error } = await supabase
-    .from("entity_links")
-    .select("golden_id, task, row_label, match_score, created_at")
-    .order("created_at", { ascending: false });
-  if (error) {
-    console.error("getEntityLinks failed:", error.message);
+  try {
+    return await request("/entity-links");
+  } catch (e) {
+    console.error("getEntityLinks failed:", e.message);
     return [];
   }
-  return data;
 }
 
 // Confirms one cluster: every member gets the same golden_id, upserted on (task, row_label) so
 // re-confirming just updates the existing link rather than duplicating it.
 export async function confirmCluster(members, goldenId) {
-  const rows = members.map((m) => ({
-    golden_id: goldenId,
-    task: m.task,
-    row_label: m.label,
-    match_score: m.match_score,
-  }));
-  const { error } = await supabase.from("entity_links").upsert(rows, { onConflict: "user_id,task,row_label" });
-  if (error) throw error;
+  await request("/entity-links", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      golden_id: goldenId,
+      members: members.map((m) => ({ task: m.task, row_label: m.label, match_score: m.match_score })),
+    }),
+  });
 }
 
 export async function removeLink(task, rowLabel) {
-  const { error } = await supabase.from("entity_links").delete().eq("task", task).eq("row_label", rowLabel);
-  if (error) throw error;
+  await request(`/entity-links?task=${encodeURIComponent(task)}&row_label=${encodeURIComponent(rowLabel)}`, {
+    method: "DELETE",
+  });
 }

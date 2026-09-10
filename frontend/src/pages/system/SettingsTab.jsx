@@ -23,7 +23,7 @@ const ROLE_TONE = { superadmin: "red", admin: "gold", viewer: "neutral" };
 const ROLE_LABEL = { superadmin: "Superadmin", admin: "Admin", viewer: "Viewer" };
 
 export default function SettingsTab() {
-  const { user, profile, refreshProfile, configured } = useAuth();
+  const { user, profile, refreshProfile } = useAuth();
   const { theme, toggle: toggleTheme } = useTheme();
   const { lowBandwidth, toggle: toggleLowBandwidth } = useLowBandwidth();
 
@@ -98,20 +98,6 @@ export default function SettingsTab() {
       setApiTestState("error");
     }
   };
-
-  if (!configured) {
-    return (
-      <div className="flex-1 flex items-center justify-center p-6">
-        <Card animated={false} className="max-w-md text-center">
-          <p className="text-sm text-ink-muted">
-            Settings requires Supabase to be configured (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY) — profile data
-            lives there. App-level settings below don't need it, but sign in isn't available to reach this page
-            without it.
-          </p>
-        </Card>
-      </div>
-    );
-  }
 
   return (
     <div className="flex-1 overflow-y-auto">

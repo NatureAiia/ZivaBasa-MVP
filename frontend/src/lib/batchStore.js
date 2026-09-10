@@ -1,30 +1,27 @@
 /*
-  Stores the latest batch-upload KPI result per task — now backed by Postgres
-  (batch_results table) instead of localStorage. Same "one row per task, latest wins"
-  semantics as before, enforced by the unique(user_id, task) constraint + upsert.
+  Stores the latest batch-upload KPI result per task — backed by Postgres via the backend's
+  /batch-results routes (backend/api/routes/batch_results.py) instead of a direct
+  `supabase.from("batch_results")` call. Same "one row per task, latest wins" semantics.
 */
-import { supabase } from "./supabaseClient";
-import { TASKS } from "./api";
+import { request, TASKS } from "./api";
 
 export async function saveBatchResult(task, result) {
-  const { error } = await supabase
-    .from("batch_results")
-    .upsert({ task, result, saved_at: new Date().toISOString() }, { onConflict: "user_id,task" });
-  if (error) throw error;
+  await request("/batch-results", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ task, result }),
+  });
 }
 
 export async function getBatchResult(task) {
-  const { data, error } = await supabase
-    .from("batch_results")
-    .select("result, saved_at")
-    .eq("task", task)
-    .maybeSingle();
-  if (error) {
-    console.error("getBatchResult failed:", error.message);
+  try {
+    const data = await request(`/batch-results/${task}`);
+    if (!data) return null;
+    return { ...data.result, savedAt: data.saved_at };
+  } catch (e) {
+    console.error("getBatchResult failed:", e.message);
     return null;
   }
-  if (!data) return null;
-  return { ...data.result, savedAt: data.saved_at };
 }
 
 export async function getAllBatchResults() {
@@ -33,6 +30,5 @@ export async function getAllBatchResults() {
 }
 
 export async function clearBatchResult(task) {
-  const { error } = await supabase.from("batch_results").delete().eq("task", task);
-  if (error) throw error;
+  await request(`/batch-results/${task}`, { method: "DELETE" });
 }

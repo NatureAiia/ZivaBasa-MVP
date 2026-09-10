@@ -2,6 +2,50 @@ DirectoryIndex index.html
 Options -MultiViews -Indexes
 RewriteEngine On
 RewriteRule ^index\.html$ - [L]
+
+# Backend API + Auth routes — proxy to uvicorn on 127.0.0.1:8002 (see ../../backend/
+# ecosystem.config.cjs; 8000 and 8001 were both already taken by other apps on this shared VPS).
+# This file is git-tracked specifically so these rules survive `vite build --emptyOutDir`
+# (.cpanel.yml copies frontend/public/* into the deploy output on every deploy) — they were
+# previously a manual, un-tracked edit directly on the server that the next deploy would have
+# silently wiped.
+RewriteRule ^api/(.*)$ http://127.0.0.1:8002/api/$1 [P,L]
+RewriteRule ^auth/(.*)$ http://127.0.0.1:8002/auth/$1 [P,L]
+RewriteRule ^profiles(.*)$ http://127.0.0.1:8002/profiles$1 [P,L]
+RewriteRule ^profile/(.*)$ http://127.0.0.1:8002/profile/$1 [P,L]
+RewriteRule ^health$ http://127.0.0.1:8002/health [P,L]
+RewriteRule ^docs$ http://127.0.0.1:8002/docs [P,L]
+RewriteRule ^openapi.json$ http://127.0.0.1:8002/openapi.json [P,L]
+RewriteRule ^schema/(.*)$ http://127.0.0.1:8002/schema/$1 [P,L]
+RewriteRule ^predict/(.*)$ http://127.0.0.1:8002/predict/$1 [P,L]
+RewriteRule ^explain/(.*)$ http://127.0.0.1:8002/explain/$1 [P,L]
+RewriteRule ^chat/(.*)$ http://127.0.0.1:8002/chat/$1 [P,L]
+RewriteRule ^reports/(.*)$ http://127.0.0.1:8002/reports/$1 [P,L]
+RewriteRule ^organization/(.*)$ http://127.0.0.1:8002/organization/$1 [P,L]
+RewriteRule ^extract/(.*)$ http://127.0.0.1:8002/extract/$1 [P,L]
+RewriteRule ^images/(.*)$ http://127.0.0.1:8002/images/$1 [P,L]
+RewriteRule ^uplift/(.*)$ http://127.0.0.1:8002/uplift/$1 [P,L]
+RewriteRule ^federated/(.*)$ http://127.0.0.1:8002/federated/$1 [P,L]
+RewriteRule ^tokens(.*)$ http://127.0.0.1:8002/tokens$1 [P,L]
+
+# Added by the Supabase-removal migration (backend/api/routes/*.py) — every table that used to
+# be queried directly from the frontend via Supabase now goes through one of these instead.
+RewriteRule ^org-nodes(.*)$ http://127.0.0.1:8002/org-nodes$1 [P,L]
+RewriteRule ^assignments(.*)$ http://127.0.0.1:8002/assignments$1 [P,L]
+RewriteRule ^batch-results(.*)$ http://127.0.0.1:8002/batch-results$1 [P,L]
+RewriteRule ^sources(.*)$ http://127.0.0.1:8002/sources$1 [P,L]
+RewriteRule ^usage-log(.*)$ http://127.0.0.1:8002/usage-log$1 [P,L]
+RewriteRule ^cost-entries(.*)$ http://127.0.0.1:8002/cost-entries$1 [P,L]
+RewriteRule ^chat-sessions(.*)$ http://127.0.0.1:8002/chat-sessions$1 [P,L]
+RewriteRule ^predict-history(.*)$ http://127.0.0.1:8002/predict-history$1 [P,L]
+RewriteRule ^onboarding(.*)$ http://127.0.0.1:8002/onboarding$1 [P,L]
+RewriteRule ^milestones(.*)$ http://127.0.0.1:8002/milestones$1 [P,L]
+RewriteRule ^department-views(.*)$ http://127.0.0.1:8002/department-views$1 [P,L]
+RewriteRule ^entity-links(.*)$ http://127.0.0.1:8002/entity-links$1 [P,L]
+RewriteRule ^prediction-feedback(.*)$ http://127.0.0.1:8002/prediction-feedback$1 [P,L]
+RewriteRule ^review-queue(.*)$ http://127.0.0.1:8002/review-queue$1 [P,L]
+RewriteRule ^invites(.*)$ http://127.0.0.1:8002/invites$1 [P,L]
+
 RewriteCond %{REQUEST_FILENAME} -f
 RewriteRule ^ - [L]
 # Missing static assets (images/video/fonts/etc.) must 404 for real, not fall through to

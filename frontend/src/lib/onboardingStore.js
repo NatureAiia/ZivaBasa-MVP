@@ -1,11 +1,10 @@
 /*
-  Onboarding checklist (growth mechanic 1) — Postgres-backed (onboarding_progress table, see
-  backend/supabase/migration_add_engagement.sql), client-writable via RLS same as every other
-  "own rows only" table (no server trust needed for "did I click through my own checklist").
-
-  Same shape convention as profileStore.js: one row per user, upserted in place.
+  Onboarding checklist (growth mechanic 1) — backed by Postgres via the backend's /onboarding
+  routes (backend/api/routes/onboarding.py) instead of a direct
+  `supabase.from("onboarding_progress")` call. Same shape convention as profileStore.js: one row
+  per user, upserted in place server-side.
 */
-import { supabase } from "./supabaseClient";
+import { request } from "./api";
 
 export const ONBOARDING_STEPS = [
   { key: "connected_data_source", label: "Connect your org data" },
@@ -16,35 +15,25 @@ export const ONBOARDING_STEPS = [
 ];
 
 export async function getOnboardingProgress() {
-  const { data, error } = await supabase.from("onboarding_progress").select("*").maybeSingle();
-  if (error) {
-    console.error("getOnboardingProgress failed:", error.message);
+  try {
+    return await request("/onboarding");
+  } catch (e) {
+    console.error("getOnboardingProgress failed:", e.message);
     return null;
   }
-  return data;
 }
 
-// Idempotent: marking an already-true step again is a harmless no-op upsert. Returns the
-// updated row (or null on failure) so callers can update local state without a re-fetch.
+// Idempotent: marking an already-true step again is a harmless no-op on the backend. Returns
+// the updated row (or null on failure) so callers can update local state without a re-fetch.
 export async function markOnboardingStep(stepKey) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const existing = await getOnboardingProgress();
-  if (existing?.[stepKey]) return existing; // already done, avoid an unnecessary write + completion re-check
-
-  const next = { ...(existing || {}), user_id: user.id, [stepKey]: true };
-  const allDone = ONBOARDING_STEPS.every((s) => next[s.key]);
-  if (allDone && !existing?.completed_at) {
-    next.completed_at = new Date().toISOString();
+  try {
+    return await request("/onboarding/step", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ step_key: stepKey }),
+    });
+  } catch (e) {
+    console.error("markOnboardingStep failed:", e.message);
+    return await getOnboardingProgress();
   }
-
-  const { data, error } = await supabase.from("onboarding_progress").upsert(next).select().single();
-  if (error) {
-    console.error("markOnboardingStep failed:", error.message);
-    return existing;
-  }
-  return data;
 }

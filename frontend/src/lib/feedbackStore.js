@@ -1,30 +1,31 @@
 /*
-  Quality-flagging loop — thumbs up/down + category on a predict_history run (prediction_feedback
-  table). One row per user per run: re-flagging upserts on the (user_id, predict_history_id)
-  unique constraint instead of piling up duplicates.
+  Quality-flagging loop — thumbs up/down + category on a predict_history run, backed by
+  Postgres via the backend's /prediction-feedback routes (backend/api/routes/feedback.py)
+  instead of a direct `supabase.from("prediction_feedback")` call. One row per user per run:
+  re-flagging upserts server-side instead of piling up duplicates.
 */
-import { supabase } from "./supabaseClient";
+import { request } from "./api";
 
 export async function getFeedback(predictHistoryId) {
   if (!predictHistoryId) return null;
-  const { data, error } = await supabase
-    .from("prediction_feedback")
-    .select("rating, category, note")
-    .eq("predict_history_id", predictHistoryId)
-    .maybeSingle();
-  if (error) {
-    console.error("getFeedback failed:", error.message);
+  try {
+    return await request(`/prediction-feedback/${predictHistoryId}`);
+  } catch (e) {
+    console.error("getFeedback failed:", e.message);
     return null;
   }
-  return data;
 }
 
 export async function submitFeedback({ predictHistoryId, task, rating, category, note }) {
-  const { error } = await supabase
-    .from("prediction_feedback")
-    .upsert(
-      { predict_history_id: predictHistoryId, task, rating, category: category || null, note: note || null },
-      { onConflict: "user_id,predict_history_id" }
-    );
-  if (error) throw error;
+  await request("/prediction-feedback", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      predict_history_id: predictHistoryId,
+      task,
+      rating,
+      category: category || null,
+      note: note || null,
+    }),
+  });
 }

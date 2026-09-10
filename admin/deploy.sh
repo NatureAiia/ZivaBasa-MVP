@@ -59,7 +59,7 @@ log "Checking PM2 status on VPS..."
 ssh_cmd "pm2 list" || warn "Could not SSH to VPS for status check"
 
 log "Checking backend health..."
-HEALTH=$(curl -sk --max-time 15 "https://diplomatic-onyx-antelope.172-93-106-10.cpanel.site:8443/health" 2>/dev/null || echo "unreachable")
+HEALTH=$(curl -sk --max-time 15 "https://diplomatic-onyx-antelope.172-93-106-10.cpanel.site/health" 2>/dev/null || echo "unreachable")
 if echo "$HEALTH" | grep -q "ok\|healthy"; then
   log "Backend is healthy: $HEALTH"
 else

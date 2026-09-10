@@ -1,19 +1,20 @@
 /*
-  Model-health aggregation — reads the same prediction_feedback rows FeedbackControl writes
-  (see feedbackStore.js) and rolls them up per task: satisfaction rate (up / (up+down)) and a
-  low-quality-runs list (down-rated rows, joined back to their predict_history entry so a
-  reviewer can open the run that triggered the flag). RLS decides scope: an admin sees every
-  user's feedback (per "admins can view all feedback" policy), everyone else sees only their own.
+  Model-health aggregation — reads the same prediction_feedback rows FeedbackControl writes (see
+  feedbackStore.js) via the backend's GET /prediction-feedback route
+  (backend/api/routes/feedback.py), and rolls them up per task: satisfaction rate
+  (up / (up+down)) and a low-quality-runs list (down-rated rows, joined back to their
+  predict_history entry so a reviewer can open the run that triggered the flag). The backend
+  decides scope now instead of RLS: an admin/superadmin caller gets every user's feedback,
+  everyone else gets only their own — see feedback.py's list_feedback().
 */
-import { supabase } from "./supabaseClient";
+import { request } from "./api";
 
 export async function getModelHealth() {
-  const { data, error } = await supabase
-    .from("prediction_feedback")
-    .select("id, predict_history_id, task, rating, category, note, created_at")
-    .order("created_at", { ascending: false });
-  if (error) {
-    console.error("getModelHealth failed:", error.message);
+  let data;
+  try {
+    data = await request("/prediction-feedback");
+  } catch (e) {
+    console.error("getModelHealth failed:", e.message);
     return { byTask: {}, lowQuality: [] };
   }
 

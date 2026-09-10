@@ -1,3 +1,6 @@
 # Never commit private keys
 id_rsa
 *.pem
+
+# Contains a plaintext VPS password (PASS = "...") — never commit this.
+full_deploy.py

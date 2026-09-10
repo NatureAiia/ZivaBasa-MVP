@@ -1,19 +1,19 @@
 /*
-  Org structure store — now backed by Postgres (org_nodes table, see
-  backend/supabase/schema.sql) instead of localStorage, so a reporting structure built in
-  My Organization survives across devices/browsers and isn't lost if the browser's storage
-  is cleared. Same exported function names/shapes as the old localStorage version — call
-  sites just need `await`.
+  Org structure store — backed by Postgres via the backend's own /org-nodes routes
+  (backend/api/routes/org_nodes.py) instead of a direct `supabase.from("org_nodes")` call, so a
+  reporting structure built in My Organization survives across devices/browsers and isn't lost
+  if the browser's storage is cleared. Same exported function names/shapes as before; call sites
+  just need `await`.
 
   node: { id, title, department, parentId (null = top of chart), currentSkills: [],
           targetRole: "" | string, targetSkills: [], seniorityYears, headcount,
           avgSalaryUsd, performanceRating, recentTrainingHours, recentOtHours }
 
-  The last four fields are optional and only feed Chiedza's scan_org_risk tool (backend/api/
-  agent_graph.py) — a per-role skill_match redeployment-fit scan. Left blank (null), a role is
-  simply skipped by that scan rather than defaulted to a fabricated number.
+  The last four fields only feed Chiedza's scan_org_risk tool (backend/api/agent_graph.py) — a
+  per-role skill_match redeployment-fit scan. Left blank (null), a role is simply skipped by
+  that scan rather than defaulted to a fabricated number.
 */
-import { supabase } from "./supabaseClient";
+import { request } from "./api";
 
 function fromRow(row) {
   return {
@@ -52,36 +52,30 @@ function toRow(node) {
 }
 
 export async function getOrgNodes() {
-  const { data, error } = await supabase.from("org_nodes").select("*").order("created_at");
-  if (error) {
-    console.error("getOrgNodes failed:", error.message);
+  try {
+    const rows = await request("/org-nodes");
+    return rows.map(fromRow);
+  } catch (e) {
+    console.error("getOrgNodes failed:", e.message);
     return [];
   }
-  return data.map(fromRow);
 }
 
 export async function upsertNode(node) {
-  const { data, error } = await supabase
-    .from("org_nodes")
-    .upsert(toRow(node))
-    .select()
-    .single();
-  if (error) throw error;
-  return fromRow(data);
+  const row = await request("/org-nodes", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(toRow(node)),
+  });
+  return fromRow(row);
 }
 
 export async function removeNode(id) {
-  // Re-parent any children of the removed node to its own parent first, rather than
-  // orphaning a whole subtree — matches how removing a manager in a real org chart should
-  // behave. Two round-trips (fetch parent, then re-parent + delete) since Postgres can't
-  // read-then-write a self-referencing FK in one statement here.
-  const { data: removed } = await supabase.from("org_nodes").select("parent_id").eq("id", id).single();
-  await supabase.from("org_nodes").update({ parent_id: removed?.parent_id ?? null }).eq("parent_id", id);
-  const { error } = await supabase.from("org_nodes").delete().eq("id", id);
-  if (error) throw error;
+  // Re-parenting the removed node's children is now done atomically server-side
+  // (backend/api/routes/org_nodes.py) instead of 3 separate client round-trips.
+  await request(`/org-nodes/${id}`, { method: "DELETE" });
 }
 
 export async function clearOrgNodes() {
-  const { error } = await supabase.from("org_nodes").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-  if (error) throw error;
+  await request("/org-nodes", { method: "DELETE" });
 }

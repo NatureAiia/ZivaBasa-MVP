@@ -20,7 +20,7 @@ export default function HistoryTab() {
     getHistory().then(setHistory);
   }, []);
 
-  // Client-side only — history is already fully loaded (Supabase-backed via lib/history.js),
+  // Client-side only — history is already fully loaded (Postgres-backed via lib/history.js),
   // no backend/store changes needed for search/filter over what's already in memory.
   const filtered = useMemo(() => {
     return history.filter((entry) => {

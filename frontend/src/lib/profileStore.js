@@ -5,26 +5,12 @@
   the PATCH /profiles/me request body has no `role` field at all, so there's no way to even
   attempt setting it through this store.
 */
-import { getBase } from "./api";
+import { getBase, request } from "./api";
 import { getAccessToken } from "./sessionToken";
 
 function authHeaders() {
   const token = getAccessToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
-async function request(path, options) {
-  const res = await fetch(`${getBase()}${path}`, {
-    ...options,
-    credentials: "include",
-    headers: { ...(options?.headers || {}), ...authHeaders() },
-  });
-  if (!res.ok) {
-    if (res.status === 404) return null;
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || `${res.status}: ${res.statusText}`);
-  }
-  return res.json();
 }
 
 export async function getProfile() {
