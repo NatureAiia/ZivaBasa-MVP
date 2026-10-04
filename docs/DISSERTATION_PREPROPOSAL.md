@@ -21,22 +21,24 @@ Time-series foundation models (TimesFM, Chronos) are pretrained on large corpora
 
 ## 2. Aim, Objectives and Research Questions
 
-**Aim.** To design and evaluate a multimodal feature-fusion framework built on TimesFM for fair and accurate workforce performance forecasting in a selected Zimbabwean commercial bank.
+**Aim.** To design, build and evaluate, in a real Zimbabwean commercial bank, a workforce-intelligence platform whose forecasting model fuses multimodal features with TimesFM to produce fair and accurate performance forecasts.
 
 **Objectives**
 
-1. To review the literature on workforce analytics, time-series foundation models, multimodal fusion and algorithmic fairness in HR settings.
-2. To construct a multimodal dataset (tabular, temporal, textual) from the selected bank's HR and operational records, with ethical clearance and anonymisation.
-3. To implement TimesFM-based forecasters under alternative fusion strategies (early, late, intermediate/learned) against statistical, gradient-boosted and deep-learning baselines.
-4. To measure forecast accuracy and group fairness across protected and operational groups.
-5. To assess explainability of the fused forecasts so that HR practitioners can contest a prediction.
+1. **Platform:** To design and develop a production-grade workforce-intelligence platform (data ingestion, secure storage, model serving, explainability, and a manager/HR dashboard) that integrates with the bank's HR and operational data sources.
+2. **Model:** To build and train a TimesFM-based multimodal feature-fusion forecaster (tabular, temporal, textual) and compare early, late and intermediate fusion against statistical, gradient-boosted and deep-learning baselines.
+3. **Real-environment evaluation:** To deploy the platform in the selected bank and evaluate it on real employee data and with real users, measuring:
+   - forecast accuracy under rolling-origin backtests and a forward (live) pilot period;
+   - fairness across gender, age band, grade and branch type;
+   - explainability, usability and operational fit as judged by HR and line managers.
+4. To review the literature on workforce analytics, time-series foundation models, multimodal fusion and algorithmic fairness in HR settings (foundation for 1–3).
 
 **Research questions**
 
-- **RQ1.** Does adding tabular and textual modalities to a TimesFM forecast improve accuracy over TimesFM alone and over trained baselines?
-- **RQ2.** Which fusion strategy gives the best accuracy–fairness trade-off?
-- **RQ3.** Do forecast errors differ systematically across gender, age band, grade and branch location, and can mitigation reduce this without material accuracy loss?
-- **RQ4.** How well can fused forecasts be explained to non-technical HR users?
+- **RQ1.** Does adding tabular and textual modalities to a TimesFM forecast improve accuracy over TimesFM alone and over trained baselines on real bank data?
+- **RQ2.** Which fusion strategy gives the best accuracy-fairness trade-off?
+- **RQ3.** Do forecast errors differ systematically across protected and operational groups, and can mitigation reduce this without material accuracy loss?
+- **RQ4.** Can the platform be deployed within a bank's security, governance and workflow constraints, and do HR users find the explained forecasts useful and trustworthy?
 
 ## 3. Preliminary Work: ZivaBasa, a Prototype Built From Scratch
 
@@ -79,7 +81,11 @@ I report these honestly because they shape the research design.
 
 ## 5. Proposed Methodology
 
-**Design.** Quantitative, experimental, with a single-case bank study (a selected Zimbabwean commercial bank, [name withheld/TBC]).
+**Design.** Design Science Research (build an artefact, then evaluate it) with a quantitative experimental core, run as a single-case study in a selected Zimbabwean commercial bank ([name withheld/TBC]). Three phases mirror the objectives:
+
+1. **Build the platform** (iterative, with bank IT and HR as stakeholders): requirements, architecture, security review, integration with HR/operational systems, and deployment inside or alongside the bank's infrastructure.
+2. **Build the model:** offline training and benchmarking on historical bank data.
+3. **Evaluate in situ:** a shadow-mode pilot in which forecasts run on live data without driving any decision, followed by structured user evaluation (interviews, a usability instrument such as SUS, and a trust/usefulness survey) with HR staff and line managers.
 
 **Data.** Monthly or quarterly per-employee records over [3–5] years:
 - *Temporal:* KPI attainment, sales/transaction volumes, attendance, task throughput.
@@ -118,11 +124,11 @@ I report these honestly because they shape the research design.
 
 1. **Empirical:** first evidence on whether TimesFM plus multimodal fusion improves workforce performance forecasts in a Zimbabwean bank.
 2. **Methodological:** a fairness-aware evaluation protocol for workforce forecasting with error-parity metrics.
-3. **Practical:** an open, tested reference implementation (ZivaBasa) that the bank or others can extend.
+3. **Artefact:** a deployed, tested workforce-intelligence platform (evolved from ZivaBasa) with evidence from a real bank environment, which others can extend.
 
 ## 8. Risks and Limitations
 
-- Access to real bank data may be delayed or restricted (mitigated by the fallback in §5).
+- Access to real bank data, and approval to deploy on bank systems, may be delayed or restricted (mitigated by the fallback in §5 and by a deployment option that runs on bank-approved hardware).
 - Single-bank case limits generalisability; findings will be framed as an exploratory case study.
 - Short histories and small headcount may limit statistical power for subgroup fairness analysis.
 - TimesFM is pretrained on non-HR data; domain shift may weaken zero-shot performance.
@@ -132,11 +138,11 @@ I report these honestly because they shape the research design.
 
 | Months | Activity |
 |---|---|
-| 1–3 | Literature review; ethics and data-access approval; finalise methodology |
-| 4–6 | Data acquisition, cleaning, anonymisation; baselines |
-| 7–10 | TimesFM and fusion experiments; fairness audit and mitigation |
-| 11–12 | Explainability study; analysis |
-| 13–15 | Writing, supervisor review, submission |
+| 1–3 | Literature review; ethics and data-access approval; requirements gathering with the bank |
+| 4–6 | Platform build and integration; data acquisition, anonymisation; baselines |
+| 7–9 | TimesFM and fusion experiments; fairness audit and mitigation |
+| 10–12 | Deployment and shadow-mode pilot in the bank; user evaluation |
+| 13–15 | Analysis, writing, supervisor review, submission |
 
 ## 10. Preliminary References (verify before use)
 
