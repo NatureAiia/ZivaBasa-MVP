@@ -3,7 +3,7 @@
 
 **Status:** Draft v1.0
 **Companion document:** `docs/BRD.md` (Business Requirements Document)
-**Prepared:** 2026-09-10
+**Prepared:** 2026-09-10 · **Last reviewed against the code:** 2026-11-25
 
 ---
 
@@ -70,7 +70,7 @@ ZivaBasa is a two-tier web application — a React SPA frontend and a Python/Fas
 - **Key user-facing surfaces** (`pages/zivabasa/`): Simple/Advanced Predict, Chat, Corporate View, Dashboard, Employee Mirror View (self-service, consent-gated), Entity Resolution, Forecast, History, Manager Action Inbox (flagship screen), My Organization, National Evidence View, Organizational Structure, Review Queue, Roster.
 - **Admin surface** (`pages/system/`): Model Health, Models, Settings, Users — a separate console from the day-to-day workforce views.
 - **Prediction UX flow**: `hooks/usePredictionFlow.js` chains Employment → Skills → Productivity → Summary as a guided sequence rather than exposing each task as an isolated form.
-- **Auth on the client**: a legacy `@supabase/supabase-js` client (`lib/supabaseClient.js`) still exists alongside the newer self-hosted JWT flow — see §7 Known Architectural Gap.
+- **Auth on the client**: `lib/authStore.jsx` talks only to the backend's `/auth/*` routes (JWT access token plus refresh cookie). No Supabase client or `@supabase/*` dependency remains in `frontend/`.
 
 ## 4. Backend Architecture
 
@@ -115,11 +115,11 @@ ZivaBasa is a two-tier web application — a React SPA frontend and a Python/Fas
 - **Current (target) design**: self-hosted JWT authentication — short-lived access tokens plus rotating, hashed (SHA-256) refresh tokens stored server-side and individually revocable (`refresh_tokens` table), issued/verified by `auth_service.py`/`token_service.py`.
 - **Authorization model**: a three-tier role hierarchy (`viewer` < `admin` < `superadmin`) enforced via a single `require_role(min_role)` dependency applied to routes, so role checks are centralized rather than duplicated per-handler. Role escalation is only possible through a dedicated superadmin-only endpoint, never through the general profile-update path — a deliberate control against privilege escalation via a mass-assignment-style bug.
 - **Multi-tenancy**: `Organization` + `Invite` model supports inviting teammates by email with a pre-assigned role and optional bonus token grant; an organization's members are the unit of data isolation (see §5 tenant isolation note).
-- **Known architectural gap — auth migration is incomplete**: the system originally ran on Supabase (managed Postgres + Supabase Auth + Row-Level Security + PostgREST). A recent, major refactor (commit `2ddd994`, merged in `33a3e10`) replaced this with self-hosted Postgres + custom JWT auth. However, at the time of this document:
-  - The frontend still bundles a Supabase client (`lib/supabaseClient.js`) and `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` env vars.
-  - The deployment pipeline (`.cpanel.yml`) still bakes a live Supabase project URL into the frontend build.
-  - The root `README.md` setup instructions are still partly Supabase-oriented.
-  This should be treated as **technical debt to close, not a dual-auth architecture to design around**: the recommended direction is to finish removing the Supabase client/env vars/build step once the self-hosted JWT path is confirmed as the sole auth mechanism in production, and update onboarding docs accordingly.
+- **Auth migration status (reviewed 2026-11-25)**: the move from Supabase (managed Postgres, Supabase Auth, RLS, PostgREST) to self-hosted Postgres + custom JWT auth (commit `2ddd994`, merged in `33a3e10`, completed by `48a8a7f`) is functionally complete. The frontend has no Supabase client or dependency, `.cpanel.yml` no longer injects a Supabase URL, and every per-user store calls a backend route. What remains is documentation and config residue only:
+  - `.env.example` (repo root) still lists `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`, which nothing reads.
+  - `backend/supabase/` (schema plus five migration SQL files) is kept as historical reference; the live schema is `backend/alembic/`.
+  - Some code comments and docstrings still mention Supabase when explaining what they replaced.
+  Treat these as cleanup, not a dual-auth architecture.
 
 ## 8. Integration Architecture
 
@@ -137,15 +137,15 @@ ZivaBasa is a two-tier web application — a React SPA frontend and a Python/Fas
 
 ## 10. Testing & Quality Architecture
 
-- **Backend**: pytest, 21 real test modules under `backend/tests/` plus `conftest.py`, covering auth, token metering, batch upload, reports, forecasting, causal uplift, the federated-learning endpoint, MLOps status, org/field extraction, chat, the agent graph, and macro-feature ingestion. Tests run against SQLite rather than the production Postgres, removing an external-service dependency from CI/local test runs.
-- **Frontend**: no automated test suite was found in the explored structure; UI validation currently appears to rely on manual verification. This is a gap worth addressing before scaling the frontend surface further, especially given the number of interdependent "store" modules.
+- **Backend**: pytest, 28 test modules under `backend/tests/` plus `conftest.py`, covering auth, token metering, batch upload, reports, forecasting, causal uplift, the federated-learning endpoint, MLOps status, org/field extraction, chat, the agent graph, and macro-feature ingestion. Tests run against SQLite rather than the production Postgres, removing an external-service dependency from CI/local test runs.
+- **Frontend**: there is no automated test suite (`package.json` has only `dev`, `build`, `lint`, `preview`). Validation is manual plus `frontend/demo_walkthrough.mjs`, a one-off Playwright diagnostic script whose screenshots are checked into `frontend/demo_walkthrough_shots/`. This is a gap worth addressing before scaling the frontend surface further, especially given the number of interdependent "store" modules.
 - **Notebooks as a research/validation record**: `backend/notebooks/01`–`06` form an EDA-through-sanity-check pipeline, functioning as the audit trail for how each task's proxy dataset was explored and validated before being wired into the shared-trunk model.
 
 ## 11. Roadmap-Implied Architectural Direction
 
 Architectural items already named in the codebase/docs as forward direction, not yet built:
 
-1. **Complete the Supabase decommission** described in §7 — remove residual client code, env vars, and deployment references once confidence in the self-hosted JWT path is established.
+1. **Finish the Supabase clean-up** described in §7: drop the unused `VITE_SUPABASE_*` entries from `.env.example`, and archive or delete `backend/supabase/` once nobody needs it as a reference.
 2. **Production federated learning**: move from the current single-machine Flower simulation to a design where genuinely separate institutions run local training and only exchange model updates — this has real infrastructure implications (network topology between institutions, update-aggregation service, key management) not yet designed in this repo.
 3. **FFIMS integration** (Africa University's Fleet & Facilities Integrated Management System): a planned integration point for deeper shift/workforce-scheduling capability, owned by an external project — will need an explicit integration contract (API or data-exchange format) once scoped.
 4. **Real-data model validation pipeline**: as real Zimbabwean banking-sector data becomes available, the architecture should support swapping a task's training data source without changing the serving API contract — the existing `config.py`/`model_registry.py` separation already supports this, but a formal validation gate (compare real-data model performance to the proxy-data baseline before promoting it to serving) does not yet exist and should be designed before the first real-data cutover.
@@ -154,6 +154,8 @@ Architectural items already named in the codebase/docs as forward direction, not
 ## 12. Architectural Risks
 
 - **Tenant-isolation correctness now lives entirely in application code** (no DB-level RLS backstop) — a single missed `user_id`/org filter in a new endpoint is a direct data-leak risk across tenants. Recommend a lightweight automated check (e.g., a lint rule or test helper asserting every query against a multi-tenant table includes a scoping filter) as the codebase grows.
-- **Dual-auth residue** (§7) is an active security-hygiene risk (stale credentials/config pointing at a real external Supabase project) until fully removed.
+- **Supabase residue** (§7) is now cosmetic (unused env var names, legacy SQL, comments). It is no longer a live dual-auth path, but the legacy SQL and env names can mislead new engineers.
+- **Deploy-critical file is untracked**: `backend/ecosystem.config.cjs` (the PM2 config that `.cpanel.yml` and `frontend/public/.htaccess` both reference, port 8002) is git-ignored, so a fresh clone cannot reproduce the deployment. Either commit a secret-free version or document how to create it.
+- **Missing `docker-compose.yml`**: the root `.env.example` says to copy it "before `docker compose up --build`", but no compose file exists in the repo; only per-service Dockerfiles do.
 - **Single always-on process on shared hosting** (PM2 + cPanel, no orchestration/auto-scaling) — acceptable for current MVP load, but a scaling ceiling to flag before any real customer-traffic commitment.
 - **ML artifacts and code are versioned together in one repo/deploy** — there is a model registry to track which artifact serves which task, but no described rollback mechanism if a newly promoted model regresses in production; worth formalizing alongside the "real-data validation gate" item above.

@@ -3,7 +3,7 @@
 ### (a module of the ChiedzaAI platform)
 
 **Status:** Draft v1.0
-**Prepared:** 2026-09-10
+**Prepared:** 2026-09-10 · **Last reviewed against the code:** 2026-11-25
 **Scope of this document:** The ZivaBasa module as it exists today (MVP/prototype stage) plus the near-term roadmap already referenced in the codebase and pitch materials. ZivaBasa is one module of a larger planned platform, ChiedzaAI (which also lists Ziva Bank, Ziva DataOps, Ziva Business, Ziva Upskill as in-development sibling modules); this BRD scopes ZivaBasa only, and calls out platform-level dependencies where relevant.
 
 ---
@@ -96,7 +96,7 @@ Grouped by capability area; all items below are **already implemented** in the c
 - FR-22: Exportable reports (Markdown, PDF, Excel) from predictions and chat sessions.
 
 ### 5.10 Accounts, Access & Monetization
-- FR-23: Self-hosted email/password authentication with JWT access + rotating refresh tokens (replacing an earlier Supabase-based auth system, migration in progress — see §9 Constraints).
+- FR-23: Self-hosted email/password authentication with JWT access + rotating refresh tokens (replacing an earlier Supabase-based auth system; migration complete, see §9 Constraints for residual clean-up).
 - FR-24: Three-tier role-based access control (`viewer`/`admin`/`superadmin`) with a superadmin-only role-promotion action.
 - FR-25: Multi-tenant organizations with email-based teammate invites carrying a role and optional bonus token grant.
 - FR-26: Token/credit metering per action (predict, agent chat, report export, premium upskilling), with admin/superadmin usage unmetered; the metering gate is togglable and off by default until explicitly enabled.
@@ -139,7 +139,7 @@ Grouped by capability area; all items below are **already implemented** in the c
 
 ## 9. Constraints, Risks & Dependencies
 
-- **Auth migration in progress**: the system has moved from Supabase-managed auth/DB to self-hosted Postgres + custom JWT auth, but Supabase environment variables, a live Supabase project URL in the deployment pipeline, and Supabase-oriented setup documentation still exist in the repository. This must be fully reconciled/decommissioned before it is treated as resolved.
+- **Auth migration: functionally complete, clean-up outstanding**: the system now runs on self-hosted Postgres + custom JWT auth, and the frontend no longer contains a Supabase client. Leftovers are unused `VITE_SUPABASE_*` names in `.env.example` and the legacy `backend/supabase/` SQL, which should be removed so they do not mislead new engineers.
 - **Proxy-data risk**: four of five prediction tasks are trained on public Kaggle datasets standing in for real banking-sector data; any business claims or ROI figures derived from these models must be caveated as illustrative until real-data validation occurs.
 - **Single-machine federated "simulation"**: the current federated learning capability demonstrates the mechanism (Flower FedAvg across synthetic institutions on one machine) but is not yet a cross-institution production deployment.
 - **Regulatory/compliance**: no explicit references to Zimbabwe's Data Protection Act or banking-sector regulatory requirements were found in-repo; this should be confirmed with legal/compliance stakeholders before processing real employee PII, especially given multi-tenant and federated ambitions.

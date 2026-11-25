@@ -1,273 +1,236 @@
-# 🕴️🤔 ZivaBasa 😶‍🌫️
-### AI-Powered Workforce Intelligence Platform — MVP (Kaggle-Data Phase)
+# ZivaBasa
+### AI-powered workforce intelligence for banks: MVP on proxy data
 
-**Module:** ZivaBasa (part of the ChiedzaAI platform — jobs, employment, productivity & skills forecasting)
-**Phase:** MVP prototype using public Kaggle datasets as a stand-in for real banking-sector data
-**Status:** Working end-to-end prototype (frontend + API + models) on proxy data — not a real-world findings phase
-
----
-
-## 1. Purpose of This Phase
-
-This MVP validates the **explainable multi-task deep learning architecture** proposed for ZivaBasa
-(shared representation trunk → Employment / Productivity / Skills task heads → SHAP explainability layer),
-served through a real API and dashboard, before real Zimbabwean banking-sector data is available.
-
-**What this phase proves:**
-- The multi-task neural network trains and produces sensible per-task predictions
-- The feature engineering pipeline (raw → engineered → learned → fusion) works end-to-end
-- SHAP explainability runs correctly against a multi-output Keras model
-- The full stack — FastAPI serving predictions/explanations, a React dashboard consuming them,
-  batch CSV upload, and an LLM-backed chat interface — works together as a real product, not just notebooks
-
-**What this phase does NOT prove:**
-- Anything about actual Zimbabwean bank employment/productivity/skills dynamics
-- Real predictive accuracy on the target population — Kaggle data is a **proxy**, not ground truth
-
-> ⚠️ Every dataset used here is a substitute for real banking HR/operational/AI-system data.
-> All findings from this phase are **methodological**, not empirical. This must be stated
-> explicitly in any write-up, thesis chapter, or stakeholder demo that references this phase.
+**Module:** ZivaBasa, part of the ChiedzaAI platform
+**Phase:** working end-to-end prototype, deployed to a UAT environment, trained on public Kaggle and synthetic data
+**Last reviewed against the code:** 2026-11-25
 
 ---
 
-## 2. What's Real vs. Prototype (read before demoing)
+## 1. What this is
 
-- **Predict → Upload & Analyze** — real. Upload a CSV per task (Employment/Skills/Productivity),
-  the backend matches columns by name, engineers features automatically, scores every row, and
-  returns KPI cards, a department/segment breakdown, and a top-risk list. This is the CEO-facing flow.
-- **Predict → Single-role (advanced)** — real. Manual feature entry, chained Employment → Skills →
-  Productivity → Summary, with a full SHAP explanation ledger per prediction.
-- **Corporate dashboard** — real, pulls from whatever batch uploads have been run in the current
-  browser session. Honestly labeled as not including "jobs created" (no model predicts that yet),
-  and skills-gap *recommendations* (as opposed to attrition risk) aren't built yet.
-- **Chat tab** — real, wired to the backend's `/chat` endpoint, which can call the actual
-  `predict_task`/`explain_task` tools. Requires `ANTHROPIC_API_KEY` or `NVIDIA_API_KEY` on the backend.
-- **History** — real, backed by Postgres (see Section 8) — syncs across devices/sessions once
-  signed in, no longer tied to one browser.
-- **Report generation** — real, exports a `.md` summary from a completed advanced-mode run (not PDF yet).
-- **Auth + database** — real as of this session. Supabase Auth (email/password) gates the app;
-  every user-generated record (org chart, roster decisions, batch results, sources, chat usage,
-  cost entries, chat session, predict history) is Postgres-backed with Row Level Security, not
-  browser-local state. Model serving (FastAPI: predict/explain/schema/batch/chat/reports) is
-  still in-memory and stateless — see Section 8 for setup.
+ZivaBasa predicts and explains workforce outcomes for a bank: which roles face automation risk, who is at attrition risk, how AI adoption affects productivity, and who could be redeployed instead of let go. It combines:
 
-See `backend/README.md` and `frontend/README.md` for the full, current, module-level detail — this
-root file is the map, those are the ground truth for each half of the stack.
+- a shared-trunk multi-task neural network with five task heads,
+- SHAP explanations (plus causal uplift estimates and forecasts),
+- a FastAPI backend with its own Postgres database and JWT auth,
+- a React dashboard with CEO, manager and employee views,
+- an LLM chat assistant ("Chiedza") that can call the models as tools.
+
+> **Every dataset except `human_capital` is a stand-in for real Zimbabwean banking data, and `human_capital` is real US HR data, not bank data.** Findings from this phase are methodological, not empirical. Say so in any write-up, thesis chapter or stakeholder demo that cites it.
+
+### Where the models stand
+
+From `backend/models/metrics.json` (test split, proxy data):
+
+| Task | Type | Result | Reading |
+|---|---|---|---|
+| `employment` | classification | ROC-AUC 0.42, precision/recall 0 | worse than chance on this proxy |
+| `skills` | classification | ROC-AUC 0.65, F1 0.21 | weak |
+| `productivity` | regression | R² -0.02 | no better than predicting the mean |
+| `skill_match` | classification | ROC-AUC 0.97, F1 0.79 | synthetic data; proves the pipeline, not real fit |
+| `human_capital` | classification | no entry in `metrics.json` | the one real-data task; its model is `models/multitask_model/human_capital_model.keras`, but no recorded metrics were found |
+
+These numbers show the architecture runs end to end. They are **not** evidence that the predictions are accurate. Do not present them as such.
 
 ---
 
-## 3. Tech Stack (actual, not aspirational)
+## 2. What's real vs. prototype
+
+**Real and working**
+
+- **Prediction and explanation** for five tasks: `/predict/{task}`, `/explain/{task}` (SHAP), `/schema/{task}`, plus CSV batch scoring with KPIs, department breakdown and a top-risk list.
+- **Auth and multi-tenancy**: self-hosted JWT (short-lived access token plus rotating refresh cookie), roles `viewer` < `admin` < `superadmin`, organizations with email invites.
+- **Persistence**: all user data (org chart, roster and assignments, batch results, sources, chat sessions, predict history, cost entries, usage log, feedback, review queue, entity links, onboarding, milestones, token balances) is in Postgres via about 20 backend route modules. Nothing depends on browser `localStorage` for correctness.
+- **Chat and agent** (`/chat`, `/chat/agent`) over a provider gateway: Anthropic, NVIDIA NIM, Gemini, Groq. Needs at least one provider key on the backend.
+- **Causal uplift** (`/uplift/{task}`, EconML), **forecasting** (`/predict/forecast/{industry}`, LSTM/GRU with MC-dropout intervals), **redeployment recommendations** (`/skill_match/recommend`).
+- **Governance**: human review queue, prediction feedback, model-health page, drift baselines, weekly retrain-and-promote workflow with a metrics gate.
+- **Reports**: Markdown, PDF and XLSX export for predictions and chat.
+- **Document extraction**: org-chart and task-field extraction from uploaded documents or images (needs a vision-capable provider key).
+- **Token and cost metering** with an optional balance gate (`ZIVABASA_TOKEN_GATE_ENABLED`).
+
+**Simulation or spike only**
+
+- **Federated learning** (`/federated/simulate`): a Flower FedAvg simulation across synthetic institutions on one machine, not a cross-bank deployment.
+- **TSMixer and Chronos-2 forecasting**: evaluated spikes needing the heavy `requirements-forecasting.lock.txt`; not part of the served API.
+- **Studio stub tiles** (audio/video overview, mind map, quiz) in the Chat tab: visual only.
+- **Sibling modules** (Ziva Bank, DataOps, Business, Upskill): placeholder pages.
+
+For module-level detail see [`backend/README.md`](backend/README.md) and [`frontend/README.md`](frontend/README.md). Product and design docs are in [`docs/`](docs/) (section 9).
+
+---
+
+## 3. Tech stack
 
 | Layer | Technology |
 |---|---|
-| Frontend | Vite + React 19 + React Router 7 + Tailwind CSS + Framer Motion + lucide-react |
-| Backend | FastAPI (Python) + Pydantic + Uvicorn |
-| ML | TensorFlow/Keras (multi-task shared-trunk network) + scikit-learn/XGBoost baselines |
-| Explainability | SHAP (KernelExplainer — see `backend/README.md` for why, not GradientExplainer) |
+| Frontend | Vite, React 19, React Router 7, Tailwind CSS, Framer Motion, lucide-react |
+| Backend | FastAPI, Pydantic, Uvicorn, SQLAlchemy (async, asyncpg), Alembic |
+| Database | Self-hosted PostgreSQL (SQLite for tests) |
+| Auth | Custom JWT (passlib/bcrypt), refresh tokens hashed and stored server-side |
+| ML | TensorFlow/Keras multi-task network, scikit-learn/XGBoost baselines, EconML, Flower |
+| Explainability | SHAP `KernelExplainer` (see `backend/README.md` for why not `GradientExplainer`) |
 | Experiment tracking | MLflow (local) |
-| Chat | Anthropic or NVIDIA NIM (OpenAI-compatible), called from the FastAPI `/chat` endpoint |
-| Database | None yet — file-based (`data/raw/`, `data/processed/`) + browser `localStorage` for history |
+| LLM / vision | Anthropic, NVIDIA NIM, Gemini, Groq; Azure OpenAI for image generation and editing |
+| Deploy | cPanel Git Version Control (`.cpanel.yml`), PM2, Apache proxy; backend `Dockerfile` also available |
+| CI | GitHub Actions: tests/lint/advisory scans (`tests.yml`), weekly retrain (`scheduled-retrain.yml`) |
 
 ---
 
-## 4. Datasets Used (Proxy Data)
+## 4. Datasets
 
-No single Kaggle dataset covers employment + productivity + skills for a banking workforce, so
-three datasets are combined, each feeding a different task head. They are **not** the same
-population — this is a known limitation, documented, not hidden.
+Five task heads, five unrelated datasets. They are **not** the same population; this is a known limitation (section 8).
 
-| Task Head | Dataset | Kaggle Source | Proxy Role |
-|---|---|---|---|
-| Employment / Automation Risk | AI Automation Risk by Job Role | `khushikyad001/ai-automation-risk-by-job-role` | Job-role-level automation exposure |
-| Skills / Readiness | IBM HR Analytics Employee Attrition & Performance | `pavansubhasht/ibm-hr-analytics-attrition-dataset` | Training hours, tenure, satisfaction, role, promotion history |
-| Productivity / AI Adoption | Future of Work in the Age of AI (2020–2026) | `algozee/future-of-work-in-the-age-of-ai-20202026` | AI adoption level, salary trend, skill gap by industry |
-| Skill Match / Redeployment | Synthetic banking roster fixture | generated, see `backend/scripts/generate_skill_match_fixture.py` | Staff skill-tag sets vs. target-role requirements, cosine-matched |
-| Human Capital / Turnover | HRDataset_v14-style employee roster | landed at `backend/data/raw/human_capital.csv` (source: `davidepolizzi/hr-data-set-based-on-human-resources-data-set`) | **Real HR data, not a proxy** — department, tenure, pay, performance, turnover, 3,310 employees. See `backend/data/schema/human_capital_dictionary.md` for the full column mapping and confirmed-missing fields (no training-hours or revenue-per-employee columns exist in this file) |
+| Task head | Dataset | Role |
+|---|---|---|
+| `employment` | AI Automation Risk by Job Role (`khushikyad001/ai-automation-risk-by-job-role`) | proxy: job-role automation exposure |
+| `skills` | IBM HR Analytics Attrition (`pavansubhasht/ibm-hr-analytics-attrition-dataset`) | proxy: attrition, tenure, training, satisfaction |
+| `productivity` | Future of Work in the Age of AI 2020-2026 (`algozee/future-of-work-in-the-age-of-ai-20202026`) | proxy: AI adoption, salary trend, skill gap |
+| `skill_match` | synthetic banking roster (`scripts/generate_skill_match_fixture.py`) | synthetic: skill tags vs. target-role requirements |
+| `human_capital` | HRDataset_v14-style roster (`davidepolizzi/hr-data-set-based-on-human-resources-data-set`), 3,310 employees | real HR data, but US and general industry. See `backend/data/schema/human_capital_dictionary.md` |
 
-Raw files live in `backend/data/raw/`. Do not edit raw files in place — all cleaning happens in the
-feature engineering notebook (or, for `skill_match`/`human_capital`, the dedicated
-`scripts/generate_skill_match_fixture.py` / `scripts/load_human_capital.py`) and writes to
-`backend/data/processed/`.
+`backend/data/raw/` also holds an HCP sample (`raw/HCP/`). Do not edit raw files in place: cleaning happens in notebook 02 or the dedicated scripts, and writes to `backend/data/processed/`. Macro indicators (World Bank, FAO/IMF CPI) are joined into the productivity and forecast features.
 
 ---
 
-## 5. Repository Structure
+## 5. Repository layout
 
 ```
 ZivaBasa-MVP/
-├── README.md                     # this file
-├── Documentation/                 # proposal + presentation PDFs
-├── dashboard/                     # standalone static dashboard shell
+├── README.md
+├── .cpanel.yml            # cPanel deploy pipeline (UAT)
+├── .env.example           # backend/provider/auth env template
+├── .github/workflows/     # tests.yml, scheduled-retrain.yml
+├── admin/                 # deploy helper; secret-bearing scripts are git-ignored
+├── docs/                  # BRD, architecture, dissertation pre-proposal, pitch scripts
+├── demo_scripts/          # copy of docs/demo_scripts (kept in sync by hand)
 ├── backend/
-│   ├── README.md                  # backend-specific docs — read this before touching the API
-│   ├── api/
-│   │   ├── main.py                 # FastAPI app: /health, /schema, /predict, /explain
-│   │   ├── batch.py                 # CSV batch upload/scoring
-│   │   ├── chat.py                  # LLM chat endpoint (Anthropic/NVIDIA)
-│   │   ├── model_registry.py        # loads all task models + scalers at startup
-│   │   └── schemas.py               # Pydantic request/response models
-│   ├── src/
-│   │   ├── config.py                 # per-task config: target column, leakage-column drops
-│   │   ├── features.py               # feature engineering pipeline
-│   │   ├── model.py                  # multi-task Keras model definition
-│   │   └── evaluate.py               # metrics + SHAP helpers
-│   ├── notebooks/                   # 01 EDA → 02 features → 03 baselines → 04 multitask NN → 05 SHAP → 06 sanity check
-│   ├── data/{raw,processed}/         # Kaggle proxy datasets + engineered outputs
-│   ├── models/                      # saved Keras models, scalers, SHAP outputs per task
-│   ├── pyproject.toml                # dependency source of truth (uv)
-│   └── requirements.lock.txt         # generated, hash-locked resolution (uv pip compile)
+│   ├── api/               # FastAPI app: main.py, auth, chat, agent_graph, reports, batch, ...
+│   │   ├── routes/        # per-resource CRUD routers (assignments, org_nodes, feedback, ...)
+│   │   └── db/            # SQLAlchemy models + session
+│   ├── alembic/           # live DB migrations (0001, 0002)
+│   ├── src/               # ML: features, model, ple_model, uplift, causal_xai, forecast,
+│   │                      #     federated/, skill_matching, drift, entity_resolution, worldbank
+│   ├── scripts/           # training, benchmarks, retrain_and_promote, data loaders
+│   ├── notebooks/         # 01 EDA -> 06 sanity check
+│   ├── data/{raw,processed,schema}/
+│   ├── models/            # Keras models, scalers, SHAP outputs, drift baselines, retrain reports
+│   ├── tests/             # pytest suite (28 modules, SQLite)
+│   ├── supabase/          # LEGACY SQL from the Supabase era; historical reference only
+│   └── Dockerfile, pyproject.toml, requirements*.txt
 └── frontend/
-    ├── README.md                     # frontend-specific docs — read this before touching the UI
     └── src/
-        ├── lib/                        # API client, theme, motion variants, report builder, history
-        ├── hooks/                       # usePredictionFlow (Employment→Skills→Productivity→Summary chain)
-        ├── components/
-        │   ├── layout/                    # Sidebar, Shell, ThemeToggle
-        │   ├── common/                     # Card, Badge, Button, Skeleton, EmptyState, ClarityRing
-        │   ├── predict/                     # TaskForm, PredictionResult, ShapLedger, OverallSummary
-        │   └── chat/                        # ChatPane, StudioPanel, SourcesPanel, HistoryStrip
-        └── pages/
-            ├── ChiedzaDashboard.jsx           # top-level product picker
-            ├── InDevelopment.jsx              # placeholder for other Ziva products
-            └── zivabasa/                       # ZivaBasaLayout + Dashboard/Chat/Predict/History tabs
+        ├── pages/         # Landing, Login, ChiedzaDashboard, CostMonitoring, system/*, zivabasa/*
+        ├── components/    # predict, chat, dashboard, organization, charts, common, effects, ...
+        ├── lib/           # api client, authStore, domain stores (one per backend resource)
+        └── hooks/         # usePredictionFlow
 ```
 
 ---
 
-## 6. Architecture Reference
+## 6. Architecture in brief
 
 ```
-Input Features (raw + engineered, per task)
+Input features (raw + engineered, per task)
         │
-Shared Trunk: Dense(256, ReLU) → BatchNorm → Dropout(0.3)
-              → Dense(128, ReLU) → Dropout(0.3)
+Shared trunk: Dense(256) → BatchNorm → Dropout → Dense(128) → Dropout
         │
-   ┌────┴────┬─────────────┐
-   ▼         ▼             ▼
-Employment  Productivity  Skills
-Head        Head          Head
-Dense(64→32)  Dense(64→32)  Dense(64→32)
-   │             │             │
-Output(1)     Output(1)     Output(1)
+ ┌──────┬────────┬──────────┬─────────────┬──────────────┐
+ ▼      ▼        ▼          ▼             ▼
+employment  skills  productivity  skill_match  human_capital   (task heads)
 ```
 
-Feature taxonomy (must match the ChiedzaAI proposal's structure — see `backend/src/features.py`):
-
-| Category | Example (this phase) |
-|---|---|
-| Raw | age, tenure, training hours, job role, automation exposure score |
-| Ratio/Index | Training Hours per Employee, Automation Exposure Index |
-| Interaction | Training Investment × Skill Readiness, AI Adoption × Employment Level |
-| Learned | shared trunk output (not hand-built) |
-| Fusion | concatenated representation feeding the task heads |
+Feature taxonomy (`backend/src/features.py`): raw, ratio/index, interaction, learned (trunk), fusion. Full detail, including the data model, auth design and deployment, is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ---
 
-## 7. API Endpoints (`backend/api/main.py`)
+## 7. Setup
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/health` | which tasks loaded successfully |
-| GET | `/schema/{task}` | feature names, input_dim, task_type for a task |
-| POST | `/predict/{task}` | `{"features": [...]}` in schema order → prediction |
-| POST | `/explain/{task}?top_k=8` | same input → SHAP contribution ledger |
-| POST | `/predict/batch/{task}` | CSV upload → scored rows + aggregate KPIs |
-| POST | `/chat` | LLM chat, can call `predict_task`/`explain_task` as tools |
+### Backend
 
-`task` is one of `employment`, `skills`, `productivity` today (see §9 for a planned 4th).
-
----
-
-## 8. Setup
-
-**Backend:**
 ```bash
 cd backend
 python3 -m venv venv && source venv/bin/activate
 pip install uv
-uv pip sync requirements.lock.txt --system
+uv pip sync requirements.lock.txt
+cp api/.env.example api/.env # the app loads backend/api/.env; fill in what you need
+alembic upgrade head          # needs DATABASE_URL (postgresql+asyncpg://...)
 uvicorn api.main:app --reload --port 8000
 ```
-Check it's alive: `curl http://localhost:8000/health` should return all three tasks loaded.
 
-**Frontend:**
+- `curl http://localhost:8000/health` should report all task models loaded.
+- `/predict`, `/explain`, `/schema` and batch scoring work without any API key. `/chat`, document extraction and image generation need a provider key.
+- `/auth/*` and every per-user route need `DATABASE_URL` and `JWT_SECRET` (generate with `python -c "import secrets; print(secrets.token_urlsafe(48))"`). Set `CORS_ALLOWED_ORIGINS` to your frontend origin.
+- The repo-root `.env.example` mirrors these variables. Ignore its `docker compose` comment: there is no `docker-compose.yml` in the repo, only per-service Dockerfiles.
+
+### Frontend
+
 ```bash
 cd frontend
 npm install
-npm run dev
-```
-By default the app talks to `http://localhost:8000`. Override with a `frontend/.env`:
-```
-VITE_API_BASE=http://localhost:8000
+npm run dev        # http://localhost:5173
 ```
 
-**Backend persistence + auth (Supabase):** as of this session, every user-generated record
-(org chart, roster/approval decisions, batch results, sources, chat usage log, cost entries,
-chat session, predict history) is stored in Postgres via Supabase instead of localStorage, and
-the app requires signing in. Setup:
-1. Create a free project at [supabase.com](https://supabase.com).
-2. In the SQL Editor, run `backend/supabase/schema.sql` once (tables + Row Level Security).
-3. Copy `frontend/.env.example` to `frontend/.env` and fill in your project's URL + anon key
-   (Project Settings → API).
-4. `npm run dev` — you'll land on a sign-up/sign-in screen before anything else loads.
+Defaults to the backend at `http://localhost:8000`; override with `VITE_API_BASE` in `frontend/.env`.
 
-FastAPI itself is unchanged and stores nothing — see `backend/supabase/schema.sql` for the
-architecture note on why CRUD goes through Supabase directly (client SDK + RLS) rather than
-through a second REST layer in FastAPI.
+### Tests
 
-Run notebooks in order (01 → 06) if retraining models. Each notebook reads from
-`backend/data/processed/` produced by the previous one — do not skip 02 (feature engineering)
-before running 03 or 04.
+```bash
+cd backend && pytest
+```
+
+### Retraining
+
+Run notebooks 01 to 06 in order (do not skip 02), or run `backend/scripts/retrain_and_promote.py`, which gates promotion on a metrics comparison and writes a report to `backend/models/retrain_reports/`.
+
+### Deployment (UAT)
+
+`.cpanel.yml` builds the frontend, installs `requirements-serving.txt`, runs `alembic upgrade head` and reloads PM2. It depends on `backend/ecosystem.config.cjs` (backend on port 8002), which is **git-ignored and not in the repo**; see section 8.
 
 ---
 
-## 9. Planned Next: Shift Intelligence (SWS Integration)
+## 8. Known limitations and open items
 
-A fourth task, **`skill_match`**, is planned to bring shift-and-skill matching concepts from the
-sister project **FFIMS Shift & Workforce Scheduling** (Africa University's Fleet & Facilities
-Integrated Management System) into ZivaBasa — turning static risk predictions into concrete
-internal redeployment recommendations (who can be reskilled/redeployed instead of let go, and why).
+**Data and modelling**
 
-- Follows the exact same `/schema/{task}` → `/predict/{task}` → `/explain/{task}` contract as the
-  existing three tasks, so it plugs into the existing Predict/Chat/History UI with minimal changes.
-- Adds a new **Roster** tab inside the ZivaBasa layout for shift-coverage and redeployment-candidate
-  views, reusing existing `Card`/`Badge`/`ClarityRing` components and the `ShapLedger` explanation pattern.
-- A full build spec for this is maintained separately (Claude Code build prompt) rather than in this
-  README, to keep implementation detail out of the architecture doc — see the project's internal docs.
+1. **Proxy data.** Four of five tasks use proxy or synthetic data; results will not transfer to Zimbabwean banking.
+2. **No shared key across datasets.** The heads are trained on different populations, joined only at the feature-schema level. `human_capital` is internally consistent but shares no key with the others.
+3. **Weak models.** See the table in section 1.
+4. **Uncalibrated, over-confident probabilities.** There is no calibration step; treat very near 0 or 1 outputs as directional.
+5. **SHAP is associational.** Causal uplift (EconML) is available separately, but the explanation layer itself is not causal-consistent.
+6. **`KernelExplainer` only.** A Keras 3 / shap version conflict, not a bug; read `backend/README.md` before "fixing" it.
+7. **Federated learning is a single-machine simulation.**
 
----
+**Engineering**
 
-## 10. Known Limitations (Report These, Don't Bury Them)
-
-1. **Cross-dataset alignment** — the five datasets are not from the same population; task heads
-   are trained on different samples joined only at the feature-schema level. `human_capital` is
-   internally row-aligned (its own rows are genuinely one-employee-one-row, joined on `EmpID`),
-   but there's no shared key across it and the other four datasets (e.g. `skill_match`'s
-   `staff_id` is a separate synthetic population) — so this limitation is not yet closed, only
-   partially improved for one dataset. See `backend/data/schema/human_capital_dictionary.md`
-   "Join strategy".
-2. **No Zimbabwe/banking specificity** — employment/skills/productivity/skill_match proxy data is
-   US/general-industry or synthetic-banking; results won't transfer directly to the target domain.
-   `human_capital` is real US HR data (not a proxy standing in for something else), but still not
-   Zimbabwe/banking-specific.
-3. **No federated learning yet** — this phase runs on a single merged/aligned dataset locally;
-   the proposal's privacy-preserving multi-bank federated setup is out of scope until real bank
-   partners are onboarded.
-4. **Causal-consistent XAI** — this phase implements standard SHAP (associational), not the
-   causal-consistent XAI layer described in the proposal. That is a later research milestone.
-5. **No auth, no persistent database** — history and batch results live in browser `localStorage`
-   only; nothing survives a cleared cache or a different device.
-6. **SHAP uses KernelExplainer, not GradientExplainer** — a Keras 3 / shap version conflict, not a
-   bug. See `backend/README.md` §"Known issues" before "fixing" this again.
+8. **Tenant isolation is enforced only in application code.** There is no database RLS backstop since leaving Supabase. Every new endpoint must filter by user or organization.
+9. **Supabase residue.** The code no longer uses Supabase, but `.env.example` still lists `VITE_SUPABASE_*`, and `backend/supabase/` holds legacy SQL. The live schema is `backend/alembic/`.
+10. **Deploy config not reproducible from the repo.** `backend/ecosystem.config.cjs` is git-ignored, and `.cpanel.yml` and `frontend/public/.htaccess` hard-code UAT hosts and port 8002.
+11. **No frontend tests.** Only `npm run lint` and `frontend/demo_walkthrough.mjs`, a one-off Playwright screenshot script.
+12. **Repo hygiene.** Tracked `.pyc` files, a committed `frontend/dist/`, `old_backend_environ.txt` (review for secrets), duplicated `demo_scripts/`, and trained models and datasets stored in git (the retrain bot commits models back).
+13. **Compliance not assessed.** Nothing in the repo addresses Zimbabwe's data-protection law; confirm before processing real employee PII.
 
 ---
 
-## 11. Next Phase (Not This Sprint)
+## 9. Documentation map
 
-- Replace proxy datasets with real bank HR/operational/AI-system data once available
-- Build the `skill_match` task and Roster tab described in §9
-- Add a persistent database (batch history, auth) — currently everything is file-based or browser-local
-- Introduce federated learning across participating banks
-- Move from SHAP to the causal-consistent XAI layer
-- Reconcile the feature dictionary (`backend/src/features.py`) against the real raw feature list in
-  the proposal once real data is available (taxonomy already matches — swap the data source only)
+| Document | Contents |
+|---|---|
+| [`docs/BRD.md`](docs/BRD.md) | Business requirements, users, FR/NFR, success metrics, risks |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | As-built architecture, data model, auth, ML subsystem, deployment, risks |
+| [`docs/DISSERTATION_PREPROPOSAL.md`](docs/DISSERTATION_PREPROPOSAL.md) (+ `.docx`) | Research framing: TimesFM multimodal fusion, fairness, real-bank evaluation |
+| [`docs/demo_scripts/`](docs/demo_scripts/) | CEO and head-of-state pitch scripts |
+| [`backend/README.md`](backend/README.md) | Backend API, ML pipeline, known issues |
+| [`frontend/README.md`](frontend/README.md) | Frontend structure, pages, real vs. prototype |
+| `backend/data/schema/human_capital_dictionary.md` | Column mapping and join strategy for the real-data task |
+
+---
+
+## 10. Next steps
+
+1. Obtain real bank HR, operational and AI-system data, and add a validation gate before any real-data model is promoted.
+2. Finish the clean-up in section 8 (Supabase residue, untracked deploy config, repo hygiene).
+3. Add frontend tests and an automated tenant-isolation check for new endpoints.
+4. Move federated learning from simulation to separate institutions.
+5. Integrate deeper shift scheduling with the sister FFIMS project (owned externally).
+6. Real-data evaluation for the dissertation: TimesFM multimodal fusion, accuracy and fairness.

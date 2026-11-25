@@ -1,16 +1,18 @@
 # ZivaBasa — Workforce Intelligence Backend
 
-FastAPI service serving three TensorFlow/Keras task heads (Employment automation-risk,
-Skills attrition-risk, Productivity/AI-adoption) trained on Kaggle proxy datasets, with
-SHAP-based local explanations.
+FastAPI service serving five TensorFlow/Keras task heads (`employment`, `skills`,
+`productivity`, `skill_match`, `human_capital`), SHAP explanations, causal uplift, forecasting,
+an LLM chat/agent gateway, and the Postgres-backed auth and per-user data API. Four of the five
+heads are trained on Kaggle proxy or synthetic data; `human_capital` uses real (US) HR data.
 
 ## Quickstart
 
 ```bash
-python3 -m venv venv && source venv/bin/activate
-or conda env
+python3 -m venv venv && source venv/bin/activate   # or a conda env
 python -m pip install uv
 python -m uv pip sync requirements.lock.txt
+cp api/.env.example api/.env     # main.py loads api/.env; set DATABASE_URL + JWT_SECRET for auth/CRUD
+alembic upgrade head              # creates the Postgres schema (alembic/versions/)
 uvicorn api.main:app --reload --port 8000
 ```
 
@@ -25,13 +27,13 @@ slow download, deliberately not part of the default install or the served Docker
 uv pip sync requirements-forecasting.lock.txt --system
 ```
 
-Check it's alive: `curl http://localhost:8000/health` should return all three tasks loaded.
+Check it's alive: `curl http://localhost:8000/health` should report every task model loaded. Prediction routes work without a database or API keys; auth and per-user routes need `DATABASE_URL` and `JWT_SECRET`; `/chat` needs a provider key.
 
 **On this machine specifically:** use the `deep_learning` conda env
 (`C:\Users\<user>\.conda\envs\deep_learning`, Python 3.12.13) — `uv` detects and installs into
 whichever environment is currently active (conda or venv), so `uv pip sync requirements.lock.txt`
 inside that activated env installs the exact locked versions
-(tensorflow==2.16.1, fastapi==0.111.0, etc.) that the four existing task models were trained
+(tensorflow==2.16.1, fastapi==0.111.0, etc.) that the existing task models were trained
 under. The machine's global Python is 3.13,
 which `tensorflow==2.16.1` doesn't support; pip-installing newer TF/numpy/pandas into the global
 site-packages "works" but trains/serves under different library versions than everything else
@@ -41,32 +43,71 @@ in `models/`, which is best avoided rather than debugged later. Run scripts and 
 ## Architecture
 
 ```
-data/raw/            checked-in Kaggle CSVs, checkpointed to parquet by src/api_smoke_test.py
+data/raw/             Kaggle/synthetic/HR source files (do not edit in place)
 data/processed/       engineered + scaled feature parquets (src/features.py)
+data/schema/          human_capital_dictionary.md (column mapping + join strategy)
 models/
-  {task}/             saved Keras model per task
-  scalers/            fitted StandardScaler per task (joblib) -- see "Scaler quirk" below
-src/
+  multitask_model/    shared-trunk Keras model per task (served)
+  ple_model/          PLE variant (benchmarked via scripts/benchmark_ple_vs_baseline.py)
+  scalers/            fitted StandardScaler per task -- see "Scaler quirk" below
+  shap_outputs/, causal_xai/, uplift/, forecast/, drift_baselines/, retrain_reports/
+  metrics.json        latest per-task test metrics
+src/                  ML code (no web framework)
   config.py           TaskConfig per task: target column, drop_cols (leakage exclusions)
-  features.py          load -> clean -> engineer -> scale -> save pipeline
-  model.py              Keras model architecture + training
-  evaluate.py           make_splits, SHAP computation, metrics
+  features.py, model.py, ple_model.py, evaluate.py
+  uplift.py, causal_xai.py, upskilling.py, skill_matching.py
+  forecast.py (served), tsmixer_forecast.py + chronos_forecast.py (spikes)
+  federated/          Flower FedAvg simulation
+  drift.py, entity_resolution.py, worldbank.py
 api/
-  schemas.py            Pydantic request/response models
-  model_registry.py     loads all three tasks' models + scalers once at startup
-  main.py                FastAPI routes: /health, /schema/{task}, /predict/{task}, /explain/{task}
+  main.py             app wiring, prediction/explain/batch/chat/report/extract routes
+  model_registry.py   loads task models + scalers once at startup
+  schemas.py          Pydantic request/response models
+  auth.py, auth_service.py, auth_routes.py, token_service.py, tokens.py   JWT auth, roles, token gate
+  chat.py, llm_gateway.py, agent_graph.py     chat providers + tool-calling agent
+  batch.py, reports.py, org_extract.py, field_extract.py, redact.py
+  image_gen.py, image_router.py, azure_image.py
+  db/                 SQLAlchemy models + async session
+  routes/             ~20 per-resource routers (all filter by the signed-in user/org)
+alembic/              live schema migrations (0001 initial, 0002 org_nodes extras)
+supabase/             LEGACY SQL from the Supabase era -- historical reference, not the live schema
+scripts/              training, benchmarks, retrain_and_promote.py, retrain_worker.py, data loaders
+tests/                pytest suite (28 modules, SQLite)
+notebooks/            01 EDA -> 06 sanity check
 ```
 
 ## Endpoints
 
+Prediction and ML
+
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/health` | which tasks loaded successfully |
-| GET | `/schema/{task}` | feature names, input_dim, task_type for a task |
-| POST | `/predict/{task}` | `{"features": [...]}` in schema order → prediction |
-| POST | `/explain/{task}?top_k=8` | same input → SHAP contribution ledger |
+| GET | `/health` | which task models loaded |
+| GET | `/schema/{task}`, `/schema/forecast` | feature names, input_dim, task_type |
+| POST | `/predict/{task}` | `{"features": [...]}` in schema order, returns prediction |
+| POST | `/explain/{task}?top_k=8` | same input, returns SHAP contribution ledger |
+| POST | `/predict/batch/{task}` | CSV upload, scored rows plus aggregate KPIs |
+| POST | `/uplift/{task}` | causal treatment-effect estimates (EconML) |
+| GET | `/predict/forecast/{industry}` | forecast with intervals |
+| POST | `/skill_match/recommend` | redeployment recommendations |
+| POST | `/federated/simulate` | single-machine FedAvg simulation |
+| GET | `/mlops/status` | model/retrain status |
 
-`task` is one of `employment`, `skills`, `productivity`.
+Chat, extraction, reports
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/chat`, `/chat/agent` | LLM chat; the agent can call predict/explain tools |
+| GET | `/chat/models`, `/chat/budget` | available models, usage budget |
+| POST | `/extract/task-fields/{task}`, `/organization/extract` | field and org-chart extraction from documents/images |
+| POST | `/images/generate` (+ `/images/providers`) | image generation |
+| POST | `/reports/predict`, `/reports/chat` (+ `/pdf`, `/xlsx`) | export |
+
+Auth and per-user data
+
+`/auth/signup|login|refresh|logout`, `/auth/admin/promote-role` (superadmin only), plus CRUD routers for profiles, avatar, organizations (and invites), org_nodes, assignments, batch_results, sources, usage_log, cost_entries, chat_sessions, predict_history, onboarding, milestones, department_engagement, entity_links, feedback, review_queue and token_balance. Roles are `viewer` < `admin` < `superadmin`, enforced by `require_role()`. **Every query on a multi-tenant table must filter by user/organization in application code; there is no RLS backstop.**
+
+`task` is one of `employment`, `skills`, `productivity`, `skill_match`, `human_capital`. Interactive docs are at `/docs`.
 
 ## Known issues & deliberate tradeoffs (read before "fixing" these again)
 
@@ -98,6 +139,14 @@ api/
 ## Running tests
 
 ```bash
-python3 -m py_compile src/*.py api/*.py   # syntax sweep
-# no formal test suite yet (Day 13 on the roadmap: integration + E2E testing)
+pytest                       # 28 modules, run against SQLite (no Postgres needed)
+python3 -m py_compile src/*.py api/*.py   # quick syntax sweep
 ```
+
+`tests/smoke_test.py` is a standalone script (real training run, mutates disk), deliberately excluded from pytest collection (`pytest.ini`). CI runs the suite in `.github/workflows/tests.yml`.
+
+## Deployment notes
+
+- `.cpanel.yml` installs `requirements-serving.txt` (no torch/transformers), runs `alembic upgrade head`, and reloads PM2 from `backend/ecosystem.config.cjs`. That file is git-ignored and not in the repo; the backend listens on port 8002 on the UAT host.
+- `Dockerfile` builds a single serving image (models load in-process; no separate inference service).
+- `.github/workflows/scheduled-retrain.yml` runs `scripts/retrain_and_promote.py` weekly against the CSVs in `data/raw/` and commits promoted models back to the branch.
