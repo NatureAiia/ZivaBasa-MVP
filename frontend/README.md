@@ -81,5 +81,4 @@ State is server-backed: each store in `lib/` is a thin client over a backend rou
 
 - No automated tests.
 - NVIDIA NIM chat is written to the documented OpenAI-compatible contract but was never verified against a live key.
-- `frontend/dist/` is committed to git and should be build output only.
 - `frontend/public/.htaccess` hard-codes the UAT backend port (8002) for the cPanel proxy.

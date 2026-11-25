@@ -139,7 +139,7 @@ Grouped by capability area; all items below are **already implemented** in the c
 
 ## 9. Constraints, Risks & Dependencies
 
-- **Auth migration: functionally complete, clean-up outstanding**: the system now runs on self-hosted Postgres + custom JWT auth, and the frontend no longer contains a Supabase client. Leftovers are unused `VITE_SUPABASE_*` names in `.env.example` and the legacy `backend/supabase/` SQL, which should be removed so they do not mislead new engineers.
+- **Auth migration: functionally complete, clean-up outstanding**: the system now runs on self-hosted Postgres + custom JWT auth, and the frontend no longer contains a Supabase client. The leftover is the legacy `backend/supabase/` SQL, which should be archived or removed so they do not mislead new engineers.
 - **Proxy-data risk**: four of five prediction tasks are trained on public Kaggle datasets standing in for real banking-sector data; any business claims or ROI figures derived from these models must be caveated as illustrative until real-data validation occurs.
 - **Single-machine federated "simulation"**: the current federated learning capability demonstrates the mechanism (Flower FedAvg across synthetic institutions on one machine) but is not yet a cross-institution production deployment.
 - **Regulatory/compliance**: no explicit references to Zimbabwe's Data Protection Act or banking-sector regulatory requirements were found in-repo; this should be confirmed with legal/compliance stakeholders before processing real employee PII, especially given multi-tenant and federated ambitions.

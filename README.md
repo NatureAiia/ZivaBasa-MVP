@@ -103,7 +103,6 @@ ZivaBasa-MVP/
 ├── .github/workflows/     # tests.yml, scheduled-retrain.yml
 ├── admin/                 # deploy helper; secret-bearing scripts are git-ignored
 ├── docs/                  # BRD, architecture, dissertation pre-proposal, pitch scripts
-├── demo_scripts/          # copy of docs/demo_scripts (kept in sync by hand)
 ├── backend/
 │   ├── api/               # FastAPI app: main.py, auth, chat, agent_graph, reports, batch, ...
 │   │   ├── routes/        # per-resource CRUD routers (assignments, org_nodes, feedback, ...)
@@ -204,10 +203,10 @@ Run notebooks 01 to 06 in order (do not skip 02), or run `backend/scripts/retrai
 **Engineering**
 
 8. **Tenant isolation is enforced only in application code.** There is no database RLS backstop since leaving Supabase. Every new endpoint must filter by user or organization.
-9. **Supabase residue.** The code no longer uses Supabase, but `.env.example` still lists `VITE_SUPABASE_*`, and `backend/supabase/` holds legacy SQL. The live schema is `backend/alembic/`.
+9. **Supabase residue.** The code no longer uses Supabase, but `backend/supabase/` still holds legacy SQL. The live schema is `backend/alembic/`.
 10. **Deploy config not reproducible from the repo.** `backend/ecosystem.config.cjs` is git-ignored, and `.cpanel.yml` and `frontend/public/.htaccess` hard-code UAT hosts and port 8002.
 11. **No frontend tests.** Only `npm run lint` and `frontend/demo_walkthrough.mjs`, a one-off Playwright screenshot script.
-12. **Repo hygiene.** Tracked `.pyc` files, a committed `frontend/dist/`, `old_backend_environ.txt` (review for secrets), duplicated `demo_scripts/`, and trained models and datasets stored in git (the retrain bot commits models back).
+12. **Models and datasets live in git.** Trained models and raw/processed data are committed (the retrain bot commits promoted models back), which will bloat the repo over time; consider Git LFS or an artifact store.
 13. **Compliance not assessed.** Nothing in the repo addresses Zimbabwe's data-protection law; confirm before processing real employee PII.
 
 ---
